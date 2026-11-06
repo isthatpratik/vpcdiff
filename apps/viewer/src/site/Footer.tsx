@@ -77,7 +77,7 @@ function Tracks() {
     { dur: "11s", delay: "-4s", len: "24%" },
   ];
   return (
-    <div aria-hidden="true" className="grid gap-[30px] py-[15px]">
+    <div aria-hidden="true" className="grid gap-6 py-6">
       {rows.map((r) => (
         <div key={r.dur} className="relative mx-3 h-px overflow-hidden bg-litt-line">
           <span className="absolute inset-y-0 left-0 bg-[color-mix(in_oklab,var(--litt-fg)_55%,transparent)] animate-[footer-track_var(--d)_linear_infinite] motion-reduce:hidden" style={{ width: r.len, "--d": r.dur, animationDelay: r.delay } as React.CSSProperties} />
@@ -98,8 +98,6 @@ const LINKS: [string, string][] = [
 export function Footer() {
   return (
     <>
-      <Tracks />
-      <Divider />
       <NameBand />
       <Divider />
       <Tracks />

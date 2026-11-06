@@ -2,7 +2,6 @@ import { useEffect } from "react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/litt/accordion";
 import { Tag } from "@/components/litt/tag";
 import { TooltipProvider } from "@/components/litt/tooltip";
-import { NumberFlow } from "@/components/sora-ui/texts/number-flow";
 import { TextEffect } from "@/components/sora-ui/texts/text-effect";
 import { TextLoop } from "@/components/sora-ui/texts/text-loop";
 import aws from "../logos/aws-icon-mono.svg?url";
@@ -140,33 +139,6 @@ function Features() {
         </div>
       </article>
     </div>
-  );
-}
-
-function Stats() {
-  const [ref, seen] = useInViewOnce<HTMLDListElement>();
-  const facts = [
-    { value: 6, label: "hops checked for every path, before and after the plan" },
-    { value: 5, label: "real Terraform plans in the test suite, each with a written proof" },
-    { value: 127, label: "tests on every change, with byte for byte expected results" },
-    { value: 0, label: "runtime dependencies in the engine: a terminal, CI, or a tab" },
-  ];
-  return (
-    <dl ref={ref} className="grid gap-px border-t border-litt-line bg-litt-line sm:grid-cols-2 lg:grid-cols-4">
-      {facts.map((f) => (
-        <div key={f.label} className="grid content-start gap-4 bg-litt-canvas px-6 py-10 md:px-10 md:py-12 md:first:pl-16">
-          <dt className="sr-only">
-            {f.value} {f.label}
-          </dt>
-          <dd aria-hidden="true" className="font-display text-6xl leading-none font-normal tracking-[-0.04em] text-litt-fg tabular-nums">
-            <NumberFlow value={seen ? f.value : 0} />
-          </dd>
-          <dd aria-hidden="true" className="text-litt-small text-litt-fg-muted">
-            {f.label}
-          </dd>
-        </div>
-      ))}
-    </dl>
   );
 }
 
@@ -396,7 +368,6 @@ export function Landing() {
             </SectionHead>
           </div>
           <HopStrip />
-          <Stats />
         </Rail>
         <Divider />
 
@@ -426,8 +397,8 @@ export function Landing() {
         </Rail>
         <Divider />
 
-        <Rail id="faq" label="Questions" className={`${PAD} grid gap-12 py-24 md:py-28 lg:grid-cols-[1fr_1.4fr]`}>
-          <SectionHead eyebrow="Questions" title="Before you try it." />
+        <Rail id="faq" label="Questions" className={`${PAD} grid items-start gap-12 py-24 md:py-28 lg:grid-cols-[1fr_1.4fr]`}>
+          <SectionHead eyebrow="Questions" title="Before you try it." className="lg:sticky lg:top-24" />
           <Accordion type="single" collapsible headingLevel={3}>
             {FAQ.map((f, i) => (
               <AccordionItem key={f.q} value={`q${i}`}>
