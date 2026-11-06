@@ -99,8 +99,10 @@ code, .mono { font-family: var(--mono); }
 .snippet { display: block; width: 100%; padding: var(--s-75) var(--s-100); border-radius: 8px; background: var(--bg-deep); border: 1px solid var(--line); font-size: 12px; line-height: 16px; overflow-x: auto; white-space: nowrap; }
 .error { display: flex; gap: var(--s-75); align-items: flex-start; padding: var(--s-100); border-radius: 8px; border: 1px solid var(--deny); background: var(--bg-raised); }
 .error svg { color: var(--deny); flex: none; margin-top: var(--s-25); }
+.risk { display: flex; gap: var(--s-75); align-items: flex-start; padding: var(--s-100); border-radius: 8px; border: 1px solid var(--partial); background: var(--bg-raised); }
+.risk svg { color: var(--partial); flex: none; margin-top: var(--s-25); }
 .examples { display: grid; gap: var(--s-75); }
-.example-list { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--s-75); }
+.example-list { display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--s-75); }
 .example .title-4 { text-wrap: balance; }
 .example .caption-5 { text-wrap: pretty; }
 .example { display: grid; gap: var(--s-50); align-content: start; text-align: left; padding: var(--s-100); border-radius: 12px; border: 1px solid var(--line); background: var(--bg-panel); cursor: pointer; transition: background-color 300ms var(--ease), border-color 300ms var(--ease), transform 300ms var(--ease); }

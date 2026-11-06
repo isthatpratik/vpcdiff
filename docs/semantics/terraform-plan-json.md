@@ -35,8 +35,12 @@ Source for every field below: <https://developer.hashicorp.com/terraform/interna
   exact. With several routes, a route whose target is unknown returns `unknown`.
 - **Data sources** (`mode: "data"`) are not part of the network model in slice 1. A
   hop that depends on one returns `unknown`.
-- **Replacements** (`["delete", "create"]`) are recorded. Outage risk from
-  replacement is a later slice.
+- **Replacements.** `["delete", "create"]` deletes the old object first;
+  `["create", "delete"]` comes from `create_before_destroy`: "Terraform creates a
+  replacement resource before destroying the current resource."
+  Source: <https://developer.hashicorp.com/terraform/language/block/resource>
+  A path allowed before and after gets `outageRisk` with the resources on it that are
+  replaced delete-first: traffic can drop while the old object is gone.
 
 ## Open questions
 

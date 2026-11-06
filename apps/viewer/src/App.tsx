@@ -164,7 +164,7 @@ function Loading() {
 function Workspace({ name, result }: { name: string; result: Result }) {
   const [showUnchanged, setShowUnchanged] = useState(false);
   const visible = useMemo(
-    () => result.paths.filter((p) => showUnchanged || p.change !== "unchanged").toSorted((a, b) => CHANGE_ORDER.indexOf(a.change) - CHANGE_ORDER.indexOf(b.change) || (a.id < b.id ? -1 : 1)),
+    () => result.paths.filter((p) => showUnchanged || p.change !== "unchanged" || p.outageRisk).toSorted((a, b) => CHANGE_ORDER.indexOf(a.change) - CHANGE_ORDER.indexOf(b.change) || (a.id < b.id ? -1 : 1)),
     [result, showUnchanged],
   );
   const [selectedId, setSelectedId] = useState<string | undefined>(visible[0]?.id);
@@ -204,6 +204,7 @@ function Workspace({ name, result }: { name: string; result: Result }) {
                     <span className="path-target title-4">{p.to}</span>
                     <span className={`badge caption-3 c-${p.change}`}>{CHANGE_LABEL[p.change]}</span>
                   </span>
+                  {p.outageRisk && <span className="caption-4 c-changed">Outage risk during apply</span>}
                   <span className="path-verdicts caption-5 muted">
                     {p.protocol}/{p.ports}
                     <span aria-hidden="true">·</span>
@@ -268,6 +269,14 @@ function Detail({ path }: { path: Path }) {
             "Not reachable from the internet on either side of the plan."
           )}
         </p>
+        {path.outageRisk && (
+          <div className="risk" role="note">
+            <WarningCircle size={16} />
+            <span className="body-6">
+              The plan replaces <span className="mono">{path.outageRisk.join(", ")}</span> by deleting it before creating the new one. Traffic on this path can drop during the apply. Setting create_before_destroy avoids the gap.
+            </span>
+          </div>
+        )}
       </div>
       <div className="detail-body">
       <div className="canvas">

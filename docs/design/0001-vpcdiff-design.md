@@ -145,7 +145,12 @@ plan.json
 2. **Default endpoint pairs.** From the internet to every endpoint, for each TCP and UDP
    port range that one of its security groups (or, for a Network Load Balancer without
    groups, its listeners) opens to a public address on either side of the plan.
-3. **Transient outage during replace.** Not in v0.1. See future work.
+3. **Transient outage during replace.** A path that is allowed before and after the plan
+   gets `outageRisk`: the resources on it (endpoint, subnet, VPC, internet gateway,
+   security groups, NACL, route table) that the plan replaces with
+   `["delete", "create"]`. With `create_before_destroy` (`["create", "delete"]`) there is
+   no gap, so those are not listed. The CLI, the Action, and the viewer show these paths
+   even when reachability does not change.
 4. **Graph layout.** Fixed: one row per hop, before and after as two columns
    ([ADR 0005](../adr/0005-viewer-stack.md)).
 
@@ -153,8 +158,6 @@ plan.json
 
 - Paths between endpoints inside the VPC (security group references), so a change that
   cuts "load balancer to service" shows up.
-- Outage risk when a security group or endpoint on a path is replaced (delete before
-  create).
 - NAT gateways, VPC peering, Transit Gateway, VPC endpoints, IPv6, prefix lists.
 - Aurora, ECS services, Classic Load Balancers.
 - Reachability Analyzer runs for every fixture (ADR 0004); today each fixture has a

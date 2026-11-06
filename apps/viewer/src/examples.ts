@@ -28,4 +28,10 @@ export const EXAMPLES: Example[] = [
     description: "Routes, NACL rules, group rules, and an Elastic IP as their own resources.",
     load: () => import("../../../fixtures/rule-resources/plan.json").then(text),
   },
+  {
+    id: "sg-replaced",
+    title: "Group replaced during apply",
+    description: "Renaming a security group replaces it delete first, on a path that stays open.",
+    load: () => import("../../../fixtures/sg-replaced/plan.json").then(text),
+  },
 ];

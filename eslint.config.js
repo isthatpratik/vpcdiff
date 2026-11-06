@@ -38,7 +38,7 @@ const impureGlobals = [
 ];
 
 export default defineConfig([
-  globalIgnores(["**/dist/**", "**/coverage/**"]),
+  globalIgnores(["**/dist/**", "**/coverage/**", ".claude/**"]),
   js.configs.recommended,
   tseslint.configs.strict,
   {

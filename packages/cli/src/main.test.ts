@@ -35,6 +35,13 @@ describe("vpcdiff CLI", () => {
     expect(cli(["--all", fixture("nacl-denies-ssh")]).out).toContain("UNCHANGED internet -> aws_instance.web  tcp/22");
   });
 
+  it("shows an unchanged path with outage risk without --all", () => {
+    const r = cli([fixture("sg-replaced")]);
+    expect(r.code).toBe(0);
+    expect(r.out).toContain("1 with outage risk");
+    expect(r.out).toContain("outage risk: the plan replaces aws_security_group.web by deleting before creating");
+  });
+
   it("exits 0 with --fail-on never", () => {
     expect(cli(["--fail-on", "never", fixture("sg-5432-opened")]).code).toBe(0);
   });

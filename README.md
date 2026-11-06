@@ -7,7 +7,8 @@ reachability graph before and after the change, and shows the difference:
 
 - paths that become reachable (for example, `0.0.0.0/0 → aws_db_instance.main:5432`)
 - paths that are lost (for example, `alb → ecs:8080`)
-- security group replacements (`-/+`) that can cause a short outage
+- replacements (`-/+`, delete before create) on a path that stays open, which can cause a
+  short outage during apply
 
 Every result comes with a hop-by-hop explanation: which route, NACL rule, and
 security group rule allowed or blocked the traffic.

@@ -47,6 +47,12 @@ export interface Path {
   change: Change;
   before: Outcome;
   after: Outcome;
+  /**
+   * For a path allowed before and after: resources on it that the plan replaces by
+   * deleting the old object before creating the new one. Traffic can drop during the
+   * apply. Absent when there are none.
+   */
+  outageRisk?: string[];
 }
 
 export interface Note {

@@ -13,6 +13,8 @@ export interface Res {
   config?: Record<string, string[]>;
   /** Module call and instance key, for example ["net", '["a"]']. */
   module?: [string, string];
+  /** Plan actions, when they differ from what before and after imply (replacements). */
+  actions?: string[];
 }
 
 /** A minimal `terraform show -json` plan. Resources link through known IDs or `config`. */
@@ -29,7 +31,7 @@ export function plan(resources: Res[]): unknown {
     resource_changes: resources.map((r) => {
       const before = r.before === undefined ? r.after : r.before;
       const after = r.after === undefined ? r.before : r.after;
-      const actions = !before ? ["create"] : !after ? ["delete"] : JSON.stringify(before) === JSON.stringify(after) ? ["no-op"] : ["update"];
+      const actions = r.actions ?? (!before ? ["create"] : !after ? ["delete"] : JSON.stringify(before) === JSON.stringify(after) ? ["no-op"] : ["update"]);
       const prefix = r.module ? `module.${r.module[0]}${r.module[1]}.` : "";
       return { address: `${prefix}${r.type}.${r.name}`, mode: "managed", type: r.type, name: r.name, change: { actions, before, after, after_unknown: r.unknown ?? {} } };
     }),

@@ -11,14 +11,17 @@ export interface RenderOptions {
 
 export function visiblePaths(result: Result, opts: RenderOptions): Path[] {
   return result.paths
-    .filter((p) => opts.all || p.change !== "unchanged")
+    .filter((p) => opts.all || p.change !== "unchanged" || p.outageRisk)
     .toSorted((a, b) => ORDER.indexOf(a.change) - ORDER.indexOf(b.change) || a.id.localeCompare(b.id));
 }
 
 export function summaryLine(result: Result): string {
   const s = result.summary;
-  return `${s.added} added, ${s.removed} removed, ${s.changed} changed, ${s.unknown} unknown, ${s.unchanged} unchanged`;
+  const risk = result.paths.filter((p) => p.outageRisk).length;
+  return `${s.added} added, ${s.removed} removed, ${s.changed} changed, ${s.unknown} unknown, ${s.unchanged} unchanged${risk ? `; ${risk} with outage risk` : ""}`;
 }
+
+const riskLine = (p: Path) => `outage risk: the plan replaces ${(p.outageRisk ?? []).join(", ")} by deleting before creating; traffic on this path can drop during apply (consider create_before_destroy)`;
 
 function outcomeLine(o: Outcome): string {
   switch (o.verdict) {
@@ -45,6 +48,7 @@ export function renderText(result: Result, opts: RenderOptions): string {
   for (const p of paths) {
     lines.push("", `${LABEL[p.change].padEnd(9)} ${p.from} -> ${p.to}  ${p.protocol}/${p.ports}`);
     lines.push(`  before: ${outcomeLine(p.before)}`, `  after:  ${outcomeLine(p.after)}`);
+    if (p.outageRisk) lines.push(`  ${riskLine(p)}`);
     const explain = p.after.verdict === "absent" ? p.before : p.after;
     for (const h of explain.hops) lines.push(`    ${hopLine(h)}`);
   }
@@ -64,8 +68,9 @@ export function renderMarkdown(result: Result, opts: RenderOptions): string {
   if (!paths.length) lines.push("No reachability changes from the internet.", "");
   else {
     lines.push("| | Path | Port | Before | After |", "|---|---|---|---|---|");
-    for (const p of paths) lines.push(`| ${ICON[p.change]} ${p.change} | internet → \`${p.to}\` | ${p.protocol}/${p.ports} | ${md(outcomeLine(p.before))} | ${md(outcomeLine(p.after))} |`);
+    for (const p of paths) lines.push(`| ${ICON[p.change]} ${p.change}${p.outageRisk ? " ⚠️" : ""} | internet → \`${p.to}\` | ${p.protocol}/${p.ports} | ${md(outcomeLine(p.before))} | ${md(outcomeLine(p.after))} |`);
     lines.push("");
+    for (const p of paths.filter((x) => x.outageRisk)) lines.push(`> ⚠️ \`${p.to}\` ${p.protocol}/${p.ports}: ${md(riskLine(p))}`, "");
     for (const p of paths) {
       const explain = p.after.verdict === "absent" ? p.before : p.after;
       if (!explain.hops.length) continue;

@@ -13,3 +13,6 @@ coverage/
 
 # The GitHub Action runs from its committed bundle.
 !packages/action/dist/
+
+# Local agent worktrees
+.claude/

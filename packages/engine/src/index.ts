@@ -74,6 +74,32 @@ function evaluateAll(list: Endpoint[] | undefined, p: Protocol, ports: Range): O
   return { verdict: "unknown", sources: [], hops: [], reason: `${list[0]?.placement ?? "the result differs between placements"} (${detail})` };
 }
 
+/**
+ * Resources on an endpoint's path that the plan replaces delete-first. Terraform replaces
+ * with ["delete", "create"] unless create_before_destroy is set (["create", "delete"]).
+ * https://developer.hashicorp.com/terraform/internals/json-format
+ * https://developer.hashicorp.com/terraform/language/block/resource
+ */
+function deleteFirst(list: Endpoint[] | undefined, snap: Snapshot): string[] {
+  const out = new Set<string>();
+  for (const e of list ?? []) {
+    const onPath = [e.address];
+    if (e.subnet.ok) onPath.push(e.subnet.value);
+    if (e.vpc.ok) {
+      onPath.push(e.vpc.value.address);
+      if (e.vpc.value.igw.ok && e.vpc.value.igw.value) onPath.push(e.vpc.value.igw.value);
+    }
+    if (e.securityGroups.ok) onPath.push(...e.securityGroups.value.map((g) => g.address));
+    if (e.nacl.ok) onPath.push(e.nacl.value.resource);
+    if (e.routeTable.ok) onPath.push(e.routeTable.value.resource);
+    for (const a of onPath) {
+      const actions = snap.resources.get(a)?.actions ?? [];
+      if (actions[0] === "delete" && actions.includes("create")) out.add(a);
+    }
+  }
+  return [...out].toSorted(cmp);
+}
+
 const unionOf = (list: Endpoint[] | undefined, f: (e: Endpoint) => IntervalSet): IntervalSet => (list ?? []).reduce<IntervalSet>((acc, e) => union(acc, f(e)), []);
 
 function notesFor(before: Snapshot, after: Snapshot): Note[] {
@@ -107,7 +133,8 @@ export function analyze(plan: unknown): Result {
       const flush = () => {
         if (!run) return;
         const ports = formatPorts([run.ports]);
-        paths.push({ id: `internet->${address}:${p}:${ports}`, from: "internet", to: address, toType: (a ?? b)?.[0]?.type ?? "", protocol: p, ports, change: changeOf(run.before, run.after), before: run.before, after: run.after });
+        const risk = run.before.verdict === "allowed" && run.after.verdict === "allowed" ? deleteFirst(a, after) : [];
+        paths.push({ id: `internet->${address}:${p}:${ports}`, from: "internet", to: address, toType: (a ?? b)?.[0]?.type ?? "", protocol: p, ports, change: changeOf(run.before, run.after), before: run.before, after: run.after, ...(risk.length ? { outageRisk: risk } : {}) });
         run = undefined;
       };
       for (const seg of segment(candidates, [...(b ?? []).flatMap(portCuts), ...(a ?? []).flatMap(portCuts)])) {

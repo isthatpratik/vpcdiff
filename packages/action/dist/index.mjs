@@ -1219,6 +1219,25 @@ function evaluateAll(list, p, ports) {
   const detail = list.map((e, i) => `${e.subnet.ok ? e.subnet.value : "unknown subnet"}: ${outcomes[i]?.verdict ?? "unknown"}`).join("; ");
   return { verdict: "unknown", sources: [], hops: [], reason: `${list[0]?.placement ?? "the result differs between placements"} (${detail})` };
 }
+function deleteFirst(list, snap) {
+  const out = /* @__PURE__ */ new Set();
+  for (const e of list ?? []) {
+    const onPath = [e.address];
+    if (e.subnet.ok) onPath.push(e.subnet.value);
+    if (e.vpc.ok) {
+      onPath.push(e.vpc.value.address);
+      if (e.vpc.value.igw.ok && e.vpc.value.igw.value) onPath.push(e.vpc.value.igw.value);
+    }
+    if (e.securityGroups.ok) onPath.push(...e.securityGroups.value.map((g) => g.address));
+    if (e.nacl.ok) onPath.push(e.nacl.value.resource);
+    if (e.routeTable.ok) onPath.push(e.routeTable.value.resource);
+    for (const a of onPath) {
+      const actions = snap.resources.get(a)?.actions ?? [];
+      if (actions[0] === "delete" && actions.includes("create")) out.add(a);
+    }
+  }
+  return [...out].toSorted(cmp);
+}
 var unionOf = (list, f) => (list ?? []).reduce((acc, e) => union(acc, f(e)), []);
 function notesFor(before, after) {
   const seen = /* @__PURE__ */ new Map();
@@ -1245,7 +1264,8 @@ function analyze(plan) {
       const flush = () => {
         if (!run2) return;
         const ports = formatPorts([run2.ports]);
-        paths.push({ id: `internet->${address}:${p}:${ports}`, from: "internet", to: address, toType: (a ?? b)?.[0]?.type ?? "", protocol: p, ports, change: changeOf(run2.before, run2.after), before: run2.before, after: run2.after });
+        const risk = run2.before.verdict === "allowed" && run2.after.verdict === "allowed" ? deleteFirst(a, after) : [];
+        paths.push({ id: `internet->${address}:${p}:${ports}`, from: "internet", to: address, toType: (a ?? b)?.[0]?.type ?? "", protocol: p, ports, change: changeOf(run2.before, run2.after), before: run2.before, after: run2.after, ...risk.length ? { outageRisk: risk } : {} });
         run2 = void 0;
       };
       for (const seg of segment(candidates, [...(b ?? []).flatMap(portCuts), ...(a ?? []).flatMap(portCuts)])) {
@@ -1269,12 +1289,14 @@ function analyze(plan) {
 var ORDER = ["added", "removed", "changed", "unknown", "unchanged"];
 var ICON = { added: "\u{1F534}", removed: "\u{1F7E2}", changed: "\u{1F7E0}", unknown: "\u26AA", unchanged: "\xB7" };
 function visiblePaths(result, opts) {
-  return result.paths.filter((p) => opts.all || p.change !== "unchanged").toSorted((a, b) => ORDER.indexOf(a.change) - ORDER.indexOf(b.change) || a.id.localeCompare(b.id));
+  return result.paths.filter((p) => opts.all || p.change !== "unchanged" || p.outageRisk).toSorted((a, b) => ORDER.indexOf(a.change) - ORDER.indexOf(b.change) || a.id.localeCompare(b.id));
 }
 function summaryLine(result) {
   const s = result.summary;
-  return `${s.added} added, ${s.removed} removed, ${s.changed} changed, ${s.unknown} unknown, ${s.unchanged} unchanged`;
+  const risk = result.paths.filter((p) => p.outageRisk).length;
+  return `${s.added} added, ${s.removed} removed, ${s.changed} changed, ${s.unknown} unknown, ${s.unchanged} unchanged${risk ? `; ${risk} with outage risk` : ""}`;
 }
+var riskLine = (p) => `outage risk: the plan replaces ${(p.outageRisk ?? []).join(", ")} by deleting before creating; traffic on this path can drop during apply (consider create_before_destroy)`;
 function outcomeLine(o) {
   switch (o.verdict) {
     case "allowed":
@@ -1294,8 +1316,9 @@ function renderMarkdown(result, opts) {
   if (!paths.length) lines.push("No reachability changes from the internet.", "");
   else {
     lines.push("| | Path | Port | Before | After |", "|---|---|---|---|---|");
-    for (const p of paths) lines.push(`| ${ICON[p.change]} ${p.change} | internet \u2192 \`${p.to}\` | ${p.protocol}/${p.ports} | ${md(outcomeLine(p.before))} | ${md(outcomeLine(p.after))} |`);
+    for (const p of paths) lines.push(`| ${ICON[p.change]} ${p.change}${p.outageRisk ? " \u26A0\uFE0F" : ""} | internet \u2192 \`${p.to}\` | ${p.protocol}/${p.ports} | ${md(outcomeLine(p.before))} | ${md(outcomeLine(p.after))} |`);
     lines.push("");
+    for (const p of paths.filter((x) => x.outageRisk)) lines.push(`> \u26A0\uFE0F \`${p.to}\` ${p.protocol}/${p.ports}: ${md(riskLine(p))}`, "");
     for (const p of paths) {
       const explain = p.after.verdict === "absent" ? p.before : p.after;
       if (!explain.hops.length) continue;
