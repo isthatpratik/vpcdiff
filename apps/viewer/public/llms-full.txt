@@ -1,6 +1,6 @@
 # vpcdiff: full text
 
-> vpcdiff reads a Terraform plan (`terraform show -json`) and computes which AWS resources the internet can reach before and after the plan, hop by hop. It reports paths that are opened, closed, changed, or unknown, and flags outage risk when a resource on an open path is replaced by deleting it first. It runs as a GitHub Action, a CLI, and an offline web viewer, all on one pure TypeScript engine. Free, open source (MIT), and offline: it needs no AWS account or credentials.
+> vpcdiff reads a Terraform plan (`terraform show -json`) and computes which AWS resources the internet can reach before and after the plan, hop by hop. It reports paths that are opened, closed, changed, or unknown, and flags outage risk when a resource on an open path is replaced by deleting it first. It runs as a GitHub Action, a CLI, and an offline web viewer, all on one pure TypeScript engine. Free, open source (Apache 2.0), and offline: it needs no AWS account or credentials.
 
 This file is the long version of [llms.txt](https://isthatpratik.github.io/vpcdiff/llms.txt), for language models and readers who want the whole picture in one place.
 
@@ -132,7 +132,7 @@ security review, and an updated support matrix.
 - **How is it different from AWS Reachability Analyzer?** Reachability Analyzer checks a live account, one path at a time, after you deploy. vpcdiff works on the plan, before you apply, for every endpoint at once. Each test fixture includes the steps to check it against Reachability Analyzer; those paid checks have not been run yet.
 - **Does it check traffic between my own services?** Not yet. Today it checks paths from the internet to instances, databases, and load balancers. Paths inside the VPC are next on the roadmap.
 - **Can it block a pull request?** Yes. The GitHub Action fails the check when the plan adds a path from the internet (you choose the level with fail-on), writes the report to the job summary, and keeps one comment on the pull request up to date.
-- **What does it cost?** Nothing. vpcdiff is free and open source under the MIT license.
+- **What does it cost?** Nothing. vpcdiff is free and open source under the Apache 2.0 license.
 
 ## Links
 

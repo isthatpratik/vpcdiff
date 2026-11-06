@@ -1,0 +1,10 @@
+vpcdiff
+Copyright 2026 Pratik Desai
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+"vpcdiff" and the vpcdiff mark are names of this project; the license does not grant
+permission to use them (Apache License 2.0, section 6).
+
+This product includes third-party components under their own licenses; see
+DESIGN.md (the list of sources) and
+apps/viewer/src/logos/CREDITS.md.

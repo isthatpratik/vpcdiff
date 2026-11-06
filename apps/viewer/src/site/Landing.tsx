@@ -177,7 +177,7 @@ const FAQ: { q: string; a: string }[] = [
   { q: "How is it different from AWS Reachability Analyzer?", a: "Reachability Analyzer checks a live account, one path at a time, after you deploy. vpcdiff works on the plan, before you apply, for every endpoint at once. Each test fixture includes the steps to check it against Reachability Analyzer; those paid checks have not been run yet." },
   { q: "Does it check traffic between my own services?", a: "Not yet. Today it checks paths from the internet to instances, databases, and load balancers. Paths inside the VPC are next on the roadmap." },
   { q: "Can it block a pull request?", a: "Yes. The GitHub Action fails the check when the plan adds a path from the internet (you choose the level with fail-on), writes the report to the job summary, and keeps one comment on the pull request up to date." },
-  { q: "What does it cost?", a: "Nothing. vpcdiff is free and open source under the MIT license." },
+  { q: "What does it cost?", a: "Nothing. vpcdiff is free and open source under the Apache 2.0 license." },
 ];
 
 const NAV_LINKS: [string, string][] = [

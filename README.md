@@ -10,7 +10,7 @@
 <p align="center">
   <a href="https://github.com/isthatpratik/vpcdiff/actions/workflows/ci.yml"><img alt="CI status" src="https://github.com/isthatpratik/vpcdiff/actions/workflows/ci.yml/badge.svg"></a>
   <a href="https://github.com/isthatpratik/vpcdiff/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/isthatpratik/vpcdiff?color=111111"></a>
-  <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-111111"></a>
+  <a href="LICENSE"><img alt="Apache 2.0 license" src="https://img.shields.io/badge/license-Apache%202.0-111111"></a>
 </p>
 
 <p align="center">
