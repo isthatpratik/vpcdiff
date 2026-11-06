@@ -22,7 +22,7 @@ import { Plate } from "./Plate.tsx";
 import { Tagline } from "./Tagline.tsx";
 import { CliSection } from "./Terminal.tsx";
 import { StepTabs } from "./StepTabs.tsx";
-import { Divider, EASE, PAD, Rail, SectionHead, Spotlight, useInViewOnce, useSpotlight } from "./rails.tsx";
+import { Divider, EASE, PAD, Rail, SectionHead, useInViewOnce } from "./rails.tsx";
 import { ScrollFrost } from "./ScrollFrost.tsx";
 import { startSmoothScroll } from "./smooth.ts";
 
@@ -35,7 +35,7 @@ const HOP_NAMES = ["Public IP", "Gateway", "NACL in", "Groups", "NACL out", "Rou
 /** The hops as a short path: squares on a line that fill in order. */
 function HopChain({ on }: { on: boolean }) {
   return (
-    <ol className="grid grid-cols-6" aria-label="The six hops, in the order traffic meets them">
+    <ol className="relative grid grid-cols-6" aria-label="The six hops, in the order traffic meets them">
       {HOP_NAMES.map((h, i) => (
         <li key={h} className="relative grid content-start justify-items-start gap-3">
           {i < HOP_NAMES.length - 1 && (
@@ -45,6 +45,14 @@ function HopChain({ on }: { on: boolean }) {
           <span className="pr-2 font-litt-mono text-litt-caption leading-tight text-litt-fg-muted">{h}</span>
         </li>
       ))}
+      {/* After the chain fills, a soft light travels it, the way a packet meets each hop in order. */}
+      <li aria-hidden="true" className="pointer-events-none absolute top-[5px] left-1.5 h-px w-[83.333%]">
+        {on && (
+          <span className="absolute inset-y-0 left-0 w-full opacity-0 motion-safe:animate-[hop-packet_4.2s_cubic-bezier(0.65,0,0.35,1)_1.6s_infinite]">
+            <span className="absolute top-1/2 -left-[3px] size-[7px] -translate-y-1/2 rounded-full bg-litt-fg shadow-[0_0_0_3px_color-mix(in_oklab,var(--litt-fg)_14%,transparent),0_0_12px_2px_color-mix(in_oklab,var(--litt-fg)_35%,transparent)]" />
+          </span>
+        )}
+      </li>
     </ol>
   );
 }
@@ -55,7 +63,7 @@ function UnknownLine() {
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-litt-fg">gateway_id</span>
         <span className="text-litt-fg-subtle">=</span>
-        <span className="text-litt-fg-muted">(known after apply)</span>
+        <span className="text-litt-fg-muted motion-safe:animate-[unknown-shimmer_3.2s_linear_infinite] motion-safe:bg-[linear-gradient(90deg,var(--litt-fg-subtle)_0%,var(--litt-fg-subtle)_40%,var(--litt-fg)_50%,var(--litt-fg-subtle)_60%,var(--litt-fg-subtle)_100%)] motion-safe:bg-[length:250%_100%] motion-safe:bg-clip-text motion-safe:text-transparent">(known after apply)</span>
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <Tag status="neutral">Unknown</Tag>
@@ -71,26 +79,17 @@ function OutageTimeline({ on }: { on: boolean }) {
       <div className="grid grid-cols-[1fr_1.2fr_1fr] items-center gap-2">
         <span className="border border-litt-line-strong px-2 py-1.5 text-center text-litt-fg-muted">delete</span>
         <span className="relative h-8">
-          <span className={`absolute inset-x-0 top-1/2 h-0 -translate-y-1/2 border-t border-dashed border-litt-fg transition-[clip-path] duration-1000 ${EASE}`} style={{ clipPath: on ? "inset(0 0 0 0)" : "inset(0 100% 0 0)" }} />
+          <span className={`absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-[repeating-linear-gradient(90deg,var(--litt-fg)_0_4px,transparent_4px_8px)] transition-[clip-path] duration-1000 ${EASE} ${on ? "motion-safe:animate-[dash-march_1.6s_linear_1.2s_infinite]" : ""}`} style={{ clipPath: on ? "inset(0 0 0 0)" : "inset(0 100% 0 0)" }} />
         </span>
         <span className="border border-litt-line-strong px-2 py-1.5 text-center text-litt-fg-muted">create</span>
       </div>
       <p className={`flex items-center justify-center gap-2 font-litt-sans text-litt-small text-litt-fg transition-opacity duration-500 ${on ? "opacity-100 delay-700" : "opacity-0"}`}>
-        <span className="size-1.5 rounded-full bg-litt-warning" />
+        <span className="relative size-1.5 rounded-full bg-litt-warning">
+          {on && <span aria-hidden="true" className="absolute inset-0 rounded-full bg-litt-warning opacity-0 motion-safe:animate-[soft-ping_2.4s_cubic-bezier(0.22,1,0.36,1)_1.4s_infinite]" />}
+        </span>
         traffic can drop here
       </p>
     </div>
-  );
-}
-
-/** A feature cell with the cursor spotlight. */
-function Cell({ children, className, id }: { children: React.ReactNode; className: string; id?: string }) {
-  const ref = useSpotlight<HTMLElement>();
-  return (
-    <article ref={ref} id={id} className={`group relative ${className}`}>
-      <Spotlight />
-      {children}
-    </article>
   );
 }
 
@@ -102,41 +101,44 @@ function Features() {
   const label = "font-litt-mono text-litt-caption text-litt-fg-subtle";
   return (
     <div ref={ref} className="grid gap-px border-t border-litt-line bg-litt-line md:grid-cols-2">
-      <Cell className={cell}>
+      <article className={cell}>
         <div className="grid gap-3">
           <span className={label}>01 · hop by hop</span>
           <h3 className={title}>Every hop, with the rule that decided it</h3>
           <p className={body}>Each path is checked in the order traffic meets it. Every answer names the resource and links the AWS documentation for that hop.</p>
         </div>
         <HopChain on={seen} />
-      </Cell>
-      <Cell className={cell}>
+      </article>
+      <article className={cell}>
         <div className="grid gap-3">
           <span className={label}>02 · honest</span>
           <h3 className={title}>Unknown when it cannot know</h3>
           <p className={body}>Values set only at apply time give unknown with the reason, never a guess.</p>
         </div>
         <UnknownLine />
-      </Cell>
-      <Cell id="outage" className={`${cell} scroll-mt-24`}>
+      </article>
+      <article id="outage" className={`${cell} scroll-mt-24`}>
         <div className="grid gap-3">
           <span className={label}>03 · new in v0.1</span>
           <h3 className={title}>Outage risk, not only exposure</h3>
           <p className={body}>A group or route replaced by deleting it first leaves a gap on a path that stays open.</p>
         </div>
         <OutageTimeline on={seen} />
-      </Cell>
-      <Cell className={cell}>
+      </article>
+      <article className={cell}>
         <div className="grid gap-3">
           <span className={label}>04 · private</span>
           <h3 className={title}>Nothing leaves your machine</h3>
           <p className={body}>No AWS account and no credentials. The viewer runs in your browser tab, behind a policy that blocks every data request it could make.</p>
         </div>
         <div className="grid gap-2">
-          <span className="font-litt-mono text-2xl text-litt-fg sm:text-3xl">connect-src &apos;none&apos;</span>
+          <span className="font-litt-mono text-2xl text-litt-fg sm:text-3xl">
+            connect-src &apos;none&apos;
+            <span aria-hidden="true" className="ml-1 inline-block h-[0.9em] w-[0.5em] translate-y-[0.1em] bg-litt-fg/50 motion-safe:animate-[soft-caret_1.4s_ease-in-out_infinite]" />
+          </span>
           <span className="text-litt-small text-litt-fg-subtle">in the viewer's Content Security Policy</span>
         </div>
-      </Cell>
+      </article>
     </div>
   );
 }

@@ -130,9 +130,13 @@ Fonts load from Google Fonts (see section 10 for what that means for privacy).
   8 px, the footer card 14 px. Cells and framed panels are square. A nested shape gets the outer radius minus
   the gap.
 - **Cards:** a framed panel has a plain 1px hairline frame. No corner marks.
-- **Spotlight:** feature cells show a soft ink light under the pointer (6% ink,
-  360 px). It is off on touch screens and under reduced motion. Product panels do not
-  get it.
+- **Feature loops:** after a feature visual plays its intro, one quiet loop keeps it
+  alive: a light travels the hop chain, "(known after apply)" shimmers, the outage
+  dashes march and the warning dot sends a soft ring, and a caret breathes after
+  `connect-src 'none'`. All stop under reduced motion. No cursor spotlight anywhere.
+- **Pointer and focus:** everything you can press shows the hand cursor; disabled
+  controls show not-allowed. Elements without their own focus style get a 2 px ink
+  outline on keyboard focus.
 - **Neutral grays in demos:** a Stageshow stage sets its own theme, which brings back
   litt's warm default grays. The hero demo maps litt and the kit to the flat (neutral)
   material in `hero-demo.css`, so no demo reads brown.

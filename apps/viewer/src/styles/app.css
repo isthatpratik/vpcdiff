@@ -1312,6 +1312,12 @@ html[data-theme="dark"][data-material] {
   html, body { background: var(--litt-canvas); color: var(--litt-fg); font-family: var(--litt-font-sans); -webkit-font-smoothing: antialiased; }
   h1, h2, h3 { text-wrap: balance; }
   p { text-wrap: pretty; }
+
+  /* Anything you can press shows the hand cursor; disabled controls say so. */
+  :where(a[href], button, summary, label[for], select, [role="button"], [role="tab"], [role="menuitem"], [role="option"], [role="switch"], [role="checkbox"], [role="radio"], input[type="checkbox"], input[type="radio"], input[type="file"]) { cursor: pointer; }
+  :where(button, input, select, textarea, [role="button"]):is(:disabled, [aria-disabled="true"]) { cursor: not-allowed; }
+  /* A visible keyboard focus ring where a component sets none of its own. */
+  :where(a[href], button, summary, select, input, textarea, [tabindex]:not([tabindex="-1"])):focus-visible { outline: 2px solid var(--litt-fg); outline-offset: 2px; }
 }
 
 /* Landing page step tabs (src/site/StepTabs.tsx). */
@@ -1344,4 +1350,27 @@ html[data-theme="dark"][data-material] {
 }
 @media (prefers-reduced-motion: reduce) {
   [class*="animate-[term-in"], [class*="animate-[caret"] { animation: none !important; }
+}
+
+/* Landing page feature visuals (src/site/Landing.tsx): quiet loops after the intro. */
+@keyframes hop-packet {
+  0% { transform: translateX(0); opacity: 0; }
+  8% { opacity: 1; }
+  70% { transform: translateX(100%); opacity: 1; }
+  78%, 100% { transform: translateX(100%); opacity: 0; }
+}
+@keyframes unknown-shimmer {
+  from { background-position: 100% 0; }
+  to { background-position: -150% 0; }
+}
+@keyframes dash-march {
+  to { background-position: 8px 0; }
+}
+@keyframes soft-ping {
+  0% { transform: scale(1); opacity: 0.5; }
+  70%, 100% { transform: scale(3.2); opacity: 0; }
+}
+@keyframes soft-caret {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.15; }
 }

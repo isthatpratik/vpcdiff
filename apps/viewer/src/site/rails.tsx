@@ -100,36 +100,3 @@ export function SectionHead({ eyebrow, title, rest, children, bar = false, class
     </div>
   );
 }
-
-/**
- * Cursor spotlight: a soft light under the pointer, in the ink tone. Sets --mx and --my on
- * the element itself (not a parent) so only it restyles. Off on touch screens and under
- * reduced motion, where the light never shows.
- */
-export function useSpotlight<T extends HTMLElement>() {
-  const ref = useRef<T>(null);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    if (!window.matchMedia("(hover: hover) and (pointer: fine)").matches || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    const move = (e: PointerEvent) => {
-      const r = el.getBoundingClientRect();
-      el.style.setProperty("--mx", `${e.clientX - r.left}px`);
-      el.style.setProperty("--my", `${e.clientY - r.top}px`);
-    };
-    el.addEventListener("pointermove", move, { passive: true });
-    return () => el.removeEventListener("pointermove", move);
-  }, []);
-  return ref;
-}
-
-/** The light for `useSpotlight`. Put it first inside a `group relative` element. */
-export function Spotlight({ size = 360 }: { size?: number }) {
-  return (
-    <span
-      aria-hidden="true"
-      className={`pointer-events-none absolute inset-0 z-[1] opacity-0 transition-opacity duration-300 ${EASE} group-hover:opacity-100 motion-reduce:hidden`}
-      style={{ background: `radial-gradient(${size}px circle at var(--mx, 50%) var(--my, 50%), color-mix(in oklab, var(--litt-fg) 6%, transparent), transparent 70%)` }}
-    />
-  );
-}
