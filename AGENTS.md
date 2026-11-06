@@ -12,16 +12,17 @@ These rules apply to any AI coding agent working in this repository.
 
 ## Git and GitHub approval
 
-- Never commit, push, tag, or rewrite history without explicit approval from the
-  maintainer for that action. Show the diff and the commit message first, then wait.
-- Never create, edit, or delete anything on GitHub without explicit approval for
-  that action. This includes repositories, branches, pull requests, issues,
-  comments, reviews, labels, releases, workflows, and settings.
-- Approval for one action does not cover the next one.
-- Read-only operations are allowed without approval. Examples: `git status`,
-  `git log`, `git diff`, `git show`, `git fetch`, cloning a public repository to a
-  scratch folder, `gh repo view`, `gh pr view`, `gh issue list`, and `gh api` GET
-  requests.
+The maintainer decides what an agent may do without asking. The current scope:
+
+- Allowed without asking: read-only git and `gh` operations; creating issues,
+  branches, and pull requests; committing; pushing feature branches; merging a pull
+  request after CI passes (squash, delete branch); closing issues fixed by a merge.
+  This scope was granted to finish the v0.1 work and ends when v0.1 is done.
+- Always ask first: force-push or any history rewrite; deleting a branch with
+  unmerged work; changing repository settings (for example GitHub Pages); creating
+  tags or releases; publishing to npm or the GitHub Marketplace; anything that costs
+  money, such as AWS Reachability Analyzer runs; a new runtime dependency.
+- Approval for one asked-for action does not cover the next one.
 
 ## Engine invariants
 
