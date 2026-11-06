@@ -6,7 +6,10 @@ import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 
 import { useInViewOnce } from "./rails.tsx";
 import { PanelWindow, Plate } from "./Plate.tsx";
 
-const DWELL = 7000;
+/** How long each tab shows during autoplay: enough to read a panel, not so long it stalls. */
+const DWELL = 6500;
+/** After a click, the chosen tab stays this long before autoplay goes on from it. */
+const RESUME = 12000;
 
 type Step = { id: string; tab: string; title: string; rest: string; body: ReactNode; panelTitle: string; panel: ReactNode };
 
@@ -83,19 +86,44 @@ const STEPS: Step[] = [
 
 export function StepTabs() {
   const [active, setActive] = useState(0);
-  const [auto, setAuto] = useState(true);
+  const [cycle, setCycle] = useState(0);
+  const [hold, setHold] = useState(DWELL);
+  const [hover, setHover] = useState(false);
+  const [focus, setFocus] = useState(false);
+  const [reduced, setReduced] = useState(false);
   const [ref, seen] = useInViewOnce<HTMLDivElement>("0px 0px -25% 0px");
   const tabs = useRef<(HTMLButtonElement | null)[]>([]);
+  const remaining = useRef(DWELL);
+  const shown = useRef("");
+  const paused = hover || focus;
+  const running = seen && !reduced;
 
+  useEffect(() => setReduced(window.matchMedia("(prefers-reduced-motion: reduce)").matches), []);
+
+  // One timer per shown tab. Pausing keeps the time left, so the bar and the timer resume together.
   useEffect(() => {
-    if (!auto || !seen || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    const t = window.setTimeout(() => setActive((a) => (a + 1) % STEPS.length), DWELL);
-    return () => window.clearTimeout(t);
-  }, [active, auto, seen]);
+    if (!running || paused) return;
+    const key = `${active}-${cycle}`;
+    if (shown.current !== key) {
+      shown.current = key;
+      remaining.current = hold;
+    }
+    const start = performance.now();
+    const t = window.setTimeout(() => {
+      setHold(DWELL);
+      setActive((a) => (a + 1) % STEPS.length);
+      setCycle((c) => c + 1);
+    }, remaining.current);
+    return () => {
+      window.clearTimeout(t);
+      remaining.current = Math.max(0, remaining.current - (performance.now() - start));
+    };
+  }, [active, cycle, hold, running, paused]);
 
   const pick = (i: number) => {
-    setAuto(false);
+    setHold(RESUME);
     setActive(i);
+    setCycle((c) => c + 1);
   };
   const onKey = (e: KeyboardEvent) => {
     const d = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
@@ -108,7 +136,12 @@ export function StepTabs() {
   if (!step) return null;
 
   return (
-    <div ref={ref}>
+    <div
+      ref={ref}
+      // Keyboard focus pauses autoplay; focus from a mouse click does not.
+      onFocus={(e) => setFocus(e.target.matches(":focus-visible"))}
+      onBlur={(e) => !e.currentTarget.contains(e.relatedTarget) && setFocus(false)}
+    >
       <div role="tablist" aria-label="How it works" onKeyDown={onKey} className="grid grid-cols-2 gap-px border-y border-litt-line bg-litt-line sm:grid-cols-4">
         {STEPS.map((s, i) => {
           const on = i === active;
@@ -129,12 +162,27 @@ export function StepTabs() {
             >
               <span className="font-litt-mono text-litt-caption opacity-60">0{i + 1}</span>
               <span className="text-lg">{s.tab}</span>
-              {on && auto && seen && <span key={`${s.id}-bar`} aria-hidden="true" className="absolute inset-x-0 bottom-0 h-px origin-left animate-[step-progress_7s_linear_forwards] bg-litt-fg motion-reduce:hidden" />}
+              {on && running && (
+                <span
+                  key={`${s.id}-${cycle}`}
+                  aria-hidden="true"
+                  className="absolute inset-x-0 bottom-0 h-px origin-left animate-[step-progress_linear_forwards] bg-litt-fg motion-reduce:hidden"
+                  style={{ animationDuration: `${hold}ms`, animationPlayState: paused ? "paused" : "running" }}
+                />
+              )}
             </button>
           );
         })}
       </div>
-      <div id="step-panel" role="tabpanel" aria-labelledby={`step-${step.id}`} className="grid lg:grid-cols-[5fr_7fr]">
+      <div
+        id="step-panel"
+        role="tabpanel"
+        aria-labelledby={`step-${step.id}`}
+        // Reading the panel with the mouse over it pauses autoplay; the tab row does not.
+        onPointerEnter={(e) => e.pointerType === "mouse" && setHover(true)}
+        onPointerLeave={() => setHover(false)}
+        className="grid lg:grid-cols-[5fr_7fr]"
+      >
         <div key={step.id} className="grid content-start gap-4 px-6 py-12 md:px-16 md:py-16 animate-[step-in_500ms_ease-out_both]">
           <h3 className="font-display text-3xl leading-tight font-normal tracking-[-0.03em] text-litt-fg">
             {step.title}
