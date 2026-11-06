@@ -163,8 +163,13 @@ Fonts load from Google Fonts (see section 10 for what that means for privacy).
     constant motion), faded at its top and bottom; hairline tracks with moving segments
     above and below it. Both stop under reduced motion. A variable font draws overlapping
     contours when stroked, so the outline is a stroke behind a canvas-colored copy.
-  - Film grain over the hero: a self-made 6-frame noise GIF (33 KB) at 5%, after
-    ui-layouts' Noise, served from this origin. Hidden under reduced motion.
+  - Film grain on the hero animation only: a self-made 6-frame noise GIF (33 KB) at
+    3.5%, after ui-layouts' Noise, served from this origin and faded out radially so it
+    melts into the page. Hidden under reduced motion.
+  - The hero camera: it moves with the story (wide, a push as the rule changes, then it
+    follows each hop as it lights and pulls back to the whole path) on
+    `cubic-bezier(0.16, 1, 0.3, 1)`: a fast start and a long, smooth landing. The path
+    and the nodes use the same curve. The caption stays still, like a caption on a frame.
   - Sections already on screen at first paint show at once; only sections below the
     fold rise in on scroll.
 - **Smooth scroll:** Lenis on the landing page only (ADR 0007), off under reduced

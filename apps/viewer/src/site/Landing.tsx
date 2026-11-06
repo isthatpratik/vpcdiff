@@ -303,11 +303,12 @@ function Nav() {
 function Hero() {
   return (
     <Rail reveal={false} label="vpcdiff" className="relative">
-      {/* Film grain over the hero, after ui-layouts' Noise: a self-made 6-frame noise GIF
-          at 5%, served from this origin. Hidden under reduced motion (a GIF cannot pause). */}
-      <div aria-hidden="true" className="pointer-events-none absolute inset-0 z-10 opacity-[0.05] motion-reduce:hidden" style={{ backgroundImage: `url(${import.meta.env.BASE_URL}noise.gif)` }} />
       <div className="relative h-[300px] sm:h-[420px] lg:h-[460px]">
         <PathField />
+        {/* Film grain on the animation only, after ui-layouts' Noise: a self-made 6-frame
+            noise GIF from this origin at 3.5%, faded out radially so it melts into the
+            page. Hidden under reduced motion (a GIF cannot pause). */}
+        <div aria-hidden="true" className="pointer-events-none absolute inset-0 opacity-[0.035] [mask-image:radial-gradient(ellipse_at_55%_45%,black_30%,transparent_75%)] motion-reduce:hidden" style={{ backgroundImage: `url(${import.meta.env.BASE_URL}noise.gif)` }} />
       </div>
       <div className={`${PAD} relative -mt-16 grid gap-8 pb-16 sm:-mt-20 lg:pb-20`}>
         <h1 id="hero-title" className="font-display text-5xl leading-[1.02] font-normal tracking-[-0.045em] text-litt-fg sm:text-7xl">
