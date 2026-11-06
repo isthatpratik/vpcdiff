@@ -1,21 +1,65 @@
+<p align="center">
+  <a href="https://isthatpratik.github.io/vpcdiff/">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="docs/assets/banner-dark.png">
+      <img alt="vpcdiff: see what a Terraform plan opens to the internet" src="docs/assets/banner-light.png" width="100%">
+    </picture>
+  </a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/isthatpratik/vpcdiff/actions/workflows/ci.yml"><img alt="CI status" src="https://github.com/isthatpratik/vpcdiff/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/isthatpratik/vpcdiff/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/isthatpratik/vpcdiff?color=111111"></a>
+  <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-111111"></a>
+</p>
+
+<p align="center">
+  <a href="https://isthatpratik.github.io/vpcdiff/app/"><b>Open the viewer</b></a> ·
+  <a href="https://isthatpratik.github.io/vpcdiff/">Site</a> ·
+  <a href="#github-action">GitHub Action</a> ·
+  <a href="#quick-start-cli">CLI</a> ·
+  <a href="#support-matrix">Support matrix</a>
+</p>
+
 # vpcdiff
 
-See how a Terraform change affects AWS network reachability before you run `apply`.
+See what a Terraform plan opens to the internet, before you run `apply`.
 
-`vpcdiff` reads a Terraform plan (`terraform show -json`), builds the network
-reachability graph before and after the change, and shows the difference:
+`vpcdiff` reads a Terraform plan (`terraform show -json`), works out which AWS resources
+the internet can reach before and after the plan, and shows what changes:
 
-- paths that become reachable (for example, `0.0.0.0/0 → aws_db_instance.main:5432`)
-- paths that are lost (for example, `alb → ecs:8080`)
-- replacements (`-/+`, delete before create) on a path that stays open, which can cause a
-  short outage during apply
+- paths the plan opens (for example, `0.0.0.0/0 → aws_instance.db` on tcp/5432)
+- paths the plan closes, and paths whose allowed sources change
+- paths it cannot decide, reported as unknown with the reason, never guessed
+- outage risk: a security group or route on an open path that the plan replaces by
+  deleting it first
 
-Every result comes with a hop-by-hop explanation: which route, NACL rule, and
-security group rule allowed or blocked the traffic.
+Every result names the hop and the rule that decided it (public IP, internet gateway,
+network ACL, security group, route), with a link to the AWS documentation. It needs no
+AWS account or credentials, and the viewer never sends your plan anywhere.
 
-> **Status:** v0.1 in progress. The engine and CLI evaluate internet-to-instance
-> reachability (see the [support matrix](#support-matrix)). Design notes are in
-> [`docs/design`](docs/design), [`docs/adr`](docs/adr), and [`docs/semantics`](docs/semantics).
+<p align="center">
+  <img alt="The vpcdiff viewer on a plan that opens PostgreSQL to the internet: the plan verdict, the path, the security group rule that decided it, what to do, and the hops before and after" src="docs/assets/viewer.png" width="100%">
+</p>
+
+> **Status:** [v0.1.0](https://github.com/isthatpratik/vpcdiff/releases/tag/v0.1.0) is
+> released. It checks IPv4 paths from the internet to instances, databases, and load
+> balancers (see the [support matrix](#support-matrix)); paths inside the VPC are next on
+> the [roadmap](#roadmap). Design notes are in [`docs/design`](docs/design),
+> [`docs/adr`](docs/adr), and [`docs/semantics`](docs/semantics).
+
+## GitHub Action
+
+```yaml
+- run: terraform show -json tfplan > plan.json
+- uses: isthatpratik/vpcdiff@v0.1.0
+  with:
+    plan: plan.json
+    # fail-on: added   # added | changed | unknown | never
+```
+
+It comments on the pull request, writes the report to the job summary, and fails the
+check when the plan opens a path. Full setup: [`packages/action`](packages/action/README.md).
 
 ## Quick start (CLI)
 
@@ -30,6 +74,10 @@ and binary plans (`tfplan`, `*.tfplan`) in the folder, converts a binary plan wi
 `terraform show -json`, or runs `terraform plan` for you after you confirm. Then it
 prints the report and offers next steps: every path, one path in full, or a Markdown
 summary for the pull request.
+
+<p align="center">
+  <img alt="The vpcdiff CLI in guided mode: it finds plan.json, shows that the plan opens aws_instance.db on tcp/5432 to the internet, and saves a Markdown summary" src="docs/assets/cli-demo.gif" width="100%">
+</p>
 
 To pass a plan yourself:
 
