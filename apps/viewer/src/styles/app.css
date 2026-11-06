@@ -1332,22 +1332,7 @@ html[data-theme="dark"][data-material] {
   to { transform: scaleX(1); }
 }
 
-/* Landing page footer (src/site/Footer.tsx): the name band drifts by one copy of two. */
-@keyframes footer-drift {
-  from { transform: translateX(0); }
-  to { transform: translateX(-50%); }
-}
-/* Footer dot band: a short bright window sweeps across the dot grid, then rests. */
-.footer-packet {
-  mask-image: linear-gradient(to right, transparent, black 40%, black 60%, transparent);
-  mask-size: 180px 100%;
-  mask-repeat: no-repeat;
-  animation: footer-packet 7s cubic-bezier(0.65, 0, 0.35, 1) infinite;
-}
-@keyframes footer-packet {
-  0% { mask-position: -180px 0; }
-  55%, 100% { mask-position: calc(100% + 180px) 0; }
-}
+
 
 /* Landing page terminal (src/site/Terminal.tsx): new lines rise in; the caret blinks. */
 @keyframes term-in {

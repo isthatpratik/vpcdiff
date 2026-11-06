@@ -187,14 +187,11 @@ Fonts load from Google Fonts (see section 10 for what that means for privacy).
   - Links draw an underline. Buttons scale their background on hover while the label
     stays still.
   - The Stageshow pull request demo.
-  - The footer: the name and the mark drawn large in a faint outline (the line color),
-    full bleed (outside the rails), scrolling sideways without end (linear, because it is
-    constant motion), with long fades at its top and bottom. Under it, a band of the
-    hero's dot grid, faded at both ends; every 7 s a short window of brighter dots sweeps
-    left to right (a packet crossing), then rests. The dots never move, only the window,
-    so the two grids stay aligned. Both stop under reduced motion. A variable font draws
-    overlapping contours when stroked, so the outline is a stroke behind a canvas-colored
-    copy.
+  - The footer, in the page's own frame (no card, no motion): one row between the
+    rails cut into hairline cells (the wordmark, one line, the version and license, the
+    main button; then Product, Use it, and Resources links), then a closing line in the
+    CLI's report style with this page's own numbers ("0 requests with your data · 0
+    cookies · 0 trackers"), the copyright and trademark line, and the legal links.
   - Film grain on the hero animation only: a self-made 6-frame noise GIF (33 KB) at
     3.5%, after ui-layouts' Noise, served from this origin and faded out radially so it
     melts into the page. Hidden under reduced motion.
