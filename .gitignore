@@ -10,3 +10,6 @@ coverage/
 *.tfstate.*
 *.tfplan
 .terraform/
+
+# The GitHub Action runs from its committed bundle.
+!packages/action/dist/

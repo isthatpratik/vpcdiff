@@ -18,5 +18,8 @@
   },
   "files": [
     "dist"
-  ]
+  ],
+  "exports": {
+    "./render": "./src/render.ts"
+  }
 }

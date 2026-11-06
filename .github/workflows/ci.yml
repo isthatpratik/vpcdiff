@@ -31,3 +31,14 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
+      - name: Check that the committed action bundle is up to date
+        run: git diff --exit-code -- packages/action/dist || (echo "::error::packages/action/dist is stale. Run pnpm build and commit it." && exit 1)
+      - name: Run the action on a fixture
+        id: smoke
+        uses: ./
+        with:
+          plan: fixtures/sg-5432-opened/plan.json
+          comment: "false"
+          fail-on: never
+      - name: Check the action outputs
+        run: test "${{ steps.smoke.outputs.added }}" = "1"

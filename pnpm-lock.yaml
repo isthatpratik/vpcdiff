@@ -30,6 +30,15 @@ importers:
         specifier: ^5.1.0
         version: 5.1.0(@types/node@24.19.2)(vite@8.3.6(@types/node@24.19.2)(esbuild@0.28.2))
 
+  packages/action:
+    dependencies:
+      '@vpcdiff/cli':
+        specifier: workspace:*
+        version: link:../cli
+      '@vpcdiff/engine':
+        specifier: workspace:*
+        version: link:../engine
+
   packages/cli:
     dependencies:
       '@vpcdiff/engine':
