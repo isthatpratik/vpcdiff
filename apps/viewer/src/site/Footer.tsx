@@ -87,12 +87,38 @@ function Tracks() {
   );
 }
 
-const LINKS: [string, string][] = [
-  ["How it works", "#how"],
-  ["Coverage", "#coverage"],
-  ["FAQ", "#faq"],
-  ["Viewer", APP],
-  ["Design system", `${REPO}/blob/main/DESIGN.md`],
+const BASE = import.meta.env.BASE_URL;
+
+/** Footer links in three short groups: the product, ways to use it, and references. */
+const GROUPS: { title: string; links: [string, string][] }[] = [
+  {
+    title: "Product",
+    links: [
+      ["Viewer", APP],
+      ["How it works", "#how"],
+      ["Coverage", "#coverage"],
+      ["FAQ", "#faq"],
+    ],
+  },
+  {
+    title: "Use it",
+    links: [
+      ["GitHub Action", "https://github.com/marketplace/actions/vpcdiff"],
+      ["CLI", `${REPO}#quick-start-cli`],
+      ["Releases", `${REPO}/releases`],
+      ["Report an issue", `${REPO}/issues/new/choose`],
+    ],
+  },
+  {
+    title: "Resources",
+    links: [
+      ["Docs", `${REPO}/tree/main/docs`],
+      ["Support matrix", `${REPO}#support-matrix`],
+      ["Roadmap", `${REPO}#roadmap`],
+      ["llms.txt", `${BASE}llms.txt`],
+      ["llms-full.txt", `${BASE}llms-full.txt`],
+    ],
+  },
 ];
 
 export function Footer() {
@@ -109,11 +135,20 @@ export function Footer() {
               <Wordmark size={22} />
               <p className="max-w-[44ch] text-base leading-relaxed text-litt-fg-muted">See what a Terraform plan opens to the internet, hop by hop, before you apply it. Free, open source, and offline.</p>
             </div>
-            <nav aria-label="Footer" className="flex flex-wrap content-start gap-x-6 gap-y-2 text-litt-small text-litt-fg-subtle md:justify-end">
-              {LINKS.map(([l, h]) => (
-                <a key={l} href={h} className="py-1 transition-colors duration-200 hover:text-litt-fg focus-visible:outline-2 focus-visible:outline-litt-focus">
-                  {l}
-                </a>
+            <nav aria-label="Footer" className="grid grid-cols-2 content-start gap-x-12 gap-y-8 sm:grid-cols-3">
+              {GROUPS.map((g) => (
+                <div key={g.title} className="grid content-start gap-3">
+                  <p className="font-litt-mono text-xs tracking-[0.12em] text-litt-fg-subtle uppercase">{g.title}</p>
+                  <ul className="grid gap-2 text-litt-small text-litt-fg-muted">
+                    {g.links.map(([l, h]) => (
+                      <li key={l}>
+                        <a href={h} className={`rounded-[4px] py-0.5 transition-colors duration-200 hover:text-litt-fg focus-visible:outline-2 focus-visible:outline-litt-focus ${l.endsWith(".txt") ? "font-litt-mono text-[0.92em]" : ""}`}>
+                          {l}
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               ))}
             </nav>
             <div className="flex items-center gap-2 self-end">
@@ -137,6 +172,9 @@ export function Footer() {
             </a>
             <a href={`${REPO}/blob/main/SECURITY.md`} className="hover:text-litt-fg">
               Security
+            </a>
+            <a href={`${REPO}/blob/main/CONTRIBUTING.md`} className="hover:text-litt-fg">
+              Contributing
             </a>
           </div>
         </div>
