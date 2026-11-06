@@ -153,14 +153,10 @@ export async function interactive(failOn: FailOn = "added"): Promise<number> {
     if (cancelled(next) || next === "done") break;
     if (next === "all") process.stdout.write(`\n${renderPretty(pc, result, { all: true, name })}\n`);
     if (next === "path") {
-      const id = await p.select<string>({ message: "Which path?", options: all.map((x) => ({ value: x.id, label: `${x.to} ${portLabel(x)}`, hint: x.change })) });
+      const id = all.length === 1 ? all[0]?.id : await p.select<string>({ message: "Which path?", options: all.map((x) => ({ value: x.id, label: `${x.to} ${portLabel(x)}`, hint: x.change })) });
       if (cancelled(id)) break;
       const path = all.find((x) => x.id === id);
-      if (path) {
-        const lines = prettyPath(pc, path);
-        const hops = (path.after.verdict === "absent" ? path.before : path.after).hops;
-        p.note([...lines, "", pc.dim("Every hop:"), ...hops.map((h) => `  ${h.hop.padEnd(18)}${h.decision.padEnd(9)}${pc.dim(h.rule)}`)].join("\n"), `${path.to} ${portLabel(path)}`);
-      }
+      if (path) process.stdout.write(`\n${prettyPath(pc, path, true).join("\n")}\n\n`);
     }
     if (next === "save") {
       const file = await p.text({ message: "Save as", initialValue: "vpcdiff-summary.md", validate: (v) => (!v ? "Enter a file name." : undefined) });

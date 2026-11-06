@@ -17,13 +17,17 @@ function tone(c: Colors, t: Tone, s: string): string {
   return t === "danger" ? c.red(s) : t === "success" ? c.green(s) : t === "warning" ? c.yellow(s) : c.bold(s);
 }
 
-function state(c: Colors, s: CellState): string {
-  const text = STATE[s].padEnd(12);
+function state(c: Colors, s: CellState, pad = 12): string {
+  const text = STATE[s].padEnd(pad);
   return s === "deny" ? c.magenta(text) : s === "partial" ? c.yellow(text) : s === "allow" ? text : c.dim(text);
 }
 
-/** One path: headline, what happens, the deciding rule, what to do, and the hops that differ. */
-export function prettyPath(c: Colors, path: Path): string[] {
+/**
+ * One path: headline, what happens, the deciding rule, what to do, then the hops that
+ * differ. With `full`, every hop instead, each with its rule on its own line, so long
+ * rules wrap cleanly in a narrow terminal.
+ */
+export function prettyPath(c: Colors, path: Path, full = false): string[] {
   const v = verdictOf(path);
   const lanes = lanesOf(path);
   const oneSide = path.before.verdict === "absent" || path.after.verdict === "absent";
@@ -36,6 +40,23 @@ export function prettyPath(c: Colors, path: Path): string[] {
   if (v.cause?.rule) lines.push(`  ${c.dim(`Decided at the ${v.cause.hop} hop:`)}`, `    ${c.cyan(v.cause.rule)}`);
   if (v.action) lines.push(`  ${c.dim("What to do:")} ${v.action}`);
   if (v.snippet) lines.push(...v.snippet.split("\n").map((l) => `    ${c.cyan(l)}`));
+  if (full) {
+    lines.push("", `  ${c.dim("Every hop, before → after:")}`);
+    COLUMNS.forEach((col, i) => {
+      const b = lanes.before.cells[i];
+      const a = lanes.after.cells[i];
+      if (!b || !a) return;
+      // The source row's "rule" is the list of sources, which the headline already says.
+      const source = col.key === "source";
+      const same = b.state === a.state && (source || b.rule === a.rule);
+      lines.push(`  ${col.label.padEnd(18)}${same ? state(c, a.state, 0) : `${state(c, b.state, 0)} ${c.dim("→")} ${state(c, a.state, 0)}`}`);
+      if (source) return;
+      if (same || path.before.verdict === "absent") lines.push(`    ${c.dim(a.rule)}`);
+      else if (path.after.verdict === "absent") lines.push(`    ${c.dim(b.rule)}`);
+      else lines.push(`    ${c.dim(`before: ${b.rule}`)}`, `    ${c.dim(`after:  ${a.rule}`)}`);
+    });
+    return lines;
+  }
   const rows = COLUMNS.map((col, i) => ({ col, i })).filter(({ i }) => differs[i]);
   if (rows.length) {
     lines.push("", `  ${c.dim("Hop".padEnd(18))}${c.dim("Before".padEnd(13))}${c.dim("After")}`);
