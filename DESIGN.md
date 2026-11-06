@@ -188,6 +188,19 @@ Fonts load from Google Fonts (see section 10 for what that means for privacy).
   24 px (after primora.xyz). It says "more below" and fades out when the footer comes
   into view.
 
+### The viewer
+
+- **App bar:** the wordmark, then a breadcrumb with the plan's file name in mono, and a
+  "Local only" marker. Thin, with a hairline below.
+- **Start:** a two-tone headline, a framed drop zone on a dot-grid plate with the
+  command to make the file, and the example plans as hairline cells, each with a small
+  hop strip. A plan can be dropped anywhere on the page at any time.
+- **Path list:** hairline rows; the current row has a 2px bar in its change color, as
+  the landing page's titles do. Up and down arrows move through the list.
+- **Path detail:** an eyebrow, the path as `internet → target`, the change and the port,
+  then the path strip (before and after, one square per hop) and the hop table (ADR
+  0008): hops that differ are open and marked in amber; the rest fold to one line.
+
 ## 7. Icons and logos
 
 - **Interface icons:** litt's icon set, one size and one stroke weight per screen. No
