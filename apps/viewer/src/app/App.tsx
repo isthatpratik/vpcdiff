@@ -13,7 +13,7 @@ import { Tooltip, TooltipProvider } from "@/components/litt/tooltip";
 import { analyzeInWorker } from "../engine.ts";
 import { EXAMPLES } from "../examples.ts";
 import { CHANGE_HELP, changeWords, HOP_HELP, pathMarkdown, planMarkdown, planVerdict, portLabel, SCOPE, serviceOf, severityOf, verdictOf, type Tone } from "@vpcdiff/engine/explain";
-import { Announcer, CopyButton } from "./copy.tsx";
+import { announce, Announcer, CopyButton } from "./copy.tsx";
 import { COLUMNS, lanesOf, rowsDiffer, type Cell, type CellState, type ColumnKey } from "@vpcdiff/engine/lanes";
 import { Wordmark } from "../shared/brand.tsx";
 import { GithubLink } from "../shared/github.tsx";
@@ -82,7 +82,7 @@ export function App() {
     <TooltipProvider>
       <Announcer />
       <div className="grid h-dvh grid-rows-[auto_1fr] overflow-hidden bg-litt-canvas" onDragEnter={onDragEnter} onDragLeave={onDragLeave} onDragOver={(e) => hasFiles(e) && e.preventDefault()} onDrop={onDrop}>
-        <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:top-3 focus:left-3 focus:z-50">
+        <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:top-3 focus:left-3 focus:z-50 focus:rounded-[6px] focus:bg-litt-canvas focus:px-3 focus:py-2 focus:text-litt-small focus:text-litt-fg focus:shadow-[inset_0_0_0_1px_var(--litt-line-strong)]">
           Skip to content
         </a>
         <TopBar name={state.kind === "ready" || state.kind === "loading" ? state.name : undefined} onNew={state.kind === "ready" ? () => setState({ kind: "empty" }) : undefined} />
@@ -185,6 +185,11 @@ function Start({ error, onFile, onExample }: { error?: string | undefined; onFil
   const input = useRef<HTMLInputElement>(null);
   const [over, setOver] = useState(false);
   const steps = ["terraform plan -out=tfplan", "terraform show -json tfplan > plan.json"];
+  const choose = useRef<HTMLButtonElement>(null);
+  // After a failed open, put focus back on the button, next to the message.
+  useEffect(() => {
+    if (error) choose.current?.focus();
+  }, [error]);
   return (
     <div className="h-full overflow-auto">
       <div className="mx-auto grid max-w-[1120px] gap-14 px-5 py-14 sm:px-8 lg:py-20 [&>*]:min-w-0">
@@ -223,7 +228,7 @@ function Start({ error, onFile, onExample }: { error?: string | undefined; onFil
                   <p className="font-display text-xl font-normal tracking-[-0.02em] text-litt-fg">Drop plan.json here</p>
                   <p className="text-litt-small text-litt-fg-subtle">The output of terraform show -json</p>
                 </div>
-                <Button variant="primary" onClick={() => input.current?.click()} className="transition-[background-color,color,translate,scale,box-shadow] duration-150 active:scale-[0.97] motion-reduce:active:scale-100">
+                <Button ref={choose} variant="primary" onClick={() => input.current?.click()} className="transition-[background-color,color,translate,scale,box-shadow] duration-150 active:scale-[0.97] motion-reduce:active:scale-100">
                   Choose a file
                 </Button>
                 {error && (
@@ -361,15 +366,21 @@ function Workspace({ name, result, sha256: hash }: { name: string; result: Resul
   const risky = result.paths.filter((p) => p.outageRisk?.length).length;
   const list = useRef<HTMLUListElement>(null);
   const [notesOpen, setNotesOpen] = useState("");
+  // After a plan opens, move focus to the result and say what it found.
+  useEffect(() => {
+    document.getElementById("detail-title")?.focus({ preventScroll: true });
+    const pv0 = planVerdict(result);
+    announce(`Plan opened. ${result.paths.length} ${result.paths.length === 1 ? "path" : "paths"} checked. ${pv0.title}: ${pv0.detail}.`);
+  }, [result]);
   const notesRef = useRef<HTMLDivElement>(null);
 
   // Up and down move through the list, like a native list box.
   const onKey = (e: KeyboardEvent) => {
-    const d = e.key === "ArrowDown" ? 1 : e.key === "ArrowUp" ? -1 : 0;
-    if (!d) return;
-    e.preventDefault();
     const i = visible.findIndex((p) => p.id === selectedId);
-    const next = visible[Math.min(visible.length - 1, Math.max(0, i + d))];
+    const to = e.key === "ArrowDown" ? i + 1 : e.key === "ArrowUp" ? i - 1 : e.key === "Home" ? 0 : e.key === "End" ? visible.length - 1 : undefined;
+    if (to === undefined) return;
+    e.preventDefault();
+    const next = visible[Math.min(visible.length - 1, Math.max(0, to))];
     if (!next) return;
     setSelectedId(next.id);
     list.current?.querySelector<HTMLButtonElement>(`[data-id="${CSS.escape(next.id)}"]`)?.focus();
@@ -427,6 +438,9 @@ function Workspace({ name, result, sha256: hash }: { name: string; result: Resul
           )}
         </p>
         <div className="grid gap-2.5 border-b border-litt-line p-4">
+          <p id="filter-help" className="sr-only">
+            Changes lists only paths the plan opens, closes, or puts at risk. All paths lists every path from the internet the engine checked.
+          </p>
           <Tooltip content="Changes: only paths the plan opens, closes, or puts at risk. All paths: every path from the internet the engine checked.">
             <div>
               <Segmented<Filter>
@@ -506,7 +520,7 @@ function Workspace({ name, result, sha256: hash }: { name: string; result: Resul
           )}
         </div>
       </aside>
-      {selected ? <PathDetail key={selected.id} path={selected} /> : <section aria-label="Path detail" />}
+      {selected ? <PathDetail key={selected.id} path={selected} /> : <section id="path-detail" aria-label="Path detail" />}
     </div>
   );
 }
@@ -519,6 +533,7 @@ function PathRow({ path, current, onSelect }: { path: Path; current: boolean; on
       type="button"
       data-id={path.id}
       aria-current={current}
+      aria-controls="path-detail"
       tabIndex={current ? 0 : -1}
       onClick={onSelect}
       className={`relative grid w-full gap-1.5 px-5 py-3.5 text-left transition-colors duration-200 hover:bg-litt-surface-1 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-litt-focus ${current ? "bg-litt-surface-1" : ""}`}
@@ -753,7 +768,12 @@ function PathDetail({ path }: { path: Path }) {
     setSelected(i);
     if (!differs[i] && changedCount) setShowSame(true);
     setOpenRows((s) => new Set(s).add(i));
-    window.setTimeout(() => rows.current[i]?.scrollIntoView({ block: "nearest", behavior: "smooth" }), 0);
+    window.setTimeout(() => {
+      const row = rows.current[i];
+      row?.scrollIntoView({ block: "nearest", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+      // Move focus with the view, so keyboard users land on the hop they chose.
+      row?.querySelector<HTMLButtonElement>("button[aria-expanded]")?.focus({ preventScroll: true });
+    }, 0);
   };
   const toggle = (i: number) =>
     setOpenRows((s) => {
@@ -767,14 +787,14 @@ function PathDetail({ path }: { path: Path }) {
   const hideSame = changedCount > 0 && !showSame;
 
   return (
-    <section className="min-h-0 min-w-0 overflow-auto" aria-labelledby="detail-title">
+    <section id="path-detail" className="min-h-0 min-w-0 overflow-auto" aria-labelledby="detail-title">
       <div className="mx-auto grid max-w-[1040px] gap-8 px-5 py-8 sm:px-10 sm:py-10 [&>*]:min-w-0">
         <header className="grid gap-3">
           <p className="flex items-center gap-2 text-litt-caption text-litt-fg-subtle">
             <TargetIcon type={path.toType} className="size-4" />
             {TYPE_NAME[path.toType] ?? path.toType}
           </p>
-          <h2 id="detail-title" className="font-display text-2xl leading-tight font-normal tracking-[-0.02em] text-litt-fg sm:text-3xl">
+          <h2 id="detail-title" tabIndex={-1} className="outline-none font-display text-2xl leading-tight font-normal tracking-[-0.02em] text-litt-fg sm:text-3xl">
             <span className="text-litt-fg-subtle">internet → </span>
             <span className="font-litt-mono text-[0.8em] break-all align-baseline">{path.to}</span>
           </h2>
@@ -843,7 +863,8 @@ function PathDetail({ path }: { path: Path }) {
                         ) : (
                           <>
                             <DecisionTag state={b.state} />
-                            <ArrowRightIcon aria-label="to" className="size-3 text-litt-fg-subtle" />
+                            <ArrowRightIcon aria-hidden="true" className="size-3 text-litt-fg-subtle" />
+                            <span className="sr-only">to</span>
                             <DecisionTag state={a.state} />
                           </>
                         )}
@@ -851,15 +872,23 @@ function PathDetail({ path }: { path: Path }) {
                     </span>
                     {only ? (
                       <>
-                        <span className="hidden sm:block">{sideShown === "after" ? <DecisionTag state="absent" /> : <CellView cell={only} />}</span>
-                        <span className="hidden sm:block">{sideShown === "after" ? <CellView cell={only} /> : <DecisionTag state="absent" />}</span>
+                        <span className="hidden sm:block">
+                          <span className="sr-only">Before: </span>
+                          {sideShown === "after" ? <DecisionTag state="absent" /> : <CellView cell={only} />}
+                        </span>
+                        <span className="hidden sm:block">
+                          <span className="sr-only">After: </span>
+                          {sideShown === "after" ? <CellView cell={only} /> : <DecisionTag state="absent" />}
+                        </span>
                       </>
                     ) : row ? (
                       <>
                         <span className="hidden sm:block">
+                          <span className="sr-only">Before: </span>
                           <CellView cell={b} />
                         </span>
                         <span className="hidden sm:block">
+                          <span className="sr-only">After: </span>
                           <CellView cell={a} />
                         </span>
                       </>
@@ -871,17 +900,19 @@ function PathDetail({ path }: { path: Path }) {
                     <button
                       type="button"
                       aria-expanded={isOpen}
+                      aria-controls={`hop-rule-${i}`}
                       aria-label={`${isOpen ? "Hide" : "Show"} the rule for ${c.label}`}
                       onClick={() => {
                         setSelected(i);
                         toggle(i);
                       }}
-                      className={`grid size-8 place-items-center justify-self-end rounded-litt-control text-litt-fg-subtle transition-[transform,color,background-color] duration-300 ${EASE} hover:bg-litt-surface-2 hover:text-litt-fg focus-visible:outline-2 focus-visible:outline-litt-focus ${isOpen ? "rotate-90" : ""}`}
+                      className={`grid size-8 place-items-center justify-self-end rounded-litt-control text-litt-fg-subtle transition-[transform,color,background-color] duration-300 ${EASE} hover:bg-litt-surface-2 hover:text-litt-fg focus-visible:outline-2 focus-visible:outline-litt-focus motion-reduce:transition-none ${isOpen ? "rotate-90" : ""}`}
                     >
                       <ArrowRightIcon aria-hidden="true" className="size-3.5" />
                     </button>
                   </div>
-                  <div className={`grid transition-[grid-template-rows] duration-300 ${EASE} ${isOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}>
+                  {/* Closed rows are inert, so keyboard focus never lands on a hidden link. */}
+                  <div id={`hop-rule-${i}`} inert={!isOpen} className={`grid transition-[grid-template-rows] duration-300 ${EASE} motion-reduce:transition-none ${isOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}>
                     <div className="min-h-0 overflow-hidden">
                       <div className="grid gap-5 border-t border-dashed border-litt-line px-4 py-4 sm:grid-cols-[200px_minmax(0,1fr)_minmax(0,1fr)_32px] sm:gap-4">
                         <span className="hidden text-litt-caption leading-relaxed text-litt-fg-subtle sm:block">{HOP_HELP[c.key]}</span>
@@ -903,7 +934,7 @@ function PathDetail({ path }: { path: Path }) {
             })}
             {changedCount > 0 && sameRows.length > 0 && (
               <li>
-                <button type="button" onClick={() => setShowSame((v) => !v)} className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-litt-caption text-litt-fg-muted transition-colors duration-200 hover:bg-litt-surface-1 hover:text-litt-fg focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-litt-focus">
+                <button type="button" aria-expanded={showSame} onClick={() => setShowSame((v) => !v)} className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-litt-caption text-litt-fg-muted transition-colors duration-200 hover:bg-litt-surface-1 hover:text-litt-fg focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-litt-focus">
                   {showSame ? <MinusIcon aria-hidden="true" className="size-3.5" /> : <PlusIcon aria-hidden="true" className="size-3.5" />}
                   {showSame ? "Hide the hops that are the same" : `Show ${sameRows.length} hops that are the same before and after`}
                 </button>

@@ -228,6 +228,12 @@ Fonts load from Google Fonts (see section 10 for what that means for privacy).
   the file name shows beside the wordmark and the button reads "Open".
 - **Start:** one dashed drop zone on the dot grid (no outer frame), both columns aligned
   at the top, the two steps under it, and errors shown inside the zone.
+- **Keyboard and screen readers:** after a plan opens, focus moves to the path title and
+  a live region says how many paths were checked and the plan verdict. After a failed
+  open, focus returns to "Choose a file", next to the message. Closed hop rows are
+  inert. Hop cells say "Before:" and "After:" to screen readers. Choosing a hop in the
+  strip moves focus to its row. The path list takes Up, Down, Home, and End. Smooth
+  scrolling and row animations stop under reduced motion.
 - **Trust:** the list is sorted most serious first (opened, unknown, changed, outage
   risk, closed; open to every address before some; admin and database ports first).
   Unknown is amber, never the grey of a zero. Under the counters, a scope line says what
