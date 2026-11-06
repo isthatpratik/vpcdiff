@@ -159,12 +159,17 @@ plan.json
 
 ## 8. Future work
 
-- Paths between endpoints inside the VPC (security group references), so a change that
-  cuts "load balancer to service" shows up.
-- NAT gateways, VPC peering, Transit Gateway, VPC endpoints, IPv6, prefix lists.
-- Aurora, ECS services, Classic Load Balancers.
-- Reachability Analyzer runs for every fixture (ADR 0004); today each fixture has a
-  written proof.
+The roadmap, in order (each item is a GitHub issue; see the README):
+
+1. Paths between endpoints inside the VPC (security group references), so a change that
+   cuts "load balancer to service" shows up (#32).
+2. NAT gateways, VPC peering, Transit Gateway, VPC endpoints, IPv6, prefix lists (#33).
+3. OpenTofu plans, checked byte for byte against the Terraform fixtures (#34).
+4. Aurora, ECS services, Classic Load Balancers (#35).
+5. Azure and Google Cloud, after v1, with an ADR first (#36).
+
+Separately: Reachability Analyzer runs for every fixture (ADR 0004); today each fixture
+has a written proof.
 
 ## 9. Testing strategy
 

@@ -94,6 +94,22 @@ reported as `unknown` with a reason, never as allowed or blocked by guess.
 Paths evaluated: from the internet to each endpoint, for every TCP and UDP port that one
 of its security groups opens to a public address.
 
+## Roadmap
+
+In order. Each item lands with a spec, unit tests, fixture tests with written proofs, a
+security review, and an updated support matrix.
+
+1. [Paths inside the VPC](https://github.com/isthatpratik/vpcdiff/issues/32): security
+   group references, so "load balancer to service" or "web to database" changes show up.
+2. [More AWS networking](https://github.com/isthatpratik/vpcdiff/issues/33): NAT gateways,
+   VPC peering, Transit Gateway, VPC endpoints, IPv6, and prefix lists.
+3. [OpenTofu support](https://github.com/isthatpratik/vpcdiff/issues/34): the same plan
+   format, checked against OpenTofu plans in CI.
+4. [More endpoints](https://github.com/isthatpratik/vpcdiff/issues/35): Aurora, ECS
+   services, and Classic Load Balancers.
+5. [Azure and Google Cloud](https://github.com/isthatpratik/vpcdiff/issues/36), after v1,
+   with an ADR first.
+
 ## Repository layout
 
 ```
