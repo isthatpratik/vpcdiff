@@ -22,9 +22,9 @@
   --color-destructive: var(--litt-danger);
 }
 
-/* Fonts come from Google Fonts (linked in each page's head). Google Sans: landing page,
-   headings, wordmark. Source Sans 3: the viewer's interface text. Google Sans Code: code,
-   Terraform addresses, CIDRs, ports. See DESIGN.md, section 4. */
+/* Fonts come from Google Fonts (linked in each page's head). Google Sans: all interface
+   text, headings, and the wordmark, on both pages. Google Sans Code: code, Terraform
+   addresses, CIDRs, ports. See DESIGN.md, section 4. */
 
 
 @theme inline {
@@ -1252,15 +1252,12 @@
     }
 }
 
-/* vpcdiff type: litt's font tokens point at the vpcdiff families. The landing page
-   (html.site) reads in Google Sans; the viewer in Source Sans 3 with Google Sans headings. */
+/* vpcdiff type: litt's font tokens point at the vpcdiff families. One typeface, Google
+   Sans, for both pages; Google Sans Code for code. */
 :root {
-  --litt-font-sans: "Source Sans 3", ui-sans-serif, system-ui, sans-serif;
+  --litt-font-sans: "Google Sans", ui-sans-serif, system-ui, sans-serif;
   --litt-font-mono: "Google Sans Code", ui-monospace, "SF Mono", Menlo, monospace;
   --vd-font-display: "Google Sans", ui-sans-serif, system-ui, sans-serif;
-}
-html.site {
-  --litt-font-sans: "Google Sans", ui-sans-serif, system-ui, sans-serif;
 }
 @utility font-display {
   font-family: var(--vd-font-display);

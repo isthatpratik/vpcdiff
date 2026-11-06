@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { analyze, type Path } from "@vpcdiff/engine";
 import { describe, expect, it } from "vitest";
-import { COLUMNS, lanesOf } from "./graph.ts";
+import { COLUMNS, lanesOf, rowsDiffer } from "./graph.ts";
 
 const pathOf = (fixture: string, id: string): Path => {
   const plan: unknown = JSON.parse(readFileSync(join(import.meta.dirname, "../../../fixtures", fixture, "plan.json"), "utf8"));
@@ -43,5 +43,25 @@ describe("lanesOf", () => {
   it("opens a path with outage risk on the replaced hop", () => {
     const lanes = lanesOf(pathOf("sg-replaced", "internet->aws_instance.web:tcp:443"));
     expect(COLUMNS[lanes.focus]?.key).toBe("security-group");
+  });
+});
+
+describe("rowsDiffer", () => {
+  it("marks every hop of a resource that exists on one side only", () => {
+    const lanes = lanesOf(pathOf("nacl-denies-ssh", "internet->aws_instance.web:tcp:443"));
+    const rows = rowsDiffer(lanes);
+    // The source column is never marked; every other hop goes from absent to present.
+    expect(rows[0]).toBe(false);
+    expect(rows.slice(1).every(Boolean)).toBe(true);
+  });
+
+  it("matches the changed columns when both sides exist", () => {
+    const lanes = lanesOf(pathOf("sg-5432-opened", "internet->aws_instance.db:tcp:5432"));
+    expect(rowsDiffer(lanes)).toEqual(lanes.changed);
+  });
+
+  it("marks nothing on a path that is the same on both sides", () => {
+    const lanes = lanesOf(pathOf("sg-replaced", "internet->aws_instance.web:tcp:443"));
+    expect(rowsDiffer(lanes).some(Boolean)).toBe(false);
   });
 });

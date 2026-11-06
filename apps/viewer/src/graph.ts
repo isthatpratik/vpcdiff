@@ -75,3 +75,16 @@ export function lanesOf(path: Path): Lanes {
   const focus = oneSideAbsent ? sg : firstChanged >= 0 ? firstChanged : risky >= 0 ? risky : Math.max(reached(before), reached(after));
   return { before, after, changed, focus };
 }
+
+/**
+ * Per column: true when the two cells differ at all, including when the resource exists
+ * on one side only. Unlike `changed`, this never hides a difference; the hop table uses
+ * it so a new or removed resource is never shown as "same before and after".
+ */
+export function rowsDiffer(lanes: Lanes): boolean[] {
+  return lanes.before.cells.map((b, i) => {
+    const a = lanes.after.cells[i];
+    if (!a || COLUMNS[i]?.key === "source") return false;
+    return b.state !== a.state || b.resource !== a.resource || b.rule !== a.rule;
+  });
+}

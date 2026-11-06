@@ -29,7 +29,7 @@ three runtime dependencies; this changes that.
   `class-variance-authority`. Sora's `cn` package dependency is not used; the project's
   own `cn()` (clsx and tailwind-merge) serves.
 - **Logos:** CC0 SVG artwork from Logoforge, vendored. No runtime fetch.
-- **Fonts:** Google Sans, Source Sans 3, and Google Sans Code from Google Fonts, at the
+- **Fonts:** Google Sans and Google Sans Code from Google Fonts (Source Sans 3 was dropped on 2026-11-06; see DESIGN.md), at the
   maintainer's request.
 - **Privacy:** the build keeps `connect-src 'none'` on every page. The policy allows
   `https://fonts.googleapis.com` for styles and `https://fonts.gstatic.com` for fonts, and

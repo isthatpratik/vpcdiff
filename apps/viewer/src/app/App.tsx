@@ -13,7 +13,7 @@ import { Loading, Skeleton } from "@/components/litt/states";
 import { TooltipProvider } from "@/components/litt/tooltip";
 import { analyzeInWorker } from "../engine.ts";
 import { EXAMPLES } from "../examples.ts";
-import { COLUMNS, lanesOf, type Cell, type CellState } from "../graph.ts";
+import { COLUMNS, lanesOf, rowsDiffer, type Cell, type CellState } from "../graph.ts";
 import { Wordmark } from "../shared/brand.tsx";
 import { GithubLink } from "../shared/github.tsx";
 import { ThemeSwitch } from "../shared/theme.tsx";
@@ -539,7 +539,7 @@ function SideDetail({ title, cell }: { title: string; cell: Cell }) {
 function PathDetail({ path }: { path: Path }) {
   const lanes = useMemo(() => lanesOf(path), [path]);
   // Changed hops start open; the rest fold to a line until opened.
-  const [openRows, setOpenRows] = useState<Set<number>>(() => new Set(lanes.changed.flatMap((c, i) => (c ? [i] : [])).concat(lanes.changed.some(Boolean) ? [] : [lanes.focus])));
+  const [openRows, setOpenRows] = useState<Set<number>>(() => new Set(lanes.changed.some(Boolean) ? lanes.changed.flatMap((c, i) => (c ? [i] : [])) : [lanes.focus]));
   const [selected, setSelected] = useState(lanes.focus);
   const rows = useRef<(HTMLLIElement | null)[]>([]);
   const select = (i: number) => {
@@ -554,9 +554,12 @@ function PathDetail({ path }: { path: Path }) {
       else n.add(i);
       return n;
     });
-  const changedCount = lanes.changed.filter(Boolean).length;
+  // For the table, a row differs whenever its two cells differ, including when the
+  // resource exists on one side only (lanes.changed leaves those unmarked on purpose).
+  const rowDiffers = rowsDiffer(lanes);
+  const changedCount = rowDiffers.filter(Boolean).length;
   // On a path with outage risk and no other change, the focus hop is the replaced one.
-  const risk = path.outageRisk && !changedCount ? lanes.focus : -1;
+  const risk = path.outageRisk && !lanes.changed.some(Boolean) ? lanes.focus : -1;
 
   return (
     <section className="min-h-0 min-w-0 overflow-auto" aria-labelledby="detail-title">
@@ -609,7 +612,7 @@ function PathDetail({ path }: { path: Path }) {
               const a = lanes.after.cells[i];
               if (!b || !a) return null;
               const isOpen = openRows.has(i);
-              const differs = lanes.changed[i];
+              const differs = rowDiffers[i];
               return (
                 <li
                   key={c.key}

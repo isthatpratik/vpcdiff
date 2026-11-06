@@ -105,8 +105,10 @@ Every text pair passes AA. Status always has a label too, never color alone. Lin
 
 Fonts load from Google Fonts (see section 10 for what that means for privacy).
 
-- **Google Sans:** the landing page, all headings, and the wordmark. Weights 400 to 600.
-- **Source Sans 3:** the viewer's interface text, chosen for dense, long reading.
+- **Google Sans:** all text on both pages: interface, headings, and the wordmark.
+  Weights 400 to 600. One typeface keeps the landing page and the viewer one product.
+  (Source Sans 3 was used for the viewer until 2026-11-06; it read as dated next to
+  Google Sans.)
 - **Google Sans Code:** code, Terraform addresses (`aws_security_group.db`), CIDRs,
   ports, eyebrow labels.
 - Never heavier than 600, never italic.
