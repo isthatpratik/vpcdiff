@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>vpcdiff: see what a Terraform plan opens to the internet</title>
+    <meta name="description" content="Open a Terraform plan in your browser and see which AWS resources become reachable from the internet, with the rule that decides each hop. The plan never leaves your device." />
+    <meta property="og:title" content="vpcdiff" />
+    <meta property="og:description" content="See what a Terraform plan opens to the internet, hop by hop. Runs in your browser." />
+    <meta name="color-scheme" content="dark" />
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./src/main.tsx"></script>
+  </body>
+</html>
