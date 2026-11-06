@@ -148,14 +148,16 @@ Fonts load from Google Fonts (see section 10 for what that means for privacy).
 - Landing page motion is few and slow, each part with a cause:
   - The hero field: a plan widens one rule (shown as the cause at the top), and one
     path draws from the internet to the database, hop by hop. The path is never seen to
-    retract: the camera pans up and away, the path resets while it is out of view, and
-    the camera pans back down onto the internet to begin again.
+    retract: the camera whip-pans right (a slow start that speeds up, ease-in), the
+    field dims at the fastest point, the view continues on a whole number of grid cells,
+    and the start frame slides in from the right and lands on the internet (ease-out).
+    The path resets while it is off screen.
   - The hero camera moves on a critically damped spring (no overshoot, soft start, slow
     landing): close on the internet, then it follows each hop as it lights and pulls back
     to the whole path. The caption stays still, like a caption on a frame.
   - On the left of the hero, the spokes from "any public address" keep moving: one
-    spoke at a time slides its far end to an adjacent block (one cell, in-out), and only
-    the blocks a spoke lands on are lit.
+    spoke at a time snaps its far end to an adjacent block (one cell, 0.28 s, a hard
+    ease-out), and only the blocks a spoke lands on are lit.
   - The headline blurs in once. Sections rise 24 px and fade in once.
   - Section bars draw down the rail when the title comes into view.
   - "How it works" is a row of step tabs (Plan, Run, Read, Gate) over a split panel,

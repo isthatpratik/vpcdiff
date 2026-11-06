@@ -2,13 +2,15 @@
 // is. A plan widens one rule (the caption at the top is the cause); one path then draws
 // from the internet, hop by hop, to the database.
 //
-// The camera never jumps. It follows the story on a critically damped spring, so every
-// move eases in and settles slowly: it starts close on the internet, follows each hop
-// as it lights, pulls back to the whole path, then pans up and away. While the field is
-// out of view the path resets, and the camera pans back down onto the internet to begin
-// again, so the loop has no seam and no line is seen to retract.
+// The camera follows the story on a critically damped spring, so every move eases in
+// and settles slowly: it starts close on the internet, follows each hop as it lights,
+// and pulls back to the whole path. Then it whip-pans right: a slow start that speeds
+// up (ease-in) carries the path off the left edge; the view continues on a whole number
+// of grid cells, so the dots line up, and the start frame slides in from the right and
+// lands on the internet (ease-out). The path resets while it is off screen, so the loop
+// has no seam and no line is seen to retract.
 //
-// On the left, any public address keeps arriving: each spoke slides its far end to a
+// On the left, any public address keeps arriving: each spoke snaps its far end to a
 // block next to it, one cell at a time, and only the blocks a spoke lands on are lit.
 //
 // Camera and spokes run in one animation frame loop that writes SVG attributes directly
@@ -44,10 +46,14 @@ const FOCUS = { x: 700, y: 230 };
 const EXPO = "cubic-bezier(0.16, 1, 0.3, 1)";
 
 /**
- * step: 0 close on the internet, rule narrow; 1 rule widened; 2..6 hops lit
- * (2 = internet); 7 the whole path; 8 pan up and away (the path resets after this).
+ * step: 0 close on the internet, rule narrow (the pan lands here); 1 rule widened;
+ * 2..6 hops lit (2 = internet); 7 the whole path; 8 the pan away to the right.
  */
-const TIMES = [2000, 1100, 950, 950, 950, 1100, 950, 2800, 1500];
+const TIMES = [2600, 1100, 950, 950, 950, 1100, 950, 2800, 1000];
+/** The whip pan: a whole number of grid cells, so the dots line up across the jump. */
+const PAN = STEP * 19;
+const PAN_OUT = 1.0; // seconds, ease-in
+const PAN_IN = 1.4; // seconds, ease-out
 
 const C = { x: 600, y: 250 };
 type Shot = { x: number; y: number; k: number };
@@ -60,8 +66,7 @@ function shotFor(step: number, pts: { x: number; y: number }[]): Shot {
     const p = pts[step - 2] ?? C;
     return { x: C.x + (p.x - C.x) * 0.55, y: C.y + (p.y - C.y) * 0.55, k: 1.12 };
   }
-  if (step === 7) return { x: 650, y: 240, k: 1.03 };
-  return { x: 650, y: -120, k: 1.03 };
+  return { x: 650, y: 240, k: 1.03 };
 }
 
 export function PathField({ className = "" }: { className?: string }) {
@@ -69,6 +74,7 @@ export function PathField({ className = "" }: { className?: string }) {
   const [step, setStep] = useState(reduced ? 7 : 0);
   const ref = useRef<SVGSVGElement>(null);
   const camRef = useRef<SVGGElement>(null);
+  const fieldRef = useRef<SVGGElement>(null);
   const spokeRefs = useRef<(SVGLineElement | null)[]>([]);
   const tipRefs = useRef<(SVGRectElement | null)[]>([]);
   const stepRef = useRef(step);
@@ -116,8 +122,14 @@ export function PathField({ className = "" }: { className?: string }) {
       const p = at(c, r);
       return { c, r, from: p, to: p, t0: 0 };
     });
-    const MOVE = 0.75; // seconds per slide
+    const MOVE = 0.28; // seconds per snap
+    const snap = (t: number) => 1 - Math.pow(1 - t, 4); // a hard ease-out
+    const easeIn = (t: number) => t * t * t;
+    const easeOut = (t: number) => 1 - Math.pow(1 - t, 3);
     const inOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+    // A running pan, if any: from and to camera values, the curve, start time, length.
+    let pan: { from: Shot; to: Shot; ease: (t: number) => number; t0: number; len: number; yk: (t: number) => number } | null = null;
+    let lastStep = stepRef.current;
     let nextHop = 0;
     let last = performance.now();
     let frame = 0;
@@ -126,20 +138,46 @@ export function PathField({ className = "" }: { className?: string }) {
     const loop = (now: number) => {
       const dt = Math.min(0.05, (now - last) / 1000);
       last = now;
-      const target = shotFor(stepRef.current, pts);
-      // x'' = ω²(target − x) − 2ω x'  (critical damping: no overshoot, soft start and end)
-      cam.vx += (omega * omega * (target.x - cam.x) - 2 * omega * cam.vx) * dt;
-      cam.vy += (omega * omega * (target.y - cam.y) - 2 * omega * cam.vy) * dt;
-      cam.vk += (omega * omega * (target.k - cam.k) - 2 * omega * cam.vk) * dt;
-      cam.x += cam.vx * dt;
-      cam.y += cam.vy * dt;
-      cam.k += cam.vk * dt;
+      const tnow = now / 1000;
+      const st = stepRef.current;
+      if (st !== lastStep) {
+        const start = shotFor(0, pts);
+        if (st === 8) {
+          // Pan out: slow start, speeding up, to the right; frame the start's height and zoom.
+          pan = { from: { x: cam.x, y: cam.y, k: cam.k }, to: { x: start.x + PAN, y: start.y, k: start.k }, ease: easeIn, yk: inOut, t0: tnow, len: PAN_OUT };
+        } else if (st === 0 && lastStep === 8) {
+          // Continue the same way: jump back by the pan (the grid lines up), then land.
+          pan = { from: { x: start.x - PAN, y: start.y, k: start.k }, to: start, ease: easeOut, yk: easeOut, t0: tnow, len: PAN_IN };
+        }
+        lastStep = st;
+      }
+      if (pan) {
+        const u = Math.min(1, (tnow - pan.t0) / pan.len);
+        const e = pan.ease(u);
+        const g = pan.yk(u);
+        cam.x = pan.from.x + (pan.to.x - pan.from.x) * e;
+        cam.y = pan.from.y + (pan.to.y - pan.from.y) * g;
+        cam.k = pan.from.k + (pan.to.k - pan.from.k) * g;
+        cam.vx = cam.vy = cam.vk = 0;
+        // The field dims at the fastest part of the whip, where the jump happens.
+        fieldRef.current?.setAttribute("opacity", `${st === 8 ? 1 - 0.85 * e : 0.15 + 0.85 * e}`);
+        if (u >= 1 && st !== 8) pan = null;
+      } else {
+        const target = shotFor(st, pts);
+        // x'' = ω²(target − x) − 2ω x'  (critical damping: no overshoot, soft start and end)
+        cam.vx += (omega * omega * (target.x - cam.x) - 2 * omega * cam.vx) * dt;
+        cam.vy += (omega * omega * (target.y - cam.y) - 2 * omega * cam.vy) * dt;
+        cam.vk += (omega * omega * (target.k - cam.k) - 2 * omega * cam.vk) * dt;
+        cam.x += cam.vx * dt;
+        cam.y += cam.vy * dt;
+        cam.k += cam.vk * dt;
+      }
       apply(cam);
 
       // Every so often one spoke steps to a neighboring block.
       const t = now / 1000;
       if (t > nextHop) {
-        nextHop = t + 0.45 + Math.random() * 0.3;
+        nextHop = t + 0.22 + Math.random() * 0.22;
         const i = Math.floor(Math.random() * spokes.length);
         const sp = spokes[i];
         if (sp && t - sp.t0 > MOVE) {
@@ -164,7 +202,7 @@ export function PathField({ className = "" }: { className?: string }) {
         }
       }
       spokes.forEach((sp, i) => {
-        const e = inOut(Math.min(1, (t - sp.t0) / MOVE));
+        const e = snap(Math.min(1, (t - sp.t0) / MOVE));
         const x = sp.from.x + (sp.to.x - sp.from.x) * e;
         const y = sp.from.y + (sp.to.y - sp.from.y) * e;
         spokeRefs.current[i]?.setAttribute("x1", `${x}`);
@@ -193,8 +231,8 @@ export function PathField({ className = "" }: { className?: string }) {
   // showing an edge. Far from the network the dots shrink to a faint floor.
   const dots = useMemo(() => {
     const out: { x: number; y: number; s: number; o: number }[] = [];
-    for (let c = -3; c < W / STEP + 3; c++) {
-      for (let r = -9; r < H / STEP + 4; r++) {
+    for (let c = -24; c < W / STEP + 21; c++) {
+      for (let r = -3; r < H / STEP + 4; r++) {
         const { x, y } = at(c, r);
         const d = Math.hypot(x - FOCUS.x, (y - FOCUS.y) * 1.3);
         const s = Math.max(1.6, Math.min(7, 9 - d / 70));
@@ -206,14 +244,13 @@ export function PathField({ className = "" }: { className?: string }) {
 
   const lit = (i: number) => step >= i + 2 && step <= 8;
   const widened = step >= 1 && step <= 7;
-  const away = step === 8;
   // The path resets while the field is away; it is never seen to retract.
   const resetting = step === 0;
 
   return (
     <svg ref={ref} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMin slice" className={`block h-full w-full ${className}`} aria-hidden="true">
       <style>{`@media (max-width: 640px) { .pf-text { display: none } }`}</style>
-      <g style={{ opacity: away ? 0.25 : 1, transition: `opacity ${away ? 1200 : 1400}ms cubic-bezier(0.65, 0, 0.35, 1)` }}>
+      <g ref={fieldRef}>
         <g ref={camRef}>
           {dots.map((d) => (
             <rect key={`${d.x}-${d.y}`} x={d.x - d.s / 2} y={d.y - d.s / 2} width={d.s} height={d.s} fill="var(--litt-fg)" opacity={d.o * 0.42} />
