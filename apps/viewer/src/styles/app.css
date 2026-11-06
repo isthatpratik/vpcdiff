@@ -1374,3 +1374,26 @@ html[data-theme="dark"][data-material] {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.15; }
 }
+
+/* Engine drawings (src/site/HopStrip.tsx): one quiet loop each. */
+@keyframes route-flow {
+  to { stroke-dashoffset: -14; }
+}
+@keyframes row-shine {
+  0% { transform: translateX(0); }
+  60%, 100% { transform: translateX(520px); }
+}
+@keyframes rule-ring {
+  0% { transform: scale(1); opacity: 0.5; }
+  60%, 100% { transform: scale(1.06, 1.35); opacity: 0; }
+}
+@keyframes band-breathe {
+  0%, 100% { opacity: 0.06; }
+  50% { opacity: 0.14; }
+}
+@keyframes lane-packet {
+  0% { transform: translateX(0); opacity: 0; }
+  10% { opacity: 1; }
+  75% { transform: translateX(var(--lane)); opacity: 1; }
+  85%, 100% { transform: translateX(var(--lane)); opacity: 0; }
+}

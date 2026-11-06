@@ -32,6 +32,8 @@ function Routes() {
         <path d="M134 115 H190" />
       </g>
       <path d="M134 115 H150 Q162 115 162 127 V183 Q162 195 174 195 H190" fill="none" stroke={INK} strokeWidth={2} />
+      {/* Traffic flows along the route that won. */}
+      <path d="M134 115 H150 Q162 115 162 127 V183 Q162 195 174 195 H190" fill="none" stroke={CANVAS} strokeWidth={2} strokeDasharray="4 10" className="motion-safe:animate-[route-flow_1.2s_linear_infinite] motion-reduce:hidden" />
       <Box x={4} y={115} label="52.14.9.20" solid />
       <Box x={190} y={35} label="10.0.0.0/16" dim />
       <Box x={190} y={115} label="10.0.1.0/24" dim />
@@ -55,6 +57,13 @@ function Groups() {
   const X = [10, 92, 316];
   return (
     <svg viewBox="0 0 400 230" className="w-full" aria-hidden="true">
+      <defs>
+        <linearGradient id="sg-shine" x1="0" x2="1">
+          <stop offset="0" stopColor={CANVAS} stopOpacity={0} />
+          <stop offset="0.5" stopColor={CANVAS} stopOpacity={0.18} />
+          <stop offset="1" stopColor={CANVAS} stopOpacity={0} />
+        </linearGradient>
+      </defs>
       <g fontFamily={MONO} fontSize={16} fill={SUB}>
         {["port", "from", "rule"].map((h, j) => (
           <text key={h} x={X[j]} y={22}>
@@ -69,6 +78,14 @@ function Groups() {
         return (
           <g key={i}>
             {hi && <rect x={0} y={y - 27} width={400} height={40} fill={INK} />}
+            {hi && (
+              <g clipPath="url(#sg-row)">
+                <clipPath id="sg-row">
+                  <rect x={0} y={y - 27} width={400} height={40} />
+                </clipPath>
+                <rect x={-120} y={y - 27} width={120} height={40} fill="url(#sg-shine)" className="motion-safe:animate-[row-shine_3.6s_cubic-bezier(0.65,0,0.35,1)_infinite] motion-reduce:hidden" />
+              </g>
+            )}
             {r.map((c, j) => (
               <text key={j} x={X[j]} y={y} fontFamily={MONO} fontSize={FS} fill={hi ? CANVAS : INK} opacity={hi ? 1 : 0.6}>
                 {c}
@@ -105,6 +122,8 @@ function Acls() {
           </g>
         );
       })}
+      {/* The first match sends out a soft ring: this rule decided. */}
+      <rect x={4} y={18} width={392} height={44} fill="none" stroke={INK} className="origin-center [transform-box:fill-box] opacity-0 motion-safe:animate-[rule-ring_2.8s_cubic-bezier(0.22,1,0.36,1)_infinite] motion-reduce:hidden" />
       <path d="M200 62 V88 M200 132 V158" stroke={INK} strokeOpacity={0.25} strokeDasharray="3 4" />
     </svg>
   );
@@ -121,7 +140,7 @@ function BeforeAfter() {
     ));
   return (
     <svg viewBox="0 0 400 230" className="w-full" aria-hidden="true">
-      <rect x={x(3) - 22} y={18} width={44} height={150} fill={INK} opacity={0.08} />
+      <rect x={x(3) - 22} y={18} width={44} height={150} fill={INK} opacity={0.08} className="motion-safe:animate-[band-breathe_3.2s_ease-in-out_infinite]" />
       <g fontFamily={MONO} fontSize={16} fill={SUB}>
         <text x={4} y={66}>before</text>
         <text x={4} y={136}>after</text>
@@ -130,6 +149,10 @@ function BeforeAfter() {
       <line x1={x(0)} x2={x(5)} y1={131} y2={131} stroke={INK} strokeOpacity={0.6} />
       {lane(61, before)}
       {lane(131, [true, true, true, true, true, true])}
+      {/* A packet makes it all the way through on the after side. */}
+      <g className="motion-safe:animate-[lane-packet_3.2s_cubic-bezier(0.65,0,0.35,1)_infinite] motion-reduce:hidden" style={{ ["--lane" as string]: `${x(5) - x(0)}px` }}>
+        <circle cx={x(0)} cy={131} r={4} fill={CANVAS} stroke={INK} strokeWidth={1.5} />
+      </g>
       <g fontFamily={MONO} fontSize={16} textAnchor="middle">
         {hops.map((h, i) => (
           <text key={h} x={x(i)} y={196} fill={i === 3 ? INK : SUB}>
