@@ -1,8 +1,7 @@
-// The landing page footer, after primora.xyz: a band with the mark and the name drawn
-// large in a faint ink, drifting sideways; hairline tracks with a few moving segments; a
-// framed card with the brand, links, and the call to action; and a bottom bar.
-// The drift and the segments are constant motion, so they are linear. Both stop under
-// reduced motion.
+// The landing page footer: a band with the mark and the name drawn large in a faint
+// outline, drifting sideways; a band of the hero's dot grid where now and then a short run
+// of dots lights up left to right, like a packet crossing; a framed card with the brand,
+// links, and the call to action; and a bottom bar. Both motions stop under reduced motion.
 import { REPO, Wordmark } from "../shared/brand.tsx";
 import { GithubLink } from "../shared/github.tsx";
 import { Cta } from "./Cta.tsx";
@@ -11,7 +10,8 @@ import { Divider, PAD } from "./rails.tsx";
 const RAIL = "relative mx-3 border-x border-litt-line sm:mx-6 xl:mx-auto xl:max-w-[1200px]";
 const APP = "./app/";
 
-const LINE = "var(--litt-line-strong)";
+/** The outline ink: the line color, so the band stays a quiet background. */
+const LINE = "var(--litt-line)";
 
 /**
  * The open delta in outline: the shape is stroked a little wider in the line color, then
@@ -37,7 +37,7 @@ function OutlineMark() {
 function OutlineName() {
   return (
     <span className="relative">
-      <span className="text-transparent [-webkit-text-stroke:2px_var(--litt-line-strong)]">vpcdiff</span>
+      <span className="text-transparent [-webkit-text-stroke:2px_var(--litt-line)]">vpcdiff</span>
       <span className="absolute inset-0 text-litt-canvas">vpcdiff</span>
     </span>
   );
@@ -58,7 +58,7 @@ function Unit() {
  */
 function NameBand() {
   return (
-    <div aria-hidden="true" className="overflow-hidden [mask-image:linear-gradient(to_bottom,transparent,black_22%,black_78%,transparent)]">
+    <div aria-hidden="true" className="overflow-hidden [mask-image:linear-gradient(to_bottom,transparent,black_38%,black_62%,transparent)]">
       <div className="flex w-max animate-[footer-drift_60s_linear_infinite] items-center py-12 font-display text-[clamp(96px,17vw,250px)] leading-none font-medium tracking-[-0.04em] motion-reduce:animate-none">
         <Unit />
         <Unit />
@@ -69,20 +69,19 @@ function NameBand() {
   );
 }
 
-/** Hairline tracks with a bright segment moving along each, at its own pace. */
-function Tracks() {
-  const rows = [
-    { dur: "9s", delay: "-2s", len: "18%" },
-    { dur: "13s", delay: "-7s", len: "42%" },
-    { dur: "11s", delay: "-4s", len: "24%" },
-  ];
+/**
+ * A band of the hero's dot grid, faded at both ends. A brighter copy of the same grid sits
+ * on top, masked to a short window that sweeps left to right and then rests, so a run of
+ * dots lights up in place (styles/app.css, "footer-packet"). The dots never move, so the
+ * two grids always line up.
+ */
+function DotBand() {
+  // Four rows of dots, kept clear of the divider below by the band's inset.
+  const grid = "absolute inset-x-0 inset-y-4 [background-size:16px_16px] [background-position:center]";
   return (
-    <div aria-hidden="true" className="grid gap-6 py-6">
-      {rows.map((r) => (
-        <div key={r.dur} className="relative mx-3 h-px overflow-hidden bg-litt-line">
-          <span className="absolute inset-y-0 left-0 bg-[color-mix(in_oklab,var(--litt-fg)_55%,transparent)] animate-[footer-track_var(--d)_linear_infinite] motion-reduce:hidden" style={{ width: r.len, "--d": r.dur, animationDelay: r.delay } as React.CSSProperties} />
-        </div>
-      ))}
+    <div aria-hidden="true" className="relative h-24 [mask-image:linear-gradient(to_right,transparent,black_18%,black_82%,transparent)]">
+      <div className={`${grid} [background-image:radial-gradient(color-mix(in_oklab,var(--litt-fg)_16%,transparent)_1px,transparent_1.5px)]`} />
+      <div className={`${grid} footer-packet [background-image:radial-gradient(color-mix(in_oklab,var(--litt-fg)_70%,transparent)_1.1px,transparent_1.6px)] motion-reduce:hidden`} />
     </div>
   );
 }
@@ -125,8 +124,7 @@ export function Footer() {
   return (
     <>
       <NameBand />
-      <Divider />
-      <Tracks />
+      <DotBand />
       <Divider />
       <footer id="footer" className={RAIL}>
         <div className="p-3 sm:p-5">

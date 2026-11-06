@@ -187,11 +187,14 @@ Fonts load from Google Fonts (see section 10 for what that means for privacy).
   - Links draw an underline. Buttons scale their background on hover while the label
     stays still.
   - The Stageshow pull request demo.
-  - The footer, after primora.xyz: the name and the mark drawn large in outline, full
-    bleed (outside the rails), scrolling sideways without end (linear, because it is
-    constant motion), faded at its top and bottom; hairline tracks with moving segments
-    above and below it. Both stop under reduced motion. A variable font draws overlapping
-    contours when stroked, so the outline is a stroke behind a canvas-colored copy.
+  - The footer: the name and the mark drawn large in a faint outline (the line color),
+    full bleed (outside the rails), scrolling sideways without end (linear, because it is
+    constant motion), with long fades at its top and bottom. Under it, a band of the
+    hero's dot grid, faded at both ends; every 7 s a short window of brighter dots sweeps
+    left to right (a packet crossing), then rests. The dots never move, only the window,
+    so the two grids stay aligned. Both stop under reduced motion. A variable font draws
+    overlapping contours when stroked, so the outline is a stroke behind a canvas-colored
+    copy.
   - Film grain on the hero animation only: a self-made 6-frame noise GIF (33 KB) at
     3.5%, after ui-layouts' Noise, served from this origin and faded out radially so it
     melts into the page. Hidden under reduced motion.
