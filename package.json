@@ -8,11 +8,13 @@
   },
   "scripts": {
     "lint": "eslint .",
-    "typecheck": "pnpm -r typecheck",
-    "test": "vitest run"
+    "typecheck": "pnpm -r typecheck && tsc -p scripts",
+    "test": "vitest run",
+    "fixture:plan": "node scripts/make-fixture-plan.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@types/node": "^24.19.2",
     "eslint": "^10.14.0",
     "typescript": "~6.0.3",
     "typescript-eslint": "^8.72.1",

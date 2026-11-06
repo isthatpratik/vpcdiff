@@ -20,8 +20,9 @@ right now is to open an issue about AWS networking behavior that the design miss
 
 Fixtures live in `fixtures/<name>/` and contain:
 
-- `main.tf`: the Terraform source
-- `plan.json`: output of `terraform show -json`
+- `after/main.tf`: the Terraform source under review
+- `before/main.tf` (optional): the Terraform source already applied
+- `plan.json`: generated with `pnpm fixture:plan fixtures/<name>` (see [fixtures/README.md](fixtures/README.md))
 - `expected.json`: the expected reachability result
 - `ORACLE.md`: how the expected result was verified
 

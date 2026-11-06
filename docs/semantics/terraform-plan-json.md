@@ -28,8 +28,11 @@ Source for every field below: <https://developer.hashicorp.com/terraform/interna
   attribute path (ADR 0003).
 - **References that resolve at apply time.** In a create-only plan, IDs such as
   `vpc_id` are unknown. The engine links resources through the `configuration`
-  section's `references` instead of through ID values. The fixture must confirm this
-  works before the engine relies on it.
+  section's `references` instead of through ID values.
+- **References in nested blocks are merged.** Terraform 1.13 lists the references of
+  a whole block under the block name. For example, an `aws_route_table` with two
+  `route` blocks has one `route.references` list for both. With one route this is
+  exact. With several routes, a route whose target is unknown returns `unknown`.
 - **Data sources** (`mode: "data"`) are not part of the network model in slice 1. A
   hop that depends on one returns `unknown`.
 - **Replacements** (`["delete", "create"]`) are recorded. Outage risk from
@@ -37,8 +40,8 @@ Source for every field below: <https://developer.hashicorp.com/terraform/interna
 
 ## Open questions
 
-1. Does `resource_changes` list every managed resource with `["no-op"]` when it does
-   not change, or must the engine also read `prior_state`? The first fixture must
-   answer this.
+1. Answered by `fixtures/sg-5432-opened` (Terraform 1.13.3): `resource_changes`
+   lists unchanged managed resources with `["no-op"]` and full `before` and `after`
+   values. The engine does not need `prior_state` for them.
 2. Sensitive values (`before_sensitive`, `after_sensitive`) are not network fields in
    slice 1. The engine must never print a sensitive value in an explanation.
