@@ -1,5 +1,18 @@
 /* The hero demo, scoped to its stage. Colors come from litt tokens (DESIGN.md). */
+/* Neutral grays only. The stage sets its own data-theme, which would bring back litt's
+   warm default palette; map litt and the kit to the flat (neutral) material instead. */
 .hero-demo .ss-stage {
+  --litt-canvas: var(--litt-flat-canvas);
+  --litt-surface-1: var(--litt-flat-surface-1);
+  --litt-surface-2: var(--litt-flat-surface-2);
+  --litt-surface-3: var(--litt-flat-surface-3);
+  --litt-line: var(--litt-flat-line);
+  --litt-line-strong: var(--litt-flat-line-strong);
+  --litt-fg: var(--litt-flat-fg);
+  --litt-fg-muted: var(--litt-flat-fg-muted);
+  --litt-fg-subtle: var(--litt-flat-fg-subtle);
+  --ss-surface: var(--litt-flat-surface-2);
+  --ss-chrome: var(--litt-flat-surface-2);
   overflow: hidden;
   background: transparent;
   font-family: var(--litt-font-sans);
@@ -290,4 +303,40 @@
 /* The window's URL reads at AA contrast in both themes. */
 .hero-demo .ss-window__url {
   color: var(--litt-fg-muted);
+}
+
+/* Browser chrome: neutral bar, tabs with a favicon, a lock before the address. */
+.hero-demo .ss-window {
+  background: var(--litt-surface-1);
+}
+.hero-demo .ss-window__bar {
+  background: var(--litt-surface-2);
+}
+.hero-demo .ss-window__tabs {
+  background: var(--litt-surface-1);
+}
+.hero-demo .ss-window__tab {
+  width: 210px;
+  font-size: 11.5px;
+}
+.hero-demo .ss-window__favicon {
+  display: none;
+}
+.hero-demo .hd-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hero-demo .hd-url {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--litt-fg-subtle);
+}
+.hero-demo .hd-url-path {
+  color: var(--litt-fg);
 }

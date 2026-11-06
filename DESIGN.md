@@ -129,10 +129,13 @@ Fonts load from Google Fonts (see section 10 for what that means for privacy).
 - **Radius:** controls 8 px (`--litt-radius-control`), landing buttons 6 px, surfaces
   8 px, the footer card 14 px. Cells and framed panels are square. A nested shape gets the outer radius minus
   the gap.
-- **Cards:** a framed panel has four hairlines that stop 10 px short of each corner,
-  with a 3 px dot in each corner (after the crossings on firecrawl.dev).
-- **Spotlight:** framed panels and feature cells show a soft ink light under the
-  pointer (6% ink, 360 px). It is off on touch screens and under reduced motion.
+- **Cards:** a framed panel has a plain 1px hairline frame. No corner marks.
+- **Spotlight:** feature cells show a soft ink light under the pointer (6% ink,
+  360 px). It is off on touch screens and under reduced motion. Product panels do not
+  get it.
+- **Neutral grays in demos:** a Stageshow stage sets its own theme, which brings back
+  litt's warm default grays. The hero demo maps litt and the kit to the flat (neutral)
+  material in `hero-demo.css`, so no demo reads brown.
 - **Tagline:** four chips from a real plan sit around the tagline on wide screens, each
   tied to a word by an elbow leader. A chip and its leader appear when their word
   lights up.

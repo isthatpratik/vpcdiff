@@ -22,7 +22,7 @@ import { Plate } from "./Plate.tsx";
 import { Tagline } from "./Tagline.tsx";
 import { CliSection } from "./Terminal.tsx";
 import { StepTabs } from "./StepTabs.tsx";
-import { DotCard, Divider, EASE, PAD, Rail, SectionHead, Spotlight, useInViewOnce, useSpotlight } from "./rails.tsx";
+import { Divider, EASE, PAD, Rail, SectionHead, Spotlight, useInViewOnce, useSpotlight } from "./rails.tsx";
 import { ScrollFrost } from "./ScrollFrost.tsx";
 import { startSmoothScroll } from "./smooth.ts";
 
@@ -330,7 +330,7 @@ export function Landing() {
           <SectionHead eyebrow="In review" title="The check runs on the pull request." rest="Before anyone applies." bar>
             A rule widens in a pull request. vpcdiff finds the new path from the internet and shows the hop that changed.
           </SectionHead>
-          <DotCard>
+          <div className="border border-litt-line">
             <Plate inset="px-4 pt-4 sm:px-10 sm:pt-10 lg:px-14 lg:pt-14">
               <div role="img" aria-label="Product demo: a pull request widens a security group rule, and vpcdiff finds and explains the new path from the internet">
                 <div aria-hidden="true">
@@ -338,7 +338,7 @@ export function Landing() {
                 </div>
               </div>
             </Plate>
-          </DotCard>
+          </div>
         </Rail>
         <Divider dots />
 

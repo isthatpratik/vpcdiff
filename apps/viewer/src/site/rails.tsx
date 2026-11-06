@@ -133,29 +133,3 @@ export function Spotlight({ size = 360 }: { size?: number }) {
     />
   );
 }
-
-/**
- * A framed card: four hairlines that stop short of each corner, and a small dot in each
- * corner, like the line crossings on firecrawl.dev and primora.xyz.
- */
-export function DotCard({ children, className = "" }: { children: ReactNode; className?: string }) {
-  const ref = useSpotlight<HTMLDivElement>();
-  const dot = "pointer-events-none absolute size-[3px] rounded-full bg-litt-fg-subtle";
-  const line = "pointer-events-none absolute bg-litt-line";
-  return (
-    <div ref={ref} className={`group relative ${className}`}>
-      <span aria-hidden="true" className={`${line} top-0 right-2.5 left-2.5 h-px`} />
-      <span aria-hidden="true" className={`${line} right-2.5 bottom-0 left-2.5 h-px`} />
-      <span aria-hidden="true" className={`${line} top-2.5 bottom-2.5 left-0 w-px`} />
-      <span aria-hidden="true" className={`${line} top-2.5 right-0 bottom-2.5 w-px`} />
-      <span aria-hidden="true" className={`${dot} -top-px -left-px`} />
-      <span aria-hidden="true" className={`${dot} -top-px -right-px`} />
-      <span aria-hidden="true" className={`${dot} -bottom-px -left-px`} />
-      <span aria-hidden="true" className={`${dot} -right-px -bottom-px`} />
-      <div className="relative p-px">
-        <Spotlight />
-        {children}
-      </div>
-    </div>
-  );
-}
