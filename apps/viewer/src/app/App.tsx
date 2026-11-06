@@ -467,7 +467,7 @@ function Workspace({ name, result, sha256: hash }: { name: string; result: Resul
             </p>
           )}
           {result.paths.length > 0 && (
-            <label className="flex items-center gap-2 rounded-[6px] border border-litt-line px-2.5 focus-within:border-litt-fg-subtle focus-within:outline-2 focus-within:outline-offset-1 focus-within:outline-litt-fg">
+            <label className="flex items-center gap-2 rounded-[6px] border border-litt-line-strong px-2.5 focus-within:border-litt-fg-subtle focus-within:outline-2 focus-within:outline-offset-1 focus-within:outline-litt-fg">
               <SearchIcon aria-hidden="true" className="size-4 text-litt-fg-subtle" />
               <span className="sr-only">Filter paths</span>
               <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Filter by resource, port, or CIDR" className="h-8 min-w-0 flex-1 bg-transparent text-litt-small text-litt-fg outline-none placeholder:text-litt-fg-subtle" />
@@ -569,8 +569,8 @@ const SQUARE: Record<CellState, string> = {
   partial: "border-litt-fg bg-[linear-gradient(to_right,var(--litt-fg)_50%,var(--litt-canvas)_50%)]",
   deny: "border-litt-fg bg-litt-canvas bg-[linear-gradient(to_top_right,transparent_calc(50%-0.75px),var(--litt-fg)_calc(50%-0.75px),var(--litt-fg)_calc(50%+0.75px),transparent_calc(50%+0.75px))]",
   unknown: "border-dashed border-litt-warning bg-litt-canvas",
-  "not-reached": "border-litt-fg-subtle/70 bg-litt-canvas",
-  absent: "border-dotted border-litt-fg-subtle/70 bg-litt-canvas",
+  "not-reached": "border-litt-fg-subtle bg-litt-canvas",
+  absent: "border-dotted border-litt-fg-subtle bg-litt-canvas",
 };
 
 const HOP_ICON: Partial<Record<ColumnKey, typeof GlobeIcon>> = {
@@ -825,7 +825,9 @@ function PathDetail({ path }: { path: Path }) {
                   : "The plan destroys this resource: every hop goes away."
                 : changedCount
                   ? `${ruleChanges} ${ruleChanges === 1 ? "hop changed" : "hops changed"}${changedCount > ruleChanges ? ` · ${changedCount - ruleChanges} more ${changedCount - ruleChanges === 1 ? "is" : "are"} now checked or skipped` : ""}`
-                  : "No hop differs"}
+                  : risk >= 0
+                    ? `No hop changes. The ${COLUMNS[risk]?.label ?? ""} hop is replaced delete-first.`
+                    : "No hop differs"}
             </p>
           </div>
           <ol className="divide-y divide-litt-line border border-litt-line">
@@ -852,7 +854,17 @@ function PathDetail({ path }: { path: Path }) {
                   className={`relative transition-colors duration-200 ${i === selected ? "bg-litt-surface-1" : ""}`}
                 >
                   {(row || i === risk) && <span aria-hidden="true" className={`absolute top-0 bottom-0 left-0 w-0.5 ${i === risk ? "bg-litt-warning" : "bg-litt-fg-muted"}`} />}
-                  <div className={`grid grid-cols-[minmax(0,1fr)_32px] items-center gap-4 px-4 sm:grid-cols-[200px_minmax(0,1fr)_minmax(0,1fr)_32px] ${row ? "py-3.5" : "py-2.5"}`}>
+                  {/* The whole row opens and closes on click. The arrow button stays the keyboard and
+                      screen reader control, so the row itself is not a second tab stop. */}
+                  <div
+                    onClick={(e) => {
+                      if ((e.target as HTMLElement).closest("a, button")) return;
+                      if (window.getSelection()?.toString()) return;
+                      setSelected(i);
+                      toggle(i);
+                    }}
+                    className={`grid cursor-pointer grid-cols-[minmax(0,1fr)_32px] items-center gap-4 px-4 transition-colors duration-150 hover:bg-litt-surface-1 sm:grid-cols-[200px_minmax(0,1fr)_minmax(0,1fr)_32px] ${row ? "py-3.5" : "py-2.5"}`}
+                  >
                     <span className="grid min-w-0 gap-1">
                       <HopName col={c} type={path.toType} className="text-litt-small text-litt-fg" />
                       {row && <span className="pl-6 text-litt-caption text-litt-fg-muted">Differs</span>}

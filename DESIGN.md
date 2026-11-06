@@ -228,6 +228,13 @@ Fonts load from Google Fonts (see section 10 for what that means for privacy).
   the file name shows beside the wordmark and the button reads "Open".
 - **Start:** one dashed drop zone on the dot grid (no outer frame), both columns aligned
   at the top, the two steps under it, and errors shown inside the zone.
+- **Hop rows:** the whole row opens and closes on click (pointer cursor, hover tint);
+  the arrow stays the keyboard control, so a row is one tab stop. Text selection does
+  not toggle a row.
+- **Light mode:** the same flat neutral grays as dark. Measured on the light canvas:
+  text from 4.58:1 (subtle) to 18.5:1 (ink); danger 5.6, success 5.1, warning 5.2.
+  Outlines that carry meaning (the "Not checked" and "Not in plan" squares) use the
+  subtle ink at full strength, 4.58:1, above the 3:1 that WCAG 1.4.11 asks for.
 - **Keyboard and screen readers:** after a plan opens, focus moves to the path title and
   a live region says how many paths were checked and the plan verdict. After a failed
   open, focus returns to "Choose a file", next to the message. Closed hop rows are
