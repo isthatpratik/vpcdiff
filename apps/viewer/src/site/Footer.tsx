@@ -131,7 +131,7 @@ export function Footer() {
         <div className={`${PAD} grid gap-3 py-6 text-litt-caption text-litt-fg-subtle md:grid-cols-[1fr_auto] md:items-start`}>
           <div className="grid gap-2">
             <p>© {new Date().getFullYear()} vpcdiff. MIT license.</p>
-            <p className="max-w-[640px]">No analytics and no cookies. Fonts load from Google Fonts; nothing about your plan is ever sent. Terraform, AWS, HashiCorp, GitHub, and GitHub Actions are trademarks of their owners; vpcdiff is not affiliated with them.</p>
+            <p className="max-w-[640px]">No analytics and no cookies. Fonts load from Google Fonts; nothing about your plan is ever sent. Terraform, AWS, GitHub, GitHub Actions, and Node.js are trademarks of their owners; vpcdiff is not affiliated with them.</p>
           </div>
           <div className="flex gap-5">
             <a href={`${REPO}/blob/main/LICENSE`} className="hover:text-litt-fg">

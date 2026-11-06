@@ -8,7 +8,7 @@ import { TextLoop } from "@/components/sora-ui/texts/text-loop";
 import aws from "../logos/aws-icon-mono.svg?url";
 import actions from "../logos/github-actions-icon-mono.svg?url";
 import github from "../logos/github-icon-mono.svg?url";
-import hashicorp from "../logos/hashicorp-icon-mono.svg?url";
+import nodejs from "../logos/nodejs-icon-mono.svg?url";
 import terraform from "../logos/terraform-icon-mono.svg?url";
 import { Mark, REPO, Wordmark } from "../shared/brand.tsx";
 import { GithubLink } from "../shared/github.tsx";
@@ -209,13 +209,13 @@ const LOGOS = [
   { name: "AWS", src: aws },
   { name: "GitHub Actions", src: actions },
   { name: "GitHub", src: github },
-  { name: "HashiCorp", src: hashicorp },
+  { name: "Node.js", src: nodejs },
 ];
 
 /** Logos drawn in the ink color through a CSS mask, so they follow the theme. */
 function Logos() {
   return (
-    <ul className="grid grid-cols-2 gap-px bg-litt-line sm:grid-cols-5" aria-label="Works with Terraform, AWS, GitHub Actions, GitHub, and HashiCorp tools">
+    <ul className="grid grid-cols-2 gap-px bg-litt-line sm:grid-cols-5" aria-label="Works with Terraform, AWS, GitHub Actions, GitHub, and Node.js">
       {LOGOS.map((l, i) => (
         <li key={l.name} className={`flex h-24 items-center justify-center gap-3 bg-litt-canvas ${i === LOGOS.length - 1 ? "col-span-2 sm:col-span-1" : ""}`}>
           <span aria-hidden="true" className="h-6 w-8 bg-litt-fg-subtle" style={{ mask: `url("${l.src}") center / contain no-repeat`, WebkitMask: `url("${l.src}") center / contain no-repeat` }} />
