@@ -1,9 +1,11 @@
 import { readFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 import { analyze, ENGINE_VERSION, PlanError, toJson } from "@vpcdiff/engine";
+import { renderPretty, type Colors } from "./pretty.ts";
 import { renderMarkdown, renderText, shouldFail, type FailOn } from "./render.ts";
 
 const USAGE = `Usage: vpcdiff [options] <plan.json | ->
+       vpcdiff            (in a terminal: find a plan here and walk through it)
 
 Shows which resources a Terraform plan makes reachable from the internet, or no
 longer reachable, with the deciding rule at each hop.
@@ -20,13 +22,24 @@ Options:
   -v, --version                           Print the version
   -h, --help                              Print this help
 
+In a terminal, text output is the readable report in color. In pipes and CI it
+is stable plain text. Set NO_COLOR=1 to turn color off.
+
 Exit codes: 0 no failing paths, 1 failing paths, 2 usage or input error.
 `;
 
 const FORMATS = ["text", "json", "markdown"] as const;
 const FAIL_ON: FailOn[] = ["added", "changed", "unknown", "never"];
 
-export function run(argv: string[], io: { stdin: () => string; out: (s: string) => void; err: (s: string) => void }): number {
+export type Io = {
+  stdin: () => string;
+  out: (s: string) => void;
+  err: (s: string) => void;
+  /** Set when stdout is a terminal: text output becomes the readable report. */
+  pretty?: Colors;
+};
+
+export function run(argv: string[], io: Io): number {
   let parsed;
   try {
     parsed = parseArgs({
@@ -76,7 +89,8 @@ export function run(argv: string[], io: { stdin: () => string; out: (s: string) 
     return 2;
   }
   const opts = { all: values.all };
-  io.out(format === "json" ? toJson(result) : format === "markdown" ? renderMarkdown(result, opts) : renderText(result, opts));
+  const name = source === "-" ? undefined : source;
+  io.out(format === "json" ? toJson(result) : format === "markdown" ? renderMarkdown(result, opts) : io.pretty ? renderPretty(io.pretty, result, { ...opts, name }) : renderText(result, opts));
   return shouldFail(result, failOn) ? 1 : 0;
 }
 

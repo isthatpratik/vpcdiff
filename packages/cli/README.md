@@ -1,4 +1,10 @@
 # @vpcdiff/cli
 
-Command-line interface for the engine. Text and JSON output.
-Exit code `1` when a plan adds new exposure.
+Command-line interface for the engine.
+
+- `vpcdiff` with no arguments, in a terminal: finds a plan in the current folder (or
+  makes one with Terraform after you confirm), shows the report, and offers next steps.
+- `vpcdiff plan.json`: in a terminal, a readable report in color. In pipes and CI,
+  stable plain text. `--format json|markdown` for machines and pull requests.
+
+Exit code `1` when a plan adds new exposure (see `--fail-on`). Design: [ADR 0009](../../docs/adr/0009-cli-prompts-and-color.md).

@@ -21,12 +21,47 @@ security group rule allowed or blocked the traffic.
 
 ```sh
 pnpm install && pnpm build
+cd infra
+node ../packages/cli/dist/vpcdiff.mjs
+```
+
+With no arguments, in a terminal, `vpcdiff` asks which plan to read. It finds plan JSON
+and binary plans (`tfplan`, `*.tfplan`) in the folder, converts a binary plan with
+`terraform show -json`, or runs `terraform plan` for you after you confirm. Then it
+prints the report and offers next steps: every path, one path in full, or a Markdown
+summary for the pull request.
+
+To pass a plan yourself:
+
+```sh
 terraform -chdir=infra plan -out=tfplan
 terraform -chdir=infra show -json tfplan > plan.json
 node packages/cli/dist/vpcdiff.mjs plan.json
 ```
 
-Example output for [`fixtures/sg-5432-opened`](fixtures/sg-5432-opened):
+In a terminal, the report leads with the verdict. Example for
+[`fixtures/sg-5432-opened`](fixtures/sg-5432-opened):
+
+```text
+vpcdiff  plan.json
+1 opened · 0 closed · 0 changed · 0 at risk · 0 unknown
+
+● Opened to the internet
+  aws_instance.db  tcp/5432 (PostgreSQL)  Blocked → Reachable
+  After this plan, anyone on the internet can connect to aws_instance.db on tcp/5432 (PostgreSQL).
+  Decided at the Security groups hop:
+    aws_security_group.db ingress tcp 5432 from 0.0.0.0/0
+  What to do: If this is not intended, narrow the rule's source to a private range, such as your VPC CIDR.
+
+  Hop               Before       After
+  Security groups   denies       allows      aws_security_group.db
+  Target            not checked  allows      aws_instance.db
+  NACL outbound     not checked  allows      default NACL of aws_vpc.main
+  Return route      not checked  allows      aws_route_table.public
+  4 other hops are the same before and after.
+```
+
+In pipes and CI, the text output is stable plain text with every hop:
 
 ```text
 vpcdiff: 1 added, 0 removed, 0 changed, 0 unknown, 0 unchanged
@@ -35,23 +70,20 @@ ADDED     internet -> aws_instance.db  tcp/5432
   before: blocked at security-group: no ingress rule of aws_security_group.db allows tcp/5432 from the internet
   after:  allowed from internet
     public-ip        allow   aws_instance.db associate_public_ip_address = true
-    internet-gateway allow   aws_internet_gateway.main is attached to aws_vpc.main
-    nacl-inbound     allow   default NACL of aws_vpc.main ingress rule 100: allow all traffic (AWS default)
-    security-group   allow   aws_security_group.db ingress tcp 5432 from 0.0.0.0/0
-    nacl-outbound    allow   default NACL of aws_vpc.main egress rule 100: allow all traffic (AWS default)
-    route            allow   aws_route_table.public route 0.0.0.0/0 -> aws_internet_gateway.main
+    ...
 ```
 
 Options: `--format text|json|markdown`, `--all` (also unchanged paths),
-`--fail-on added|changed|unknown|never` (default `added`). Exit codes: `0` no failing
-paths, `1` failing paths, `2` usage or input error.
+`--fail-on added|changed|unknown|never` (default `added`). Set `NO_COLOR=1` to turn
+color off. Exit codes: `0` no failing paths, `1` failing paths, `2` usage or input
+error.
 
 ## Interfaces
 
 | Interface | Use |
 |---|---|
-| Web viewer | Load a plan in the browser. Graph diff, path inspector, "can A reach B?" query. The plan never leaves your device. |
-| CLI | Text or JSON output. Exit code `1` when the plan adds new exposure. |
+| Web viewer | Load a plan in the browser. Each path with a verdict in plain words and a hop table. The plan never leaves your device. |
+| CLI | Guided mode in a terminal, or text, JSON, or Markdown output. Exit code `1` when the plan adds new exposure. |
 | GitHub Action | Posts a reachability summary on the pull request. |
 
 All three use the same engine.

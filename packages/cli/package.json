@@ -8,7 +8,9 @@
     "build": "esbuild src/bin.ts --bundle --platform=node --target=node24 --format=esm --outfile=dist/vpcdiff.mjs --legal-comments=none"
   },
   "dependencies": {
-    "@vpcdiff/engine": "workspace:*"
+    "@clack/prompts": "^1.8.1",
+    "@vpcdiff/engine": "workspace:*",
+    "picocolors": "^1.1.1"
   },
   "devDependencies": {
     "@types/node": "^24.19.2"

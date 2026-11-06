@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { analyze, type Path } from "@vpcdiff/engine";
 import { describe, expect, it } from "vitest";
-import { COLUMNS, lanesOf, rowsDiffer } from "./graph.ts";
+import { COLUMNS, lanesOf, rowsDiffer } from "@vpcdiff/engine/lanes";
 
 const pathOf = (fixture: string, id: string): Path => {
   const plan: unknown = JSON.parse(readFileSync(join(import.meta.dirname, "../../../fixtures", fixture, "plan.json"), "utf8"));

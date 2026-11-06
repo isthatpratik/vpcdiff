@@ -1,4 +1,4 @@
-import type { Decision, HopKind, Outcome, Path } from "@vpcdiff/engine";
+import type { Decision, HopKind, Outcome, Path } from "./types.js";
 
 export type ColumnKey = "source" | HopKind | "target";
 

@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { analyze, type Path, type Result } from "@vpcdiff/engine";
 import { describe, expect, it } from "vitest";
-import { pathMarkdown, planMarkdown, portLabel, serviceOf, verdictOf, whoText } from "./explain.ts";
+import { pathMarkdown, planMarkdown, portLabel, serviceOf, verdictOf, whoText } from "@vpcdiff/engine/explain";
 
 const resultOf = (fixture: string): Result => analyze(JSON.parse(readFileSync(join(import.meta.dirname, "../../../fixtures", fixture, "plan.json"), "utf8")) as unknown);
 const pathOf = (fixture: string, id: string): Path => {

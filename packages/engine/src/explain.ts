@@ -1,8 +1,8 @@
 // Plain-language explanations for the viewer: the verdict for a path in one sentence,
 // the rule that caused it, what to do next, short definitions for tooltips, and a
 // Markdown summary to paste into a pull request. Pure functions of the engine result.
-import type { Path, Result } from "@vpcdiff/engine";
-import { COLUMNS, lanesOf, type CellState, type ColumnKey } from "./graph.ts";
+import type { Path, Result } from "./types.js";
+import { COLUMNS, lanesOf, type CellState, type ColumnKey } from "./lanes.js";
 
 /** Well-known ports, so "tcp/5432" can also say "PostgreSQL". */
 const SERVICES: Record<string, string> = {

@@ -1,7 +1,7 @@
 // Status vocabulary from DESIGN.md (section 9): one label and one color per meaning.
 import type { Change, Verdict } from "@vpcdiff/engine";
 import { Tag, type TagHue, type TagStatus } from "@/components/litt/tag";
-import type { CellState } from "../graph.ts";
+import type { CellState } from "@vpcdiff/engine/lanes";
 
 export const CHANGE_LABEL: Record<Change, string> = { added: "New exposure", removed: "Closed", changed: "Sources changed", unknown: "Unknown", unchanged: "No change" };
 export const STAT_LABEL: Record<Change, string> = { added: "Opened", removed: "Closed", changed: "Changed", unknown: "Unknown", unchanged: "Same" };
