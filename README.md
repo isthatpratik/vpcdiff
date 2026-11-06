@@ -10,6 +10,7 @@
 <p align="center">
   <a href="https://github.com/isthatpratik/vpcdiff/actions/workflows/ci.yml"><img alt="CI status" src="https://github.com/isthatpratik/vpcdiff/actions/workflows/ci.yml/badge.svg"></a>
   <a href="https://github.com/isthatpratik/vpcdiff/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/isthatpratik/vpcdiff?color=111111"></a>
+  <a href="https://github.com/marketplace/actions/vpcdiff"><img alt="GitHub Marketplace" src="https://img.shields.io/badge/marketplace-vpcdiff-111111?logo=github"></a>
   <a href="LICENSE"><img alt="Apache 2.0 license" src="https://img.shields.io/badge/license-Apache%202.0-111111"></a>
 </p>
 
@@ -60,6 +61,7 @@ AWS account or credentials, and the viewer never sends your plan anywhere.
 
 It comments on the pull request, writes the report to the job summary, and fails the
 check when the plan opens a path. Full setup: [`packages/action`](packages/action/README.md).
+Listed on the [GitHub Marketplace](https://github.com/marketplace/actions/vpcdiff).
 
 ## Quick start (CLI)
 
