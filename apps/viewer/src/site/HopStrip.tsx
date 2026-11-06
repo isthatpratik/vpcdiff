@@ -1,6 +1,7 @@
 // Four cells, one per thing the engine reads, each with a small line drawing of how AWS
 // decides it (after the feature strip on unkey.com). Static drawings in ink: the one
-// thing that decides the answer is filled, the rest is outline or hatch.
+// thing that decides the answer is filled, the rest is outline. Labels are drawn at 18
+// units so they render at about 12px in a 270px column.
 import type { ReactNode } from "react";
 
 const MONO = "var(--litt-font-mono)";
@@ -8,53 +9,37 @@ const INK = "var(--litt-fg)";
 const SUB = "var(--litt-fg-subtle)";
 const CANVAS = "var(--litt-canvas)";
 
-function Lines() {
-  return (
-    <g stroke={INK} strokeOpacity={0.08}>
-      {Array.from({ length: 9 }, (_, i) => (
-        <line key={i} x1={0} x2={400} y1={20 + i * 26} y2={20 + i * 26} />
-      ))}
-    </g>
-  );
-}
+const FS = 18; // label size in drawing units; the drawings render at ~0.68x, so about 12px
 
-function Box({ x, y, label, solid = false }: { x: number; y: number; label: string; solid?: boolean }) {
-  const w = label.length * 8 + 20;
+function Box({ x, y, label, solid = false, dim = false }: { x: number; y: number; label: string; solid?: boolean; dim?: boolean }) {
+  const w = label.length * 10.8 + 22;
   return (
-    <g>
-      <rect x={x} y={y - 13} width={w} height={26} fill={solid ? INK : CANVAS} stroke={INK} strokeOpacity={solid ? 1 : 0.4} />
-      <text x={x + 10} y={y + 5} fontFamily={MONO} fontSize={13} fill={solid ? CANVAS : INK}>
+    <g opacity={dim ? 0.55 : 1}>
+      <rect x={x} y={y - 17} width={w} height={34} fill={solid ? INK : CANVAS} stroke={INK} strokeOpacity={solid ? 1 : 0.45} />
+      <text x={x + 11} y={y + 6} fontFamily={MONO} fontSize={FS} fill={solid ? CANVAS : INK}>
         {label}
       </text>
     </g>
   );
 }
 
-/** Route tables: the most specific route wins. */
+/** Route tables: the packet takes the most specific route that matches it. */
 function Routes() {
   return (
-    <svg viewBox="0 0 400 240" className="w-full" aria-hidden="true">
-      <Lines />
-      <g fill="none" stroke={INK} strokeOpacity={0.45}>
-        <path d="M110 124 H150 Q160 124 160 114 V70 Q160 60 170 60 H200" />
-        <path d="M110 124 H200" />
-        <path d="M110 124 H150 Q160 124 160 134 V178 Q160 188 170 188 H200" />
+    <svg viewBox="0 0 400 230" className="w-full" aria-hidden="true">
+      <g fill="none" stroke={INK} strokeOpacity={0.3}>
+        <path d="M134 115 H150 Q162 115 162 103 V47 Q162 35 174 35 H190" />
+        <path d="M134 115 H190" />
       </g>
-      <path d="M110 124 H150 Q160 124 160 134 V178 Q160 188 170 188 H200" fill="none" stroke={INK} strokeWidth={1.5} />
-      <Box x={14} y={124} label="dst" solid />
-      {[
-        [160, 60],
-        [110, 124],
-        [160, 188],
-      ].map(([x = 0, y = 0], i) => (
-        <rect key={i} x={x - 3} y={y - 3} width={6} height={6} fill={INK} opacity={i === 2 ? 1 : 0.5} />
-      ))}
-      <Box x={200} y={60} label="10.0.0.0/16 local" />
-      <Box x={200} y={124} label="10.0.1.0/24 nat" />
-      <Box x={200} y={188} label="0.0.0.0/0 igw" solid />
-      <text x={14} y={226} fontFamily={MONO} fontSize={12} fill={SUB}>
-        dst 52.14.9.20 → longest match
-      </text>
+      <path d="M134 115 H150 Q162 115 162 127 V183 Q162 195 174 195 H190" fill="none" stroke={INK} strokeWidth={2} />
+      <Box x={4} y={115} label="52.14.9.20" solid />
+      <Box x={190} y={35} label="10.0.0.0/16" dim />
+      <Box x={190} y={115} label="10.0.1.0/24" dim />
+      <Box x={190} y={195} label="0.0.0.0/0 igw" solid />
+      <g fontFamily={MONO} fontSize={16} fill={SUB}>
+        <text x={190} y={72}>no match</text>
+        <text x={190} y={152}>no match</text>
+      </g>
     </svg>
   );
 }
@@ -62,23 +47,30 @@ function Routes() {
 /** Security groups: every rule of every group on the resource, joined. */
 function Groups() {
   const rows = [
-    ["tcp", "443", "0.0.0.0/0", "allow"],
-    ["tcp", "22", "10.0.0.0/16", "allow"],
-    ["tcp", "5432", "0.0.0.0/0", "new"],
-    ["tcp", "5432", "10.0.0.0/16", "allow"],
-    ["udp", "53", "10.0.0.0/16", "allow"],
+    ["443", "0.0.0.0/0", "allow"],
+    ["22", "10.0.0.0/16", "allow"],
+    ["5432", "0.0.0.0/0", "new"],
+    ["5432", "10.0.0.0/16", "allow"],
   ];
+  const X = [10, 92, 316];
   return (
-    <svg viewBox="0 0 400 240" className="w-full" aria-hidden="true">
-      <line x1={0} x2={400} y1={22} y2={22} stroke={INK} strokeOpacity={0.2} />
+    <svg viewBox="0 0 400 230" className="w-full" aria-hidden="true">
+      <g fontFamily={MONO} fontSize={16} fill={SUB}>
+        {["port", "from", "rule"].map((h, j) => (
+          <text key={h} x={X[j]} y={22}>
+            {h}
+          </text>
+        ))}
+      </g>
+      <line x1={0} x2={400} y1={36} y2={36} stroke={INK} strokeOpacity={0.2} />
       {rows.map((r, i) => {
-        const y = 52 + i * 38;
-        const hi = r[3] === "new";
+        const y = 76 + i * 44;
+        const hi = r[2] === "new";
         return (
           <g key={i}>
-            {hi && <rect x={0} y={y - 22} width={400} height={34} fill={INK} />}
+            {hi && <rect x={0} y={y - 27} width={400} height={40} fill={INK} />}
             {r.map((c, j) => (
-              <text key={j} x={[12, 70, 140, 330][j]} y={y} fontFamily={MONO} fontSize={14} fill={hi ? CANVAS : INK} opacity={hi ? 1 : 0.55}>
+              <text key={j} x={X[j]} y={y} fontFamily={MONO} fontSize={FS} fill={hi ? CANVAS : INK} opacity={hi ? 1 : 0.6}>
                 {c}
               </text>
             ))}
@@ -89,83 +81,86 @@ function Groups() {
   );
 }
 
-/** Network ACLs: rules in number order, first match decides, both directions. */
+/** Network ACLs: rules in number order; the first one that matches decides. */
 function Acls() {
+  const rules = [
+    ["100", "allow 5432", true],
+    ["200", "deny all", false],
+    ["*", "deny all", false],
+  ] as const;
   return (
-    <svg viewBox="0 0 400 240" className="w-full" aria-hidden="true">
-      <rect x={70} y={20} width={260} height={200} fill="none" stroke={INK} strokeOpacity={0.15} />
-      <rect x={110} y={50} width={180} height={140} fill="none" stroke={INK} strokeOpacity={0.3} />
-      <rect x={150} y={80} width={100} height={80} fill="none" stroke={INK} strokeOpacity={0.55} />
-      <rect x={183} y={103} width={34} height={34} fill={INK} />
-      {[
-        [70, 20],
-        [330, 220],
-      ].map(([x = 0, y = 0], i) => (
-        <rect key={i} x={x - 7} y={y - 7} width={14} height={14} fill={CANVAS} stroke={INK} strokeOpacity={0.6} />
-      ))}
-      <g fontFamily={MONO} fontSize={12} fill={SUB}>
-        <text x={78} y={40}>
-          * deny
-        </text>
-        <text x={118} y={70}>
-          200 deny
-        </text>
-        <text x={158} y={98} fill={INK}>
-          100 allow
-        </text>
-      </g>
+    <svg viewBox="0 0 400 230" className="w-full" aria-hidden="true">
+      {rules.map(([n, what, hit], i) => {
+        const y = 40 + i * 70;
+        return (
+          <g key={n}>
+            <rect x={4} y={y - 22} width={392} height={44} fill={hit ? INK : CANVAS} stroke={INK} strokeOpacity={hit ? 1 : 0.3} />
+            <text x={20} y={y + 6} fontFamily={MONO} fontSize={FS} fill={hit ? CANVAS : INK} opacity={hit ? 1 : 0.55}>
+              {n.padEnd(5, " ")}
+              {what}
+            </text>
+            <text x={380} y={y + 6} textAnchor="end" fontFamily={MONO} fontSize={16} fill={hit ? CANVAS : SUB}>
+              {hit ? "first match" : "not read"}
+            </text>
+          </g>
+        );
+      })}
+      <path d="M200 62 V88 M200 132 V158" stroke={INK} strokeOpacity={0.25} strokeDasharray="3 4" />
     </svg>
   );
 }
 
-/** Before and after: one bar per path, the new one drawn solid. */
+/** Before and after: the same path, hop by hop, on each side of the plan. */
 function BeforeAfter() {
-  const bars = [0.42, 0.66, 0.54, 1, 0.62, 0.34];
+  const hops = ["ip", "igw", "nacl", "sg", "out", "rtb"];
+  const before = [true, true, true, false, null, null]; // null: not reached
+  const x = (i: number) => 92 + i * 52;
+  const lane = (y: number, cells: (boolean | null)[]) =>
+    cells.map((c, i) => (
+      <rect key={i} x={x(i) - 9} y={y - 9} width={18} height={18} fill={c ? INK : CANVAS} stroke={INK} strokeOpacity={c === null ? 0.25 : 1} strokeDasharray={c === null ? "3 3" : undefined} />
+    ));
   return (
-    <svg viewBox="0 0 400 240" className="w-full" aria-hidden="true">
-      <defs>
-        <pattern id="hop-hatch" width={6} height={4} patternUnits="userSpaceOnUse">
-          <line x1={0} x2={6} y1={0.5} y2={0.5} stroke={INK} strokeOpacity={0.45} />
-        </pattern>
-      </defs>
-      {bars.map((h, i) => {
-        const x = 30 + i * 60;
-        const hh = h * 170;
-        return <rect key={i} x={x} y={200 - hh} width={34} height={hh} fill={i === 3 ? INK : "url(#hop-hatch)"} />;
-      })}
-      <polyline points={bars.map((h, i) => `${47 + i * 60},${200 - h * 120}`).join(" ")} fill="none" stroke={INK} strokeOpacity={0.6} />
-      {bars.map((h, i) => (
-        <rect key={i} x={44 + i * 60} y={197 - h * 120} width={6} height={6} fill={i === 3 ? CANVAS : INK} stroke={INK} />
-      ))}
-      <line x1={0} x2={400} y1={200} y2={200} stroke={INK} strokeOpacity={0.2} />
-      <g fontFamily={MONO} fontSize={12} fill={SUB}>
-        {["igw", "nacl", "sg", "new", "out", "rtb"].map((t, i) => (
-          <text key={t} x={47 + i * 60} y={224} textAnchor="middle" fill={i === 3 ? INK : SUB}>
-            {t}
+    <svg viewBox="0 0 400 230" className="w-full" aria-hidden="true">
+      <rect x={x(3) - 22} y={18} width={44} height={150} fill={INK} opacity={0.08} />
+      <g fontFamily={MONO} fontSize={16} fill={SUB}>
+        <text x={4} y={66}>before</text>
+        <text x={4} y={136}>after</text>
+      </g>
+      <line x1={x(0)} x2={x(5)} y1={61} y2={61} stroke={INK} strokeOpacity={0.25} />
+      <line x1={x(0)} x2={x(5)} y1={131} y2={131} stroke={INK} strokeOpacity={0.6} />
+      {lane(61, before)}
+      {lane(131, [true, true, true, true, true, true])}
+      <g fontFamily={MONO} fontSize={16} textAnchor="middle">
+        {hops.map((h, i) => (
+          <text key={h} x={x(i)} y={196} fill={i === 3 ? INK : SUB}>
+            {h}
           </text>
         ))}
       </g>
+      <text x={x(3)} y={222} textAnchor="middle" fontFamily={MONO} fontSize={16} fill={INK}>
+        changed
+      </text>
     </svg>
   );
 }
 
 const CELLS: { label: string; lead: string; body: string; art: () => ReactNode }[] = [
-  { label: "Route tables", lead: "Longest prefix wins.", body: "Each table is read the way AWS reads it: the most specific route decides where traffic goes.", art: Routes },
-  { label: "Security groups", lead: "Every rule, every group.", body: "All groups on a resource are joined before a path is judged, as AWS does.", art: Groups },
-  { label: "Network ACLs", lead: "First match decides.", body: "Rules run in number order, inbound and again for the reply on ephemeral ports.", art: Acls },
-  { label: "Before and after", lead: "One answer per path.", body: "Reachable, blocked, or unknown, on both sides of the plan, with the hop that changed.", art: BeforeAfter },
+  { label: "Route tables", lead: "The most specific route wins.", body: "vpcdiff follows the route AWS would pick.", art: Routes },
+  { label: "Security groups", lead: "Every rule counts.", body: "All groups on the resource are checked together, as AWS does.", art: Groups },
+  { label: "Network ACLs", lead: "The first match decides.", body: "Rules run in number order, in and out.", art: Acls },
+  { label: "Before and after", lead: "Both sides of the plan.", body: "Each path is checked twice, and the hop that changed is shown.", art: BeforeAfter },
 ];
 
 export function HopStrip() {
   return (
     <div className="grid gap-px border-t border-litt-line bg-litt-line sm:grid-cols-2 lg:grid-cols-4">
       {CELLS.map((c) => (
-        <article key={c.label} className="grid content-between gap-8 bg-litt-canvas px-6 py-8 md:px-8 md:py-10">
+        <article key={c.label} className="grid content-start gap-8 bg-litt-canvas px-6 py-8 md:px-8 md:py-10">
           <div className="grid gap-6">
             <h3 className="font-litt-mono text-litt-caption text-litt-fg-subtle">{c.label}</h3>
             <c.art />
           </div>
-          <p className="text-base leading-relaxed text-litt-fg-muted">
+          <p className="text-base leading-relaxed text-litt-fg-muted text-pretty">
             <span className="text-litt-fg">{c.lead}</span> {c.body}
           </p>
         </article>
