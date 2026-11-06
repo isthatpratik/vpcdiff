@@ -1302,9 +1302,11 @@ html[data-theme="dark"][data-material] {
   }
 }
 
-/* Shape: litt's controls 4px rounder than its default (DESIGN.md, section 5). */
+/* Shape: litt's controls at 6px, the landing page's button radius (DESIGN.md, section 5).
+   Buttons lie flat: no glow around the primary. */
 :root {
-  --litt-radius-control: 8px;
+  --litt-radius-control: 6px;
+  --litt-glow: none;
 }
 
 /* vpcdiff base: the page is litt's canvas. See DESIGN.md. */

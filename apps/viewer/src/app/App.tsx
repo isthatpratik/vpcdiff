@@ -6,7 +6,6 @@ import { ENGINE_VERSION, type Path, type Result } from "@vpcdiff/engine";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEvent, type ReactNode } from "react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/litt/accordion";
 import { Button } from "@/components/litt/button";
-import { Callout } from "@/components/litt/callout";
 import { ArrowRightIcon, ArrowUpRightIcon, AtSignIcon, BoxIcon, CloudIcon, DatabaseIcon, FileIcon, FilterIcon, GitBranchIcon, GlobeIcon, LayersIcon, LockIcon, MinusIcon, PlusIcon, SearchIcon, ShieldIcon } from "@/components/litt/icons";
 import { Segmented } from "@/components/litt/segmented";
 import { Loading, Skeleton } from "@/components/litt/states";
@@ -117,13 +116,19 @@ export function App() {
 function TopBar({ name, onNew }: { name?: string | undefined; onNew?: (() => void) | undefined }) {
   return (
     <header className="flex h-14 min-w-0 items-center gap-4 border-b border-litt-line px-4 sm:px-5">
-      <a href="../" aria-label="vpcdiff home" className="shrink-0 rounded-litt-control focus-visible:outline-2 focus-visible:outline-litt-focus">
+      <a href="../" aria-label="vpcdiff home" className="flex shrink-0 items-center rounded-litt-control focus-visible:outline-2 focus-visible:outline-litt-focus">
         <Wordmark size={17} />
       </a>
-      <span aria-hidden="true" className="hidden text-litt-line-strong sm:inline">
+      {/* The breadcrumb sits 1px lower so its baseline matches the larger wordmark's. */}
+      <span aria-hidden="true" className="hidden translate-y-px text-litt-line-strong sm:inline">
         /
       </span>
-      <nav aria-label="Breadcrumb" className="hidden min-w-0 items-center gap-2 text-litt-small sm:flex">
+      {name && (
+        <span className="min-w-0 translate-y-px truncate font-litt-mono text-litt-caption text-litt-fg-muted sm:hidden" title={name}>
+          {name}
+        </span>
+      )}
+      <nav aria-label="Breadcrumb" className="hidden min-w-0 translate-y-px items-center gap-2 text-litt-small sm:flex">
         {name ? (
           <>
             <span className="text-litt-fg-subtle">Viewer</span>
@@ -141,12 +146,13 @@ function TopBar({ name, onNew }: { name?: string | undefined; onNew?: (() => voi
         )}
       </nav>
       <div className="ml-auto flex shrink-0 items-center gap-2">
-        <span className="hidden items-center gap-2 rounded-full border border-litt-line px-3 py-1 text-litt-caption text-litt-fg-subtle md:inline-flex" title="The plan is read in this tab. It is never uploaded.">
+        <span className="hidden h-8 items-center gap-2 rounded-[6px] border border-litt-line px-3 text-litt-caption text-litt-fg-subtle md:inline-flex" title="The plan is read in this tab. It is never uploaded.">
           <LockIcon aria-hidden="true" className="size-3.5" />
           Local only
         </span>
         {onNew && (
-          <Button size="sm" variant="secondary" icon={<PlusIcon />} onClick={onNew} aria-label="Open plan">
+          <Button size="sm" variant="ghost" icon={<PlusIcon />} onClick={onNew} className="shadow-[inset_0_0_0_1px_var(--litt-line-strong)] hover:bg-litt-surface-2 transition-[background-color,color,translate,scale,box-shadow] duration-150 active:scale-[0.97] motion-reduce:active:scale-100">
+            <span className="sm:hidden">Open</span>
             <span className="hidden sm:inline">Open plan</span>
           </Button>
         )}
@@ -182,7 +188,7 @@ function Start({ error, onFile, onExample }: { error?: string | undefined; onFil
   return (
     <div className="h-full overflow-auto">
       <div className="mx-auto grid max-w-[1120px] gap-14 px-5 py-14 sm:px-8 lg:py-20 [&>*]:min-w-0">
-        <div className="grid items-center gap-10 lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)] [&>*]:min-w-0">
+        <div className="grid items-start gap-10 lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)] [&>*]:min-w-0">
           <div className="grid content-start gap-6">
             <p className={`flex items-center gap-3 ${LABEL}`}>
               <span aria-hidden="true" className="size-2 bg-litt-fg" />
@@ -201,9 +207,9 @@ function Start({ error, onFile, onExample }: { error?: string | undefined; onFil
             </p>
           </div>
 
-          <div className="relative border border-litt-line bg-litt-surface-1 p-2">
+          <div className="relative grid gap-4">
             <div
-              className={`relative grid min-h-[220px] place-items-center overflow-hidden border border-dashed px-6 py-10 sm:min-h-[300px] sm:py-12 text-center transition-colors duration-200 ${over ? "border-litt-fg bg-litt-surface-2" : "border-litt-line-strong"}`}
+              className={`relative grid min-h-[220px] place-items-center overflow-hidden border border-dashed px-6 py-10 sm:min-h-[300px] sm:py-12 text-center transition-colors duration-200 ${over ? "border-litt-fg bg-litt-surface-2" : error ? "border-litt-danger/60 bg-litt-surface-1" : "border-litt-line-strong bg-litt-surface-1"}`}
               onDragEnter={() => setOver(true)}
               onDragLeave={() => setOver(false)}
               onDrop={() => setOver(false)}
@@ -217,9 +223,14 @@ function Start({ error, onFile, onExample }: { error?: string | undefined; onFil
                   <p className="font-display text-xl font-normal tracking-[-0.02em] text-litt-fg">Drop plan.json here</p>
                   <p className="text-litt-small text-litt-fg-subtle">The output of terraform show -json</p>
                 </div>
-                <Button variant="primary" onClick={() => input.current?.click()}>
+                <Button variant="primary" onClick={() => input.current?.click()} className="transition-[background-color,color,translate,scale,box-shadow] duration-150 active:scale-[0.97] motion-reduce:active:scale-100">
                   Choose a file
                 </Button>
+                {error && (
+                  <p role="alert" className="max-w-[44ch] text-litt-small leading-relaxed text-litt-danger">
+                    That file could not be read. {error}
+                  </p>
+                )}
                 <input
                   ref={input}
                   type="file"
@@ -234,7 +245,7 @@ function Start({ error, onFile, onExample }: { error?: string | undefined; onFil
                 />
               </div>
             </div>
-            <div className="grid gap-2 border-t border-litt-line px-3 pt-3 pb-2">
+            <div className="grid gap-2 px-1">
               <p className={LABEL}>Make the file</p>
               <ol className="grid gap-1">
                 {steps.map((c, i) => (
@@ -251,8 +262,6 @@ function Start({ error, onFile, onExample }: { error?: string | undefined; onFil
           </div>
         </div>
 
-        {error && <Callout tone="danger" title="That file could not be read" description={error} live />}
-
         <section className="grid gap-5" aria-labelledby="examples">
           <h2 id="examples" className={LABEL}>
             Or open an example plan
@@ -263,9 +272,9 @@ function Start({ error, onFile, onExample }: { error?: string | undefined; onFil
                 <button
                   type="button"
                   onClick={() => onExample(ex.id)}
-                  className={`group grid h-full w-full content-between gap-8 p-5 text-left transition-colors duration-300 ${EASE} hover:bg-litt-surface-1 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-litt-focus active:bg-litt-surface-2`}
+                  className={`group grid h-full w-full content-between gap-8 p-5 text-left transition-[background-color,scale] duration-300 ${EASE} hover:bg-litt-surface-1 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-litt-focus active:scale-[0.99] active:bg-litt-surface-2 motion-reduce:active:scale-100`}
                 >
-                  <span className={`justify-self-start rounded-full border px-2.5 py-0.5 text-litt-caption ${EXAMPLE_TONE[ex.id] ?? "border-litt-line text-litt-fg-muted"}`}>{EXAMPLE_TAG[ex.id]}</span>
+                  <span className={`justify-self-start rounded-[4px] border px-2 py-0.5 text-litt-caption ${EXAMPLE_TONE[ex.id] ?? "border-litt-line text-litt-fg-muted"}`}>{EXAMPLE_TAG[ex.id]}</span>
                   <span className="grid gap-1.5">
                     <span className="flex items-center justify-between gap-2 text-litt-small font-medium text-litt-fg">
                       {ex.title}
@@ -322,7 +331,7 @@ const TYPE_NAME: Record<string, string> = { aws_instance: "EC2 instance", aws_db
 function Term({ children, help }: { children: ReactNode; help: string }) {
   return (
     <Tooltip content={help}>
-      <span tabIndex={0} className="cursor-help underline decoration-litt-line-strong decoration-dotted underline-offset-4 focus-visible:outline-2 focus-visible:outline-litt-focus">
+      <span tabIndex={0} className="cursor-help underline decoration-transparent decoration-dotted underline-offset-4 transition-[text-decoration-color] duration-150 hover:decoration-litt-fg-subtle focus-visible:decoration-litt-fg-subtle focus-visible:outline-2 focus-visible:outline-litt-focus">
         {children}
       </span>
     </Tooltip>
@@ -395,7 +404,7 @@ function Workspace({ name, result, sha256: hash }: { name: string; result: Resul
               aria-pressed={filter === c.key}
               onClick={() => setFilter(filter === c.key ? "changes" : c.key)}
               title={c.help}
-              className={`grid content-start gap-1.5 bg-litt-canvas px-3 py-4 text-left transition-colors duration-150 enabled:hover:bg-litt-surface-1 focus-visible:z-10 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-litt-fg disabled:cursor-default ${filter === c.key ? "bg-litt-surface-2" : ""}`}
+              className={`grid content-start gap-1.5 bg-litt-canvas px-2 py-3 text-left sm:px-3 sm:py-4 transition-colors duration-150 enabled:hover:bg-litt-surface-1 focus-visible:z-10 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-litt-fg disabled:cursor-default ${filter === c.key ? "bg-litt-surface-2" : ""}`}
             >
               <span className={`font-display text-2xl leading-none font-normal tabular-nums ${c.value ? c.tone : "text-litt-fg-subtle"}`}>{c.value}</span>
               <span className="text-litt-caption leading-tight text-litt-fg-subtle">{c.label}</span>
@@ -518,7 +527,10 @@ function PathRow({ path, current, onSelect }: { path: Path; current: boolean; on
       <span className="flex min-w-0 items-center gap-2.5">
         <TargetIcon type={path.toType} className="size-4" />
         <span className="truncate font-litt-mono text-litt-small text-litt-fg">{path.to}</span>
-        <span className={`ml-auto shrink-0 text-litt-caption ${TONE_TEXT[v.tone]}`}>{path.change === "unchanged" ? (path.outageRisk?.length ? "Outage risk" : "No change") : CHANGE_WORD[path.change]}</span>
+        <span className="ml-auto flex shrink-0 items-center gap-1.5 text-litt-caption text-litt-fg-muted">
+          <span aria-hidden="true" className={`size-1.5 rounded-full ${TONE_BAR[v.tone]}`} />
+          {path.change === "unchanged" ? (path.outageRisk?.length ? "Outage risk" : "No change") : CHANGE_WORD[path.change]}
+        </span>
       </span>
       <span className="flex flex-wrap items-center gap-x-2 pl-[26px] text-litt-caption text-litt-fg-subtle">
         <span className="font-litt-mono">{portLabel(path)}</span>
@@ -678,11 +690,11 @@ function SideDetail({ title, cell }: { title: string; cell: Cell }) {
 function VerdictPanel({ path }: { path: Path }) {
   const v = verdictOf(path);
   return (
-    <section aria-label="Verdict" className="relative grid gap-4 border border-litt-line bg-litt-surface-1 p-5 pl-6">
+    <section aria-label="Verdict" className="relative grid gap-4 border border-litt-line bg-litt-surface-1 p-4 pl-5">
       <span aria-hidden="true" className={`absolute top-0 bottom-0 left-0 w-0.5 ${TONE_BAR[v.tone]}`} />
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="grid gap-1.5">
-          <p className={`font-display text-xl font-normal tracking-[-0.01em] ${TONE_TEXT[v.tone]}`}>{v.title}</p>
+          <p className="font-display text-xl font-normal tracking-[-0.01em] text-litt-fg">{v.title}</p>
           <p className="max-w-[68ch] text-base leading-relaxed text-litt-fg">{v.body}</p>
           {v.doubt && (
             <p className="max-w-[68ch] text-litt-small leading-relaxed text-litt-fg-muted">
@@ -706,10 +718,8 @@ function VerdictPanel({ path }: { path: Path }) {
       )}
       {v.action && (
         <div className="grid gap-2 border-t border-litt-line pt-4">
-          <p className="text-litt-small leading-relaxed text-litt-fg-muted">
-            <span className="text-litt-fg">What to do · </span>
-            {v.action}
-          </p>
+          <p className="text-litt-caption text-litt-fg-subtle">What to do</p>
+          <p className="max-w-[72ch] text-litt-small leading-relaxed text-litt-fg">{v.action}</p>
           {v.snippet && (
             <div className="flex items-start gap-2 justify-self-start">
               <pre className="rounded-[6px] border border-litt-line bg-litt-canvas px-3 py-2 font-litt-mono text-litt-caption text-litt-fg">{v.snippet}</pre>
@@ -766,11 +776,11 @@ function PathDetail({ path }: { path: Path }) {
           </p>
           <h2 id="detail-title" className="font-display text-2xl leading-tight font-normal tracking-[-0.02em] text-litt-fg sm:text-3xl">
             <span className="text-litt-fg-subtle">internet → </span>
-            <span className="font-litt-mono text-[0.85em] break-all">{path.to}</span>
+            <span className="font-litt-mono text-[0.8em] break-all align-baseline">{path.to}</span>
           </h2>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-            {path.change !== "unchanged" ? <ChangeTag change={path.change} /> : <span className={`rounded-full border border-litt-line px-2.5 py-0.5 text-litt-caption ${TONE_TEXT[verdictOf(path).tone]}`}>{verdictOf(path).title}</span>}
-            <span className="rounded-full border border-litt-line px-2.5 py-0.5 font-litt-mono text-litt-caption text-litt-fg-muted">{portLabel(path)}</span>
+            {path.change !== "unchanged" ? <ChangeTag change={path.change} /> : <span className={`rounded-[4px] border border-litt-line px-2 py-0.5 text-litt-caption ${TONE_TEXT[verdictOf(path).tone]}`}>Outage risk</span>}
+            <span className="rounded-[4px] border border-litt-line px-2 py-0.5 font-litt-mono text-litt-caption text-litt-fg-muted">{portLabel(path)}</span>
             <span className="text-litt-small text-litt-fg-subtle">
               {changeWords(path)}
             </span>

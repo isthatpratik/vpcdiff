@@ -218,6 +218,16 @@ Fonts load from Google Fonts (see section 10 for what that means for privacy).
   (with a Terraform snippet when there is a standard fix), and "Copy for PR" as
   Markdown. Then the path strip with a legend, and the hop table (ADR 0008): hops that
   differ are open and marked; hops that are the same fold behind one toggle.
+- **Controls:** buttons and fields use the landing page's 6 px radius (litt's control
+  radius is set to 6 px), lie flat with no glow, and scale to 0.97 on press. Secondary
+  buttons are outlines. Tags and chips are 4 px; panels and cells stay square. Color
+  appears once per fact: the bar, the tag, and the counter carry it; titles and list
+  labels are ink, with a small colored dot in the list.
+- **App bar:** the wordmark link is a flex box so the mark centers in the bar, and the
+  breadcrumb sits 1 px lower so its baseline matches the larger wordmark's. On phones
+  the file name shows beside the wordmark and the button reads "Open".
+- **Start:** one dashed drop zone on the dot grid (no outer frame), both columns aligned
+  at the top, the two steps under it, and errors shown inside the zone.
 - **Trust:** the list is sorted most serious first (opened, unknown, changed, outage
   risk, closed; open to every address before some; admin and database ports first).
   Unknown is amber, never the grey of a zero. Under the counters, a scope line says what
