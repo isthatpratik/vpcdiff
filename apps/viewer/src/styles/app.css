@@ -1266,48 +1266,48 @@ html.site {
   font-family: var(--vd-font-display);
 }
 
-/* Signal Cyan, the vpcdiff accent (DESIGN.md, section 3). It replaces litt's Blue 4 in
-   both themes; contrast is measured in DESIGN.md. React Flow puts a .light or .dark
-   class on its root, and litt's tokens match those classes too, so they are listed. */
+/* Monochrome ink, the vpcdiff accent (DESIGN.md, section 3). The accent is the text
+   color itself: black on light, white on dark. Color is kept for status only (new
+   exposure, closed, outage risk). React Flow puts a .light or .dark class on its root,
+   and litt's tokens match those classes too, so they are listed. */
 :root,
 [data-theme="light"],
 .light,
 html[data-theme="light"][data-material] {
-  --litt-accent: #0e7490;
-  --litt-accent-hover: #155e75;
+  --litt-accent: #0f0f0f;
+  --litt-accent-hover: #2b2b2b;
   --litt-accent-fg: #ffffff;
-  --litt-accent-text: #0e7490;
-  --litt-accent-tint: #e6f4f7;
-  --litt-focus: #0e7490;
+  --litt-accent-text: #0f0f0f;
+  --litt-accent-tint: #f0f0f0;
+  --litt-focus: #0f0f0f;
+  --litt-fg-subtle: #737373;
 }
 [data-theme="dark"],
 .dark,
 html[data-theme="dark"][data-material] {
-  --litt-accent: #22d3ee;
-  --litt-accent-hover: #67e8f9;
-  --litt-accent-fg: #0a0908;
-  --litt-accent-text: #22d3ee;
-  --litt-accent-tint: #082f38;
-  --litt-focus: #22d3ee;
+  --litt-accent: #f8f8f8;
+  --litt-accent-hover: #d4d4d4;
+  --litt-accent-fg: #090909;
+  --litt-accent-text: #f8f8f8;
+  --litt-accent-tint: #1a1a1a;
+  --litt-focus: #f8f8f8;
+  --litt-fg-subtle: #8a8a8a;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --litt-accent: #22d3ee;
-    --litt-accent-hover: #67e8f9;
-    --litt-accent-fg: #0a0908;
-    --litt-accent-text: #22d3ee;
-    --litt-accent-tint: #082f38;
-    --litt-focus: #22d3ee;
+    --litt-accent: #f8f8f8;
+    --litt-accent-hover: #d4d4d4;
+    --litt-accent-fg: #090909;
+    --litt-accent-text: #f8f8f8;
+    --litt-accent-tint: #1a1a1a;
+    --litt-focus: #f8f8f8;
+    --litt-fg-subtle: #8a8a8a;
   }
 }
 
 /* Shape: litt's controls 4px rounder than its default (DESIGN.md, section 5). */
 :root {
   --litt-radius-control: 8px;
-  /* Harbor: the deep ink used for the landing nav capsule and inverted bands. */
-  --vd-harbor: #0b2027;
-  --vd-harbor-2: #12303a;
-  --vd-harbor-line: color-mix(in oklab, white 12%, transparent);
 }
 
 /* vpcdiff base: the page is litt's canvas. See DESIGN.md. */

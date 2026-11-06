@@ -16,8 +16,8 @@ Three words guide every choice:
 
 - **Exact.** Real rule text, real addresses, real ports. Nothing approximate is styled
   as if it were certain.
-- **Calm.** Warm neutral surfaces and one quiet accent. Color appears only when it means
-  something.
+- **Calm.** Black, white, and grays. Color appears only when it means something: a
+  status such as new exposure or outage risk.
 - **Honest.** When the tool does not know, the interface says `unknown` plainly. Nothing
   is decorated to look more confident than it is.
 
@@ -26,66 +26,64 @@ Three words guide every choice:
 ### The mark: open delta
 
 A boundary drawn as a delta (Δ, the symbol for change) with a break in its left side,
-and a Signal Cyan dot in the break: the place where traffic gets in. It says what the
+and a dot in the break: the place where traffic gets in. It says what the
 tool does in one shape: a change to a boundary, and the opening it creates.
 
 | File | Use |
 |---|---|
 | `docs/brand/mark.svg` | Default, on light surfaces |
-| `docs/brand/mark-dark.svg` | On dark surfaces and on Harbor |
+| `docs/brand/mark-dark.svg` | On dark surfaces |
 | `docs/brand/mark-mono.svg`, `mark-mono-dark.svg` | One color |
 | `docs/brand/mark-small.svg` | 20 px and below: thicker stroke, wider break, bigger dot |
-| `docs/brand/favicon.svg` | Favicon and app icon: the small mark on a `#0a0908` tile |
+| `docs/brand/favicon.svg` | Favicon and app icon: the small mark in white on a `#090909` tile |
 
 Rules:
 
-- The dot is always Signal Cyan (or the one mono color). Never a status color.
+- The mark is one color: ink on light, white on dark. The dot is the same color as the
+  line. Never a status color.
 - Keep clear space equal to the dot's diameter on every side.
 - No gradients, glows, outlines, rotation, or a closed (unbroken) triangle.
 
 ### The wordmark
 
 `vpcdiff` in Google Sans, weight 600, tracking -0.02em, lowercase, in ink. The mark sits
-to its left at 1.15 times the cap height, 8 px away. On the landing page the wordmark may
-carry a small `v0.1` tag in Google Sans Code.
+to its left at 1.15 times the cap height, 8 px away.
 
 ## 3. Color
 
 ### Rationale
 
-- **Warm stone neutrals** (litt's canvas and surfaces) carry most pixels. They read as
-  paper and stone rather than a terminal.
-- **Signal Cyan is the one brand and action color.** Cyan is cool and technical (a
-  network cable, a terminal cursor) and sits opposite the warm neutrals, so a little of
-  it leads the eye. It marks the brand, links, focus, selection, and the primary action.
-- **Harbor is the depth color.** A deep navy teal (`#0b2027`) for the navigation capsule
-  and inverted bands. It gives the page contrast and rhythm without adding a hue, and
-  cyan glows on it.
-- **Status colors keep fixed meanings.** Red is new exposure, green is closed exposure,
-  amber is a change or a risk, gray is unknown. Their hues (about 25°, 75°, 145°) stay
-  clear of cyan (about 195°).
-- **Hop decisions use data hues, not status colors.** A hop that allows traffic is teal,
-  one that denies is rose, a partial allow is amber, so "allows" is never read as
-  "closed" and "denies" never as "new exposure".
-- **Tinted surfaces carry meaning on the landing page.** A section about hops sits on a
-  cyan tint, outage risk on an amber tint, privacy on Harbor. Color is used where it
-  says something, never as decoration.
+- **Monochrome.** The brand is black, white, and a short ramp of neutral grays (litt's
+  flat material). It reads like an instrument and lets the product's own content, rule
+  text and addresses, carry the page. The accent is the ink color itself: black on
+  light, white on dark. Links, focus, selection, and the primary button use it.
+- **Two tones of ink do the work of color.** Headings set the claim in ink and the rest
+  of the sentence in the subtle gray, so the eye reads the claim first.
+- **Status colors keep fixed meanings, and only they have hue.** Red is new exposure,
+  green is closed exposure, amber is a change or a risk, gray is unknown. Because the
+  rest of the interface has no hue, a status color is always noticed.
+- **Hop decisions:** a hop that allows traffic is plain ink (a raised tag), one that
+  denies is rose, a partial allow is amber. "Denies" is never red, so it is not read as
+  new exposure.
+- **The landing page opens dark.** The theme switch still offers light and system. The
+  viewer follows the system setting.
 
 ### Tokens
 
-Use the litt variables in code (`var(--litt-…)`, Tailwind `bg-litt-…`); vpcdiff sets
-the accent and adds Harbor:
+Use the litt variables in code (`var(--litt-…)`, Tailwind `bg-litt-…`). The page sets
+`data-material="flat"`, so litt's neutral gray ramp applies; vpcdiff sets the accent and
+the subtle ink:
 
 | Role | Light | Dark | Token |
 |---|---|---|---|
-| Canvas | `#fcfbfa` | `#0a0908` | `--litt-canvas` |
-| Surface | `#ffffff` | `#11100f` | `--litt-surface-1` |
-| Ink | `#110f0d` | `#f9f8f7` | `--litt-fg` |
-| Signal Cyan (fill) | `#0e7490` | `#22d3ee` | `--litt-accent` |
-| Signal Cyan (text, focus) | `#0e7490` | `#22d3ee` | `--litt-accent-text`, `--litt-focus` |
-| On cyan | `#ffffff` | `#0a0908` | `--litt-accent-fg` |
-| Cyan tint | `#e6f4f7` | `#082f38` | `--litt-accent-tint` |
-| Harbor | `#0b2027` | `#0b2027` | `--vd-harbor` |
+| Canvas | `#fbfbfb` | `#090909` | `--litt-canvas` |
+| Surface | `#ffffff` | `#101010` | `--litt-surface-1` |
+| Line | `#e5e5e5` | `#252525` | `--litt-line` |
+| Ink | `#0f0f0f` | `#f8f8f8` | `--litt-fg` |
+| Muted ink | `#676767` | `#c6c6c6` | `--litt-fg-muted` |
+| Subtle ink | `#737373` | `#8a8a8a` | `--litt-fg-subtle` |
+| Accent (fill, text, focus) | `#0f0f0f` | `#f8f8f8` | `--litt-accent`, `--litt-accent-text`, `--litt-focus` |
+| On accent | `#ffffff` | `#090909` | `--litt-accent-fg` |
 | New exposure | `#be2e31` | `#ff756f` | `--litt-danger` |
 | Closed | `#007c3b` | `#4bc680` | `--litt-success` |
 | Changed, outage risk | `#9c5a00` | `#e19b1b` | `--litt-warning` |
@@ -94,13 +92,14 @@ the accent and adds Harbor:
 
 | Pair | Ratio |
 |---|---|
-| Ink on canvas, light / dark | 16.9 / 18.1 |
-| White on Signal Cyan `#0e7490` (primary button, light) | 5.4 |
-| Dark ink on Signal Cyan `#22d3ee` (primary button, dark and on Harbor) | 11.0 |
-| Cyan text on canvas, light / dark | 5.2 / 11.0 |
+| Ink on canvas, light / dark | 18.5 / 18.7 |
+| Primary button text on its fill, light / dark | 19.2 / 18.7 |
+| Muted ink on canvas, light / dark | 5.5 / 11.7 |
+| Subtle ink on canvas, light / dark | 4.6 / 5.8 |
 | Danger, success, warning on white / on dark canvas | 5.8, 5.3, 5.4 / 7.6, 9.2, 8.4 |
 
-Every text pair passes AA. Status always has a label too, never color alone.
+Every text pair passes AA. Status always has a label too, never color alone. Lines
+(1.2 to 1.3) are decoration and carry no meaning on their own.
 
 ## 4. Type
 
@@ -118,12 +117,21 @@ Fonts load from Google Fonts (see section 10 for what that means for privacy).
 ## 5. Space, shape, depth
 
 - **Spacing:** 4, 8, 12, 16, 24, 32, 40, 48, 64, 80, 96 px.
-- **Radius:** controls 8 px (`--litt-radius-control`), landing buttons 10 px, the
-  navigation capsule and its button fully round, cards 18 px, surfaces 8 px. A nested
-  shape gets the outer radius minus the gap.
-- **Depth:** light themes use a hairline and a soft shadow; dark themes use a lighter
-  surface. Harbor bands create depth on both.
-- **Backgrounds are flat.** No background gradients.
+- **The landing page frame** (after primora.xyz): a 1200 px column drawn by two 1px
+  rails. Sections stack inside it, cut by 1px hairlines that run from edge to edge of
+  the screen, 12 px in. Where a hairline meets a rail it stops 12 px short on both
+  sides, so lines never cross. Grids of cells inside a section are drawn with the same
+  1px line. A few section titles get a 2px ink bar on the left rail. Content sits 64 px
+  inside the rails (24 px on small screens).
+- **Radius:** controls 8 px (`--litt-radius-control`), landing buttons 10 px, surfaces
+  8 px. Cells and framed panels are square. A nested shape gets the outer radius minus
+  the gap.
+- **Cards:** a framed panel has a small cross at each corner, after cardcn's basic card
+  #6.
+- **Depth:** a hairline, not a shadow, separates things. Dark themes use a lighter
+  surface.
+- **Backgrounds are flat.** No background gradients. The one pattern is a faint dot grid
+  behind the final call to action.
 
 ## 6. Motion
 
@@ -134,13 +142,21 @@ Fonts load from Google Fonts (see section 10 for what that means for privacy).
   visible cause.
 - Base curve `cubic-bezier(0.22, 1, 0.36, 1)`. Only `transform` and `opacity` animate.
 - `prefers-reduced-motion` replaces movement with a plain fade or the final state.
-- Landing page motion comes from Sora UI and Stageshow, each used where it carries
-  meaning: the headline blurs in and a cyan marker draws under "opens to the internet";
-  section headings fog or blur in on scroll; "How it works" loops through where you run
-  it; "How it is checked" types each hop; numbers count up; the final call to action
-  types itself in; nav and footer links draw an underline; buttons scale their background
-  on hover while the label stays still. A frosted band at the foot of the screen says
-  "more below" and fades out at the end of the page.
+- Landing page motion is few and slow, each part with a cause:
+  - The hero field: a plan widens one rule (shown as the cause at the top), and one
+    path draws from the internet to the database, hop by hop. The rule goes back and the
+    path retracts, so the loop ends on its first frame.
+  - The headline blurs in once. Sections rise 24 px and fade in once.
+  - Section bars draw down the rail when the title comes into view.
+  - "How it works" loops through where you run it. Numbers count up.
+  - Links draw an underline. Buttons scale their background on hover while the label
+    stays still.
+  - The Stageshow pull request demo.
+- **Smooth scroll:** Lenis on the landing page only (ADR 0007), off under reduced
+  motion.
+- **Frost:** a 240 px band at the foot of the screen, five blur layers from 1.5 px to
+  24 px (after primora.xyz). It says "more below" and fades out when the footer comes
+  into view.
 
 ## 7. Icons and logos
 
@@ -149,8 +165,8 @@ Fonts load from Google Fonts (see section 10 for what that means for privacy).
 - **Product logos** (AWS, Amazon EC2, Amazon RDS, Terraform, GitHub Actions) come from
   [Logoforge](https://logoforge.terravidhal.me/), whose artwork for these marks is CC0
   (from gilbarbara/logos and Simple Icons). They are vendored in `apps/viewer/src/logos/`
-  and used only to say what vpcdiff works with: in one color (Logoforge's mono
-  variants) on the landing page, at their original colors and proportions elsewhere.
+  and used only to say what vpcdiff works with: in the subtle ink color (Logoforge's mono
+  variants, drawn through a CSS mask) on the landing page, at their original colors and proportions elsewhere.
   The names and marks remain trademarks of their owners; vpcdiff is not affiliated with
   or endorsed by them.
 - No sparkles, no robots, no purple "AI" color.
@@ -175,7 +191,10 @@ Fonts load from Google Fonts (see section 10 for what that means for privacy).
 - **Sora UI** (MIT; a few parts derive from Animate UI under MIT plus the Commons Clause,
   which allows use in apps but not resale of the raw files): the landing page's motion,
   in `apps/viewer/src/components/sora-ui/`.
-- **Stageshow kit** (MIT): the hero product demo, in `apps/viewer/src/stageshow/`.
+- **Stageshow kit** (MIT): the pull request demo, in `apps/viewer/src/stageshow/`.
+- **cardcn** (https://cardcn.dev): the corner-cross card is rebuilt from its basic card
+  #6 on litt tokens, in `apps/viewer/src/site/rails.tsx`.
+- **Lenis** (MIT): smooth scrolling on the landing page.
 - Vendored files are not linted; a change to them is marked with a `vpcdiff patch`
   comment.
 

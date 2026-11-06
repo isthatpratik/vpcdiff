@@ -1,5 +1,5 @@
 // The vpcdiff mark: a boundary drawn as a delta (Δ, for diff) with a break in its left
-// side, and the Signal Cyan dot in the break: the place where traffic gets in.
+// side, and the ink dot in the break: the place where traffic gets in.
 // Geometry matches docs/brand/mark.svg. See DESIGN.md, section 2.
 
 type MarkProps = { size?: number; small?: boolean; className?: string; title?: string };

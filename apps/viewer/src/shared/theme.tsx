@@ -7,6 +7,10 @@ const KEY = "vpcdiff-theme";
 
 const systemDark = () => window.matchMedia("(prefers-color-scheme: dark)").matches;
 let current: ThemeChoice = "system";
+// The choice used when none is saved: the landing page opens dark, the viewer follows the system.
+let fallback: ThemeChoice = "system";
+const saved = () => (localStorage.getItem(KEY) as ThemeChoice | null) ?? fallback;
+const store = (v: ThemeChoice) => localStorage.setItem(KEY, v);
 
 /** Always sets data-theme, so litt and Tailwind's dark variant read one attribute. */
 function apply(choice: ThemeChoice) {
@@ -15,10 +19,10 @@ function apply(choice: ThemeChoice) {
   document.documentElement.setAttribute("data-theme", resolved);
 }
 
-/** Applies the saved theme before the first render. litt follows the system setting when no choice is saved. */
-export function initTheme() {
-  const saved = localStorage.getItem(KEY) as ThemeChoice | null;
-  apply(saved ?? "system");
+/** Applies the saved theme before the first render; `initial` is used when no choice is saved. */
+export function initTheme(initial: ThemeChoice = "system") {
+  fallback = initial;
+  apply(saved());
   window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
     if (current === "system") apply("system");
   });
@@ -48,7 +52,7 @@ export function useResolvedTheme(): "light" | "dark" {
 }
 
 export function ThemeSwitch() {
-  const [choice, setChoice] = useState<ThemeChoice>(() => (localStorage.getItem(KEY) as ThemeChoice | null) ?? "system");
+  const [choice, setChoice] = useState<ThemeChoice>(saved);
   return (
     <Segmented<ThemeChoice>
       legend="Theme"
@@ -56,8 +60,7 @@ export function ThemeSwitch() {
       value={choice}
       onValueChange={(v) => {
         setChoice(v);
-        if (v === "system") localStorage.removeItem(KEY);
-        else localStorage.setItem(KEY, v);
+        store(v);
         apply(v);
       }}
       options={[
@@ -71,7 +74,7 @@ export function ThemeSwitch() {
 
 /** One button that cycles system, light, dark: for compact places like the landing nav. */
 export function ThemeCycle({ className = "" }: { className?: string }) {
-  const [choice, setChoice] = useState<ThemeChoice>(() => (localStorage.getItem(KEY) as ThemeChoice | null) ?? "system");
+  const [choice, setChoice] = useState<ThemeChoice>(saved);
   const next: Record<ThemeChoice, ThemeChoice> = { system: "light", light: "dark", dark: "system" };
   const Icon = choice === "light" ? SunIcon : choice === "dark" ? MoonIcon : MonitorIcon;
   return (
@@ -82,8 +85,7 @@ export function ThemeCycle({ className = "" }: { className?: string }) {
       onClick={() => {
         const v = next[choice];
         setChoice(v);
-        if (v === "system") localStorage.removeItem(KEY);
-        else localStorage.setItem(KEY, v);
+        store(v);
         apply(v);
       }}
       className={`inline-flex size-8 items-center justify-center rounded-full transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-litt-focus [&_svg]:size-4 ${className}`}

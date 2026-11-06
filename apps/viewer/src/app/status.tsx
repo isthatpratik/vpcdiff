@@ -11,10 +11,11 @@ export const CHANGE_TEXT: Record<Change, string> = { added: "text-litt-danger", 
 
 export const VERDICT_LABEL: Record<Verdict, string> = { allowed: "Reachable", blocked: "Blocked", unknown: "Unknown", absent: "Does not exist" };
 
-// Hop decisions use litt's data hues, not the status colors: red and green already mean
-// new and closed exposure (DESIGN.md, section 3).
+// Hop decisions: the site is monochrome, so "allows" is plain ink. Only a decision that
+// stops or narrows traffic gets a hue, and those hues are not the status colors: red and
+// green already mean new and closed exposure (DESIGN.md, section 3).
 export const STATE_LABEL: Record<CellState, string> = { allow: "Allows", partial: "Allows some", deny: "Denies", unknown: "Unknown", "not-reached": "Not reached", absent: "Absent" };
-const STATE_HUE: Partial<Record<CellState, TagHue>> = { allow: "teal", partial: "amber", deny: "rose" };
+const STATE_HUE: Partial<Record<CellState, TagHue>> = { partial: "amber", deny: "rose" };
 
 export function ChangeTag({ change }: { change: Change }) {
   return <Tag status={CHANGE_STATUS[change]}>{CHANGE_LABEL[change]}</Tag>;
@@ -22,5 +23,6 @@ export function ChangeTag({ change }: { change: Change }) {
 
 export function DecisionTag({ state }: { state: CellState }) {
   const hue = STATE_HUE[state];
-  return hue ? <Tag hue={hue}>{STATE_LABEL[state]}</Tag> : <Tag status="neutral">{STATE_LABEL[state]}</Tag>;
+  if (hue) return <Tag hue={hue}>{STATE_LABEL[state]}</Tag>;
+  return state === "allow" ? <Tag raised>{STATE_LABEL[state]}</Tag> : <Tag status="neutral">{STATE_LABEL[state]}</Tag>;
 }

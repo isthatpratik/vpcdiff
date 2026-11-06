@@ -4,18 +4,11 @@ import { CodeBlock } from "@/components/litt/code-block";
 import { Tabs, TabsList, TabsPanel, TabsPanels, TabsTrigger } from "@/components/litt/tabs";
 import { Tag } from "@/components/litt/tag";
 import { TooltipProvider } from "@/components/litt/tooltip";
-import { SlidingChipButton } from "@/components/sora-ui/buttons/sliding-chip-button";
-import { LogoCarouselSwapper } from "@/components/sora-ui/effects/logo-carousel-swapper";
-import { TiltCard } from "@/components/sora-ui/effects/tilt-card";
 import { NumberFlow } from "@/components/sora-ui/texts/number-flow";
 import { TextEffect } from "@/components/sora-ui/texts/text-effect";
 import { DrawUnderlineLink } from "@/components/sora-ui/texts/draw-underline-link";
-import { FogTextReveal } from "@/components/sora-ui/texts/fog-text-reveal";
 import { HoverLink } from "@/components/sora-ui/texts/hover-link";
-import { TextCursorLoop } from "@/components/sora-ui/texts/text-cursor-loop";
 import { TextLoop } from "@/components/sora-ui/texts/text-loop";
-import { TextScramble } from "@/components/sora-ui/texts/text-scramble";
-import { Typer } from "@/components/sora-ui/texts/typer";
 import aws from "../logos/aws-icon-mono.svg?url";
 import actions from "../logos/github-actions-icon-mono.svg?url";
 import github from "../logos/github-icon-mono.svg?url";
@@ -26,52 +19,12 @@ import { GithubLink } from "../shared/github.tsx";
 import { ThemeCycle } from "../shared/theme.tsx";
 import { Cta } from "./Cta.tsx";
 import { HeroDemo } from "./HeroDemo.tsx";
+import { PathField } from "./PathField.tsx";
+import { CrossCard, Divider, EASE, Eyebrow, PAD, Rail, SectionHead, useInViewOnce } from "./rails.tsx";
 import { ScrollFrost } from "./ScrollFrost.tsx";
+import { startSmoothScroll } from "./smooth.ts";
 
 const APP = "./app/";
-const EASE = "ease-[cubic-bezier(0.22,1,0.36,1)]";
-
-/** True once the element has entered the viewport (or at once under reduced motion). */
-function useInViewOnce<T extends Element>(margin = "0px 0px -12% 0px") {
-  const ref = useRef<T>(null);
-  const [seen, setSeen] = useState(false);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return setSeen(true);
-    const io = new IntersectionObserver(([e]) => {
-      if (e?.isIntersecting) {
-        setSeen(true);
-        io.disconnect();
-      }
-    }, { rootMargin: margin });
-    io.observe(el);
-    return () => io.disconnect();
-  }, [margin]);
-  return [ref, seen] as const;
-}
-
-/** True when the media query matches; follows changes. */
-function useMedia(query: string) {
-  const [match, setMatch] = useState(() => window.matchMedia(query).matches);
-  useEffect(() => {
-    const mq = window.matchMedia(query);
-    const on = () => setMatch(mq.matches);
-    mq.addEventListener("change", on);
-    return () => mq.removeEventListener("change", on);
-  }, [query]);
-  return match;
-}
-
-/** Sections rise 32px and fade in once as they enter the viewport. */
-function Reveal({ children, className = "", id, label }: { children: ReactNode; className?: string; id?: string; label?: string }) {
-  const [ref, seen] = useInViewOnce<HTMLElement>();
-  return (
-    <section ref={ref} id={id} aria-label={label} className={`transition-[opacity,transform] duration-700 ${EASE} ${seen ? "translate-y-0 opacity-100" : "translate-y-8 opacity-0"} ${className}`}>
-      {children}
-    </section>
-  );
-}
 
 /** The tagline: each word moves from a muted tone to full ink as it crosses the trigger line. */
 function TaglineReveal({ lines }: { lines: string[] }) {
@@ -108,10 +61,10 @@ function TaglineReveal({ lines }: { lines: string[] }) {
     };
   }, [words.length]);
   return (
-    <p ref={ref} className="mx-auto max-w-[760px] text-center font-display text-4xl leading-tight font-medium tracking-[-0.03em] text-balance sm:text-6xl sm:leading-[1.05]" aria-label={lines.join(" ")}>
+    <p ref={ref} className="mx-auto max-w-[820px] text-center font-display text-4xl leading-[1.1] font-normal tracking-[-0.035em] text-balance sm:text-6xl sm:leading-[1.04]" aria-label={lines.join(" ")}>
       {words.map((x, i) => (
         <span key={x.key} aria-hidden="true">
-          <span data-word className={`transition-colors duration-500 ${EASE} ${i < lit ? (x.w.startsWith("open") ? "text-litt-accent-text" : "text-litt-fg") : "text-litt-fg/25"}`}>
+          <span data-word className={`transition-colors duration-500 ${EASE} ${i < lit ? "text-litt-fg" : "text-litt-fg/20"}`}>
             {x.w}
           </span>
           {x.lineEnd ? <br /> : " "}
@@ -121,56 +74,30 @@ function TaglineReveal({ lines }: { lines: string[] }) {
   );
 }
 
-const H2 = "font-display text-3xl leading-tight font-medium tracking-[-0.03em] text-litt-fg sm:text-5xl sm:leading-[1.05]";
-
-/** A section heading: the title fogs in as it scrolls into view, or a custom title node (loops). */
-function SectionHead({ eyebrow, title, titleNode, children, center = false }: { eyebrow: string; title: string; titleNode?: ReactNode; children?: ReactNode; center?: boolean }) {
-  // Fog draws the title on a canvas on one line, so it is used only where one line fits.
-  const wide = useMedia("(min-width: 640px)");
-  return (
-    <div className={`grid max-w-[680px] gap-4 ${center ? "mx-auto justify-items-center text-center" : ""}`}>
-      <p className="font-litt-mono text-litt-caption tracking-[0.08em] text-litt-accent-text uppercase">{eyebrow}</p>
-      {titleNode ? (
-        <h2 className={H2}>{titleNode}</h2>
-      ) : wide && title.length <= 28 ? (
-        <FogTextReveal as="h2" text={title} startOnView className={H2} />
-      ) : (
-        <TextEffect as="h2" per="word" preset="fade-in-blur" scrollTrigger once className={`${H2} leading-[inherit]`}>
-          {title}
-        </TextEffect>
-      )}
-      {children && <p className="text-lg text-litt-fg-muted">{children}</p>}
-    </div>
-  );
-}
-
-/* ---- Bento visuals: each card shows its idea working, in the product's own words. ---- */
+/* ---- Feature visuals: each shows its idea working, in the product's own words. ---- */
 
 const HOP_NAMES = ["Public IP", "Gateway", "NACL in", "Groups", "NACL out", "Route"];
 
+/** The hops as a short path: squares on a line that fill in order. */
 function HopChain({ on }: { on: boolean }) {
   return (
-    <div className="flex flex-wrap items-center gap-2" aria-hidden="true">
+    <ol className="grid grid-cols-6" aria-label="The six hops, in the order traffic meets them">
       {HOP_NAMES.map((h, i) => (
-        <span key={h} className="flex items-center gap-2">
-          <span
-            className={`rounded-litt-pill px-3 py-1 text-litt-small font-medium transition-[background-color,color,box-shadow] duration-300 ${EASE} ${
-              on ? "bg-litt-data-teal-tint text-litt-data-teal-text shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--litt-data-teal)_30%,transparent)]" : "bg-litt-surface-2 text-litt-fg-subtle shadow-[inset_0_0_0_1px_var(--litt-line)]"
-            }`}
-            style={{ transitionDelay: on ? `${300 + i * 180}ms` : "0ms" }}
-          >
-            {h}
-          </span>
-          {i < HOP_NAMES.length - 1 && <span className="h-px w-3 bg-litt-line-strong" />}
-        </span>
+        <li key={h} className="relative grid content-start justify-items-start gap-3">
+          {i < HOP_NAMES.length - 1 && (
+            <span aria-hidden="true" className={`absolute top-[5px] left-3 h-px w-[calc(100%-12px)] origin-left bg-litt-fg transition-transform duration-500 ${EASE} ${on ? "scale-x-100" : "scale-x-0"}`} style={{ transitionDelay: `${200 + i * 160}ms` }} />
+          )}
+          <span aria-hidden="true" className={`relative size-3 border border-litt-fg transition-colors duration-300 ${on ? "bg-litt-fg" : "bg-litt-canvas"}`} style={{ transitionDelay: `${120 + i * 160}ms` }} />
+          <span className="pr-2 font-litt-mono text-litt-caption leading-tight text-litt-fg-muted">{h}</span>
+        </li>
       ))}
-    </div>
+    </ol>
   );
 }
 
 function UnknownLine() {
   return (
-    <div className="grid gap-3 rounded-litt-surface border border-litt-line bg-litt-surface-2 p-4 font-litt-mono text-litt-small" aria-hidden="true">
+    <div className="grid gap-3 border border-litt-line bg-litt-surface-1 p-4 font-litt-mono text-litt-small" aria-hidden="true">
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-litt-fg">gateway_id</span>
         <span className="text-litt-fg-subtle">=</span>
@@ -186,79 +113,65 @@ function UnknownLine() {
 
 function OutageTimeline({ on }: { on: boolean }) {
   return (
-    <div className="grid gap-2 font-litt-mono text-litt-caption" aria-hidden="true">
+    <div className="grid gap-3 font-litt-mono text-litt-caption" aria-hidden="true">
       <div className="grid grid-cols-[1fr_1.2fr_1fr] items-center gap-2">
-        <span className="rounded-litt-control bg-litt-surface-2 px-2 py-1.5 text-center text-litt-fg-muted shadow-[inset_0_0_0_1px_var(--litt-line)]">delete</span>
+        <span className="border border-litt-line-strong px-2 py-1.5 text-center text-litt-fg-muted">delete</span>
         <span className="relative h-8">
-          <span className={`absolute inset-x-0 top-1/2 h-0 -translate-y-1/2 border-t-2 border-dashed border-litt-warning transition-[clip-path] duration-1000 ${EASE}`} style={{ clipPath: on ? "inset(0 0 0 0)" : "inset(0 100% 0 0)" }} />
+          <span className={`absolute inset-x-0 top-1/2 h-0 -translate-y-1/2 border-t border-dashed border-litt-fg transition-[clip-path] duration-1000 ${EASE}`} style={{ clipPath: on ? "inset(0 0 0 0)" : "inset(0 100% 0 0)" }} />
         </span>
-        <span className="rounded-litt-control bg-litt-surface-2 px-2 py-1.5 text-center text-litt-fg-muted shadow-[inset_0_0_0_1px_var(--litt-line)]">create</span>
+        <span className="border border-litt-line-strong px-2 py-1.5 text-center text-litt-fg-muted">create</span>
       </div>
-      <p className={`text-center font-litt-sans text-litt-small text-litt-warning transition-opacity duration-500 ${on ? "opacity-100 delay-700" : "opacity-0"}`}>traffic can drop here</p>
+      <p className={`flex items-center justify-center gap-2 font-litt-sans text-litt-small text-litt-fg transition-opacity duration-500 ${on ? "opacity-100 delay-700" : "opacity-0"}`}>
+        <span className="size-1.5 rounded-full bg-litt-warning" />
+        traffic can drop here
+      </p>
     </div>
   );
 }
 
-function Bento() {
+function Features() {
   const [ref, seen] = useInViewOnce<HTMLDivElement>("0px 0px -20% 0px");
-  const base = "grid h-full content-between gap-10 rounded-[18px] border p-8";
-  const title = "font-display text-2xl leading-tight font-medium tracking-[-0.02em] text-litt-fg";
-  const body = "max-w-[48ch] text-base text-litt-fg-muted";
+  const cell = "grid content-between gap-12 bg-litt-canvas px-6 py-10 md:px-16 md:py-14";
+  const title = "font-display text-2xl leading-tight font-normal tracking-[-0.02em] text-litt-fg";
+  const body = "max-w-[46ch] text-base text-litt-fg-muted";
+  const label = "font-litt-mono text-litt-caption text-litt-fg-subtle";
   return (
-    <div ref={ref} className="grid gap-4 md:grid-cols-6">
-      <div className="md:col-span-4 [&>div]:h-full">
-        <TiltCard className="h-full [&>*]:h-full" rotationFactor={3} scaleOnHover={1.01}>
-          <article className={`${base} border-[color-mix(in_oklab,var(--litt-accent)_22%,var(--litt-line))] bg-litt-accent-tint`}>
-            <div className="grid gap-3">
-              <span className="font-litt-mono text-litt-caption text-litt-accent-text">01 · hop by hop</span>
-              <h3 className={title}>Every hop, with the rule that decided it</h3>
-              <p className={body}>Each path is checked in the order traffic meets it. Every answer names the resource and links the AWS documentation for that hop.</p>
-            </div>
-            <HopChain on={seen} />
-          </article>
-        </TiltCard>
-      </div>
-      <div className="md:col-span-2 [&>div]:h-full">
-        <TiltCard className="h-full [&>*]:h-full" rotationFactor={3} scaleOnHover={1.01}>
-          <article className={`${base} border-litt-line bg-litt-surface-1`}>
-            <div className="grid gap-3">
-              <span className="font-litt-mono text-litt-caption text-litt-fg-subtle">02 · honest</span>
-              <h3 className={title}>Unknown when it cannot know</h3>
-              <p className={body}>Values set only at apply time give unknown with the reason, never a guess.</p>
-            </div>
-            <UnknownLine />
-          </article>
-        </TiltCard>
-      </div>
-      <div className="md:col-span-2 [&>div]:h-full">
-        <TiltCard className="h-full [&>*]:h-full" rotationFactor={3} scaleOnHover={1.01}>
-          <article id="outage" className={`${base} scroll-mt-28 border-[color-mix(in_oklab,var(--litt-warning)_24%,var(--litt-line))] bg-litt-data-amber-tint`}>
-            <div className="grid gap-3">
-              <span className="font-litt-mono text-litt-caption text-litt-warning">03 · new</span>
-              <h3 className={title}>Outage risk, not only exposure</h3>
-              <p className={body}>A group or route replaced by deleting it first leaves a gap on a path that stays open.</p>
-            </div>
-            <OutageTimeline on={seen} />
-          </article>
-        </TiltCard>
-      </div>
-      <div className="md:col-span-4 [&>div]:h-full">
-        <TiltCard className="h-full [&>*]:h-full" rotationFactor={3} scaleOnHover={1.01}>
-          <article style={ON_HARBOR} className={`${base} border-white/10 bg-(--vd-harbor) text-litt-fg`}>
-            <div className="grid gap-3">
-              <span className="font-litt-mono text-litt-caption text-litt-accent-text">04 · private</span>
-              <h3 className={title}>Nothing leaves your machine</h3>
-              <p className={body}>No AWS account and no credentials. The viewer runs in your browser tab, behind a policy that blocks every data request it could make.</p>
-            </div>
-            <div className="grid gap-2">
-              <TextScramble as="span" trigger={seen} duration={1.4} className="font-litt-mono text-2xl text-litt-accent-text sm:text-3xl">
-                connect-src &apos;none&apos;
-              </TextScramble>
-              <span className="text-litt-small text-litt-fg-subtle">in the viewer's Content Security Policy</span>
-            </div>
-          </article>
-        </TiltCard>
-      </div>
+    <div ref={ref} className="grid gap-px border-t border-litt-line bg-litt-line md:grid-cols-2">
+      <article className={cell}>
+        <div className="grid gap-3">
+          <span className={label}>01 · hop by hop</span>
+          <h3 className={title}>Every hop, with the rule that decided it</h3>
+          <p className={body}>Each path is checked in the order traffic meets it. Every answer names the resource and links the AWS documentation for that hop.</p>
+        </div>
+        <HopChain on={seen} />
+      </article>
+      <article className={cell}>
+        <div className="grid gap-3">
+          <span className={label}>02 · honest</span>
+          <h3 className={title}>Unknown when it cannot know</h3>
+          <p className={body}>Values set only at apply time give unknown with the reason, never a guess.</p>
+        </div>
+        <UnknownLine />
+      </article>
+      <article id="outage" className={`${cell} scroll-mt-24`}>
+        <div className="grid gap-3">
+          <span className={label}>03 · new in v0.1</span>
+          <h3 className={title}>Outage risk, not only exposure</h3>
+          <p className={body}>A group or route replaced by deleting it first leaves a gap on a path that stays open.</p>
+        </div>
+        <OutageTimeline on={seen} />
+      </article>
+      <article className={cell}>
+        <div className="grid gap-3">
+          <span className={label}>04 · private</span>
+          <h3 className={title}>Nothing leaves your machine</h3>
+          <p className={body}>No AWS account and no credentials. The viewer runs in your browser tab, behind a policy that blocks every data request it could make.</p>
+        </div>
+        <div className="grid gap-2">
+          <span className="font-litt-mono text-2xl text-litt-fg sm:text-3xl">connect-src &apos;none&apos;</span>
+          <span className="text-litt-small text-litt-fg-subtle">in the viewer's Content Security Policy</span>
+        </div>
+      </article>
     </div>
   );
 }
@@ -268,21 +181,43 @@ function Stats() {
   const facts = [
     { value: 6, label: "hops checked for every path, before and after the plan" },
     { value: 5, label: "real Terraform plans in the test suite, each with a written proof" },
-    { value: 101, label: "tests on every change, with byte for byte expected results" },
+    { value: 102, label: "tests on every change, with byte for byte expected results" },
     { value: 0, label: "runtime dependencies in the engine: a terminal, CI, or a tab" },
   ];
   return (
-    <dl ref={ref} className="grid gap-x-8 gap-y-10 sm:grid-cols-2 lg:grid-cols-4">
+    <dl ref={ref} className="grid gap-px border-t border-litt-line bg-litt-line sm:grid-cols-2 lg:grid-cols-4">
       {facts.map((f) => (
-        <div key={f.label} className="grid content-start gap-3 border-t border-litt-line pt-6">
+        <div key={f.label} className="grid content-start gap-4 bg-litt-canvas px-6 py-10 md:px-10 md:py-12 md:first:pl-16">
           <dt className="sr-only">{f.label}</dt>
-          <dd className="font-display text-6xl leading-none font-medium tracking-[-0.04em] text-litt-fg tabular-nums">
+          <dd className="font-display text-6xl leading-none font-normal tracking-[-0.04em] text-litt-fg tabular-nums">
             <NumberFlow value={seen ? f.value : 0} />
           </dd>
           <dd className="text-litt-small text-litt-fg-muted">{f.label}</dd>
         </div>
       ))}
     </dl>
+  );
+}
+
+const LOGOS = [
+  { name: "Terraform", src: terraform },
+  { name: "AWS", src: aws },
+  { name: "GitHub Actions", src: actions },
+  { name: "GitHub", src: github },
+  { name: "HashiCorp", src: hashicorp },
+];
+
+/** Logos drawn in the ink color through a CSS mask, so they follow the theme. */
+function Logos() {
+  return (
+    <ul className="grid grid-cols-2 gap-px bg-litt-line sm:grid-cols-5" aria-label="Works with Terraform, AWS, GitHub Actions, GitHub, and HashiCorp tools">
+      {LOGOS.map((l, i) => (
+        <li key={l.name} className={`flex h-24 items-center justify-center gap-3 bg-litt-canvas ${i === LOGOS.length - 1 ? "col-span-2 sm:col-span-1" : ""}`}>
+          <span aria-hidden="true" className="h-6 w-8 bg-litt-fg-subtle" style={{ mask: `url("${l.src}") center / contain no-repeat`, WebkitMask: `url("${l.src}") center / contain no-repeat` }} />
+          <span className="text-litt-small text-litt-fg-subtle">{l.name}</span>
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -304,211 +239,188 @@ const FAQ: { q: string; a: string }[] = [
   { q: "What does it cost?", a: "Nothing. vpcdiff is free and open source under the MIT license." },
 ];
 
-const ACTION_YAML = `- run: terraform show -json tfplan > plan.json
+const ACTION_YAML = `- run: |
+    terraform show -json tfplan \\
+      > plan.json
 - uses: isthatpratik/vpcdiff@main
   with:
     plan: plan.json
     fail-on: added`;
 
 const CLI_OUTPUT = `$ vpcdiff plan.json
-vpcdiff: 1 added, 0 removed, 0 changed, 0 unknown
+vpcdiff: 1 added, 0 removed, 0 changed
 
-ADDED     internet -> aws_instance.db  tcp/5432
+ADDED  internet -> aws_instance.db
+  tcp/5432
   before: blocked at security-group
   after:  allowed from internet`;
 
-/** Inverted tokens for parts on Harbor ink: white text, bright cyan, dark text on the cyan button. */
-const ON_HARBOR = {
-  "--litt-fg": "#f4f7f8",
-  "--litt-fg-muted": "color-mix(in oklab, #f4f7f8 72%, transparent)",
-  "--litt-fg-subtle": "color-mix(in oklab, #f4f7f8 52%, transparent)",
-  "--litt-line": "color-mix(in oklab, white 12%, transparent)",
-  "--litt-accent": "#22d3ee",
-  "--litt-accent-hover": "#67e8f9",
-  "--litt-accent-fg": "#071419",
-  "--litt-accent-text": "#22d3ee",
-  "--litt-surface-1": "#12303a",
-  "--litt-surface-2": "#173a45",
-  "--litt-focus": "#22d3ee",
-} as React.CSSProperties;
+const NAV_LINKS: [string, string][] = [
+  ["How it works", "#how"],
+  ["Coverage", "#coverage"],
+  ["FAQ", "#faq"],
+];
 
+/** The nav sits between the rails like a section of its own, over a frosted canvas. */
 function Nav() {
-  const [scrolled, setScrolled] = useState(false);
-  useEffect(() => {
-    const on = () => setScrolled(window.scrollY > 40);
-    on();
-    window.addEventListener("scroll", on, { passive: true });
-    return () => window.removeEventListener("scroll", on);
-  }, []);
   return (
-    <div className="pointer-events-none fixed inset-x-0 top-4 z-40 flex justify-center px-3">
-      <nav
-        aria-label="Main"
-        style={ON_HARBOR}
-        className={`pointer-events-auto flex w-full min-w-0 items-center justify-between gap-3 rounded-full border border-white/10 bg-[color-mix(in_oklab,var(--vd-harbor)_88%,transparent)] py-1.5 pr-1.5 pl-4 text-litt-fg backdrop-blur-xl transition-[max-width,box-shadow] duration-500 ${EASE} ${
-          scrolled ? "max-w-[760px] shadow-[0_12px_32px_-12px_rgba(4,18,23,0.55)]" : "max-w-[960px] shadow-none"
-        }`}
-      >
-        <a href="./" aria-label="vpcdiff home" className="flex items-center gap-2 rounded-full focus-visible:outline-2 focus-visible:outline-litt-focus">
-          <Wordmark size={17} />
-          <span className="hidden rounded-full border border-white/15 px-1.5 font-litt-mono text-[10px] leading-4 text-litt-fg-subtle sm:inline">v0.1</span>
-        </a>
-        <ul className="hidden items-center text-litt-small text-litt-fg-muted md:flex">
-          {[
-            ["How it works", "#how"],
-            ["Coverage", "#coverage"],
-            ["FAQ", "#faq"],
-          ].map(([l, h]) => (
-            <li key={h}>
-              <HoverLink href={h} variant="underline-left" className="px-3 py-1.5 transition-colors duration-200 hover:text-litt-fg">
-                {l}
-              </HoverLink>
-            </li>
-          ))}
-        </ul>
-        <div className="flex items-center gap-1">
-          <ThemeCycle className="hidden text-litt-fg-muted hover:bg-white/10 hover:text-litt-fg sm:inline-flex" />
-          <span className="hidden sm:inline [&_a]:rounded-full [&_a:hover]:bg-white/10">
-            <GithubLink />
-          </span>
-          <Cta href={APP} primary size="sm" pill>
-            Open the viewer
-          </Cta>
-        </div>
-      </nav>
-    </div>
+    <header className="fixed inset-x-0 top-0 z-40 bg-litt-canvas/75 backdrop-blur-xl">
+      <div className="relative mx-3 border-x border-litt-line sm:mx-6 xl:mx-auto xl:max-w-[1200px]">
+        <nav aria-label="Main" className="grid h-16 grid-cols-[1fr_auto] items-center gap-4 px-4 md:grid-cols-[1fr_auto_1fr] md:px-6">
+          <ul className="hidden items-center gap-1 text-litt-small text-litt-fg-subtle md:flex">
+            {NAV_LINKS.map(([l, h]) => (
+              <li key={h}>
+                <HoverLink href={h} variant="underline-left" className="px-2 py-1.5 transition-colors duration-200 hover:text-litt-fg">
+                  {l}
+                </HoverLink>
+              </li>
+            ))}
+          </ul>
+          <a href="./" aria-label="vpcdiff home" className="flex items-center gap-2 focus-visible:outline-2 focus-visible:outline-litt-focus md:justify-self-center">
+            <Wordmark size={18} />
+          </a>
+          <div className="flex items-center justify-end gap-1">
+            <span className="hidden sm:inline">
+              <ThemeCycle className="text-litt-fg-subtle hover:bg-litt-surface-2 hover:text-litt-fg" />
+            </span>
+            <span className="hidden sm:inline [&_a]:rounded-full">
+              <GithubLink />
+            </span>
+            <span className="ml-2">
+              <Cta href={APP} primary size="sm">
+                Open the viewer
+              </Cta>
+            </span>
+          </div>
+        </nav>
+      </div>
+      <Divider />
+    </header>
   );
 }
 
 function Hero() {
-  const [ready, setReady] = useState(false);
-  const logos = [
-    [
-      { alt: "Terraform", src: terraform },
-      { alt: "AWS", src: aws },
-      { alt: "GitHub Actions", src: actions },
-      { alt: "HashiCorp", src: hashicorp },
-    ],
-    [
-      { alt: "GitHub", src: github },
-      { alt: "Terraform", src: terraform },
-      { alt: "AWS", src: aws },
-      { alt: "GitHub Actions", src: actions },
-    ],
-  ];
   return (
-    <section className="relative pt-28 sm:pt-36" aria-labelledby="hero-title">
-      <div className="mx-auto grid max-w-[1088px] justify-items-center gap-8 px-6 text-center">
-        <SlidingChipButton href="#outage" label="New: outage risk" size="sm" variant="ghost" labelClassName="normal-case font-litt-sans tracking-normal" />
-        <h1 id="hero-title" className="max-w-[900px] font-display text-5xl leading-[1.02] font-medium tracking-[-0.045em] text-litt-fg sm:text-7xl">
-          <TextEffect as="span" per="word" preset="fade-in-blur" speedReveal={1.1} className="block leading-[inherit]">
+    <Rail reveal={false} label="vpcdiff" className="relative">
+      <div className="relative h-[300px] sm:h-[420px] lg:h-[460px]">
+        <PathField />
+      </div>
+      <div className={`${PAD} relative -mt-16 grid gap-8 pb-16 sm:-mt-20 lg:pb-20`}>
+        <h1 id="hero-title" className="font-display text-5xl leading-[1.02] font-normal tracking-[-0.045em] text-litt-fg sm:text-7xl">
+          <TextEffect as="span" per="word" preset="fade-in-blur" speedReveal={1.2} className="block leading-[inherit]">
             See what a Terraform plan
           </TextEffect>
-          <span className="relative isolate inline leading-[inherit] decoration-litt-accent decoration-[0.07em] underline-offset-[0.14em] max-sm:underline sm:inline-block">
-            <TextEffect as="span" per="word" preset="fade-in-blur" delay={0.35} speedReveal={1.1} className="leading-[inherit]" onAnimationComplete={() => setReady(true)}>
-              opens to the internet
-            </TextEffect>
-            <span
-              aria-hidden="true"
-              className={`absolute inset-x-[0.04em] bottom-[0.02em] -z-10 hidden h-[0.07em] sm:block origin-left rounded-full bg-litt-accent transition-transform duration-700 ${EASE} ${ready ? "scale-x-100" : "scale-x-0"}`}
-            />
-          </span>
+          <TextEffect as="span" per="word" preset="fade-in-blur" delay={0.3} speedReveal={1.2} className="block leading-[inherit] text-litt-fg-subtle">
+            opens to the internet.
+          </TextEffect>
         </h1>
-        <TextEffect as="p" per="line" preset="fade-in-blur" delay={0.7} className="max-w-[620px] text-lg leading-[1.55] text-litt-fg-muted sm:text-xl">
-          {"vpcdiff reads your plan before you apply it and shows every path the internet gains or loses, with the security group, network ACL, and route that decides each hop."}
-        </TextEffect>
-        <div className={`flex flex-wrap justify-center gap-3 transition-[opacity,transform] duration-700 ${EASE} ${ready ? "translate-y-0 opacity-100" : "translate-y-3 opacity-0"}`}>
-          <Cta href={APP} primary>
-            Open the viewer
-          </Cta>
-          <Cta href={REPO} external>
-            View on GitHub
-          </Cta>
-        </div>
-        <p className={`text-litt-small text-litt-fg-subtle transition-opacity delay-200 duration-700 ${ready ? "opacity-100" : "opacity-0"}`}>Free and open source. No AWS credentials. Your plan never leaves your machine.</p>
-      </div>
-      <div className="relative mx-auto mt-14 max-w-[1120px] px-4 sm:px-6" aria-label="Product demo: a pull request widens a security group rule, and vpcdiff finds and explains the new path from the internet">
-        <div className="relative overflow-hidden rounded-[18px] border border-litt-line bg-litt-surface-2 p-2 sm:p-3">
-          <div className="overflow-hidden rounded-[12px] bg-litt-canvas">
-            <HeroDemo />
+        <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+          <p className="max-w-[560px] text-lg leading-relaxed text-litt-fg-muted">vpcdiff reads your plan before you apply it and shows every path the internet gains or loses, with the security group, network ACL, and route that decides each hop.</p>
+          <div className="grid justify-items-start gap-4 lg:justify-items-end">
+            <div className="flex flex-wrap gap-3">
+              <Cta href={APP} primary>
+                Open the viewer
+              </Cta>
+              <Cta href={REPO} external>
+                View on GitHub
+              </Cta>
+            </div>
+            <p className="text-litt-small text-litt-fg-subtle">Free and open source. No AWS credentials.</p>
           </div>
         </div>
       </div>
-      <div className="mx-auto mt-14 grid max-w-[1088px] justify-items-center px-6">
-        <div className="grid w-full max-w-[720px] justify-items-center gap-4" aria-label="Works with Terraform, AWS, Amazon EC2, Amazon RDS, and GitHub Actions">
-          <span className="font-litt-mono text-litt-caption tracking-[0.08em] text-litt-fg-subtle uppercase">Works with</span>
-          <LogoCarouselSwapper rows={logos} columns={4} interval={3200} monochrome size="sm" className="w-full max-w-[560px] opacity-60 [&_img]:max-h-7" />
-        </div>
-      </div>
-    </section>
+    </Rail>
   );
 }
 
 export function Landing() {
+  useEffect(() => startSmoothScroll(), []);
   return (
     <TooltipProvider>
-      <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50">
+      <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-50">
         Skip to content
       </a>
       <Nav />
-      <ScrollFrost />
-      <main id="main">
+      <ScrollFrost until="#footer" />
+      <main id="main" className="pt-16">
         <Hero />
+        <Divider />
+        <Rail label="Works with">
+          <Logos />
+        </Rail>
+        <Divider />
 
-        <section className="px-6 py-36 sm:py-48" aria-label="Tagline">
-          <TaglineReveal lines={["A diff shows which rules changed.", "vpcdiff shows what they open."]} />
-        </section>
-
-        <Reveal className="mx-auto grid max-w-[1088px] gap-12 px-6 pb-24" label="Why vpcdiff">
-          <SectionHead eyebrow="Why vpcdiff" title="Review the effect of a change, not just its lines">
-            A rule change is easy to read. What it opens is not: that depends on routes, network ACLs, public addresses, and every other group on the resource.
+        <Rail label="The check in a pull request" className={`${PAD} grid gap-14 py-24 md:py-28`}>
+          <SectionHead eyebrow="In review" title="The check runs on the pull request." rest="Before anyone applies." bar>
+            A rule widens in a pull request. vpcdiff finds the new path from the internet and shows the hop that changed.
           </SectionHead>
-          <Bento />
-        </Reveal>
+          <CrossCard className="bg-litt-surface-1 p-2 sm:p-3">
+            <div className="overflow-hidden bg-litt-canvas" aria-label="Product demo: a pull request widens a security group rule, and vpcdiff finds and explains the new path from the internet">
+              <HeroDemo />
+            </div>
+          </CrossCard>
+        </Rail>
+        <Divider />
 
-        <Reveal id="how" className="mx-auto grid max-w-[1088px] scroll-mt-28 gap-14 px-6 py-24" label="How it works">
-          <SectionHead
-            eyebrow="How it works"
-            title="Three steps, in pull requests, your terminal, or the browser"
-            titleNode={
-              <>
-                Three steps, in{" "}
-                <TextLoop interval={2.4} className="inline-flex text-litt-accent-text" live="off">
-                  {["pull requests", "your terminal", "the browser"].map((t) => (
-                    <span key={t}>{t}</span>
-                  ))}
-                </TextLoop>
-              </>
-            }
-          />
-          <ol className="relative grid gap-10 lg:grid-cols-3">
-            <li className="grid content-start gap-5">
+        <Rail label="Tagline" className="px-6 py-32 sm:py-44">
+          <TaglineReveal lines={["A diff shows which rules changed.", "vpcdiff shows what they open."]} />
+        </Rail>
+        <Divider />
+
+        <Rail label="Why vpcdiff">
+          <div className={`${PAD} pt-24 pb-16 md:pt-28 md:pb-20`}>
+            <SectionHead eyebrow="Why vpcdiff" title="Review the effect of a change," rest="not just its lines." bar>
+              A rule change is easy to read. What it opens is not: that depends on routes, network ACLs, public addresses, and every other group on the resource.
+            </SectionHead>
+          </div>
+          <Features />
+        </Rail>
+        <Divider />
+
+        <Rail id="how" label="How it works">
+          <div className={`${PAD} pt-24 pb-16 md:pt-28 md:pb-20`}>
+            <SectionHead
+              eyebrow="How it works"
+              title={
+                <>
+                  Three steps, in{" "}
+                  <TextLoop interval={2.6} className="inline-flex" live="off">
+                    {["pull requests", "your terminal", "the browser"].map((t) => (
+                      <span key={t}>{t}</span>
+                    ))}
+                  </TextLoop>
+                </>
+              }
+            />
+          </div>
+          <ol className="grid gap-px border-t border-litt-line bg-litt-line lg:grid-cols-3">
+            <li className="grid min-w-0 content-start gap-6 bg-litt-canvas px-6 py-10 md:px-10 md:py-12 md:first:pl-16">
               <Step n={1} title="Make the plan">
                 The same plan you would apply, written as JSON.
               </Step>
-              <CodeBlock lang="shell" filename="Terminal" code={"terraform plan -out=tfplan\nterraform show -json tfplan > plan.json"} />
+              <CodeBlock lang="shell" filename="Terminal" code={"terraform plan -out=tfplan\nterraform show -json tfplan \\\n  > plan.json"} />
             </li>
-            <li className="grid content-start gap-5">
+            <li className="grid min-w-0 content-start gap-6 bg-litt-canvas px-6 py-10 md:px-10 md:py-12 md:first:pl-16">
               <Step n={2} title="Run vpcdiff">
                 On every pull request, in a terminal, or in the browser.
               </Step>
               <Tabs defaultValue="action">
                 <TabsList aria-label="Where to run vpcdiff">
-                  <TabsTrigger value="action">GitHub Action</TabsTrigger>
+                  <TabsTrigger value="action">Action</TabsTrigger>
                   <TabsTrigger value="cli">CLI</TabsTrigger>
                   <TabsTrigger value="viewer">Viewer</TabsTrigger>
                 </TabsList>
                 <TabsPanels>
                   <TabsPanel value="action">
-                    <CodeBlock lang="text" filename=".github/workflows/plan.yml" code={ACTION_YAML} />
+                    <CodeBlock lang="text" filename="plan.yml" code={ACTION_YAML} />
                   </TabsPanel>
                   <TabsPanel value="cli">
-                    <CodeBlock lang="shell" filename="Terminal" code={"node packages/cli/dist/vpcdiff.mjs plan.json"} />
+                    <CodeBlock lang="shell" filename="Terminal" code={"node packages/cli/dist/vpcdiff.mjs \\\n  plan.json"} />
                   </TabsPanel>
                   <TabsPanel value="viewer">
-                    <p className="rounded-litt-surface border border-litt-line bg-litt-surface-1 p-4 text-litt-small text-litt-fg-muted">
+                    <p className="border border-litt-line bg-litt-surface-1 p-4 text-litt-small text-litt-fg-muted">
                       Drop plan.json on the{" "}
-                      <DrawUnderlineLink href={APP} underlineColor="var(--litt-accent)" className="text-litt-accent-text">
+                      <DrawUnderlineLink href={APP} underlineColor="var(--litt-fg)" className="text-litt-fg">
                         viewer
                       </DrawUnderlineLink>
                       . It runs entirely in your tab.
@@ -517,42 +429,36 @@ export function Landing() {
                 </TabsPanels>
               </Tabs>
             </li>
-            <li className="grid content-start gap-5">
+            <li className="grid min-w-0 content-start gap-6 bg-litt-canvas px-6 py-10 md:px-10 md:py-12 md:first:pl-16">
               <Step n={3} title="Read the diff">
                 New exposure fails the check. Every path shows its hops before and after.
               </Step>
               <CodeBlock lang="text" filename="Output" code={CLI_OUTPUT} />
             </li>
           </ol>
-        </Reveal>
+        </Rail>
+        <Divider />
 
-        <section style={ON_HARBOR} className="bg-(--vd-harbor) text-litt-fg" aria-label="How it is checked">
-          <Reveal className="mx-auto grid max-w-[1088px] gap-14 px-6 py-28">
-<SectionHead
-              eyebrow="How it is checked"
-              title="Every path checked at every hop"
-              titleNode={
-                <>
-                  Every path checked at the
-                  <br />
-                  <TextCursorLoop words={["public IP", "internet gateway", "network ACL", "security groups", "return route"]} className="text-litt-accent-text" />
-                </>
-              }
-            >
-              The engine is pure and deterministic: the same plan gives the same result, byte for byte. Every AWS rule in the code cites its documentation.
+        <Rail label="How it is checked">
+          <div className={`${PAD} pt-24 pb-16 md:pt-28 md:pb-20`}>
+            <SectionHead eyebrow="Engine" title="Pure and deterministic." rest="The same plan gives the same answer, byte for byte." bar>
+              Every AWS networking rule in the code cites its documentation. When the engine cannot decide a hop, it says unknown and why.
             </SectionHead>
-            <Stats />
-          </Reveal>
-        </section>
+          </div>
+          <Stats />
+        </Rail>
+        <Divider />
 
-        <Reveal id="coverage" className="mx-auto grid max-w-[1088px] scroll-mt-28 gap-12 px-6 py-24" label="Coverage">
-          <SectionHead eyebrow="Coverage" title="What it understands today">
-            Anything else that can change a path is reported as unknown with the reason, so a gap never hides an open port.
-          </SectionHead>
-          <div className="grid gap-px overflow-hidden rounded-[14px] border border-litt-line bg-litt-line md:grid-cols-2">
+        <Rail id="coverage" label="Coverage">
+          <div className={`${PAD} pt-24 pb-16 md:pt-28 md:pb-20`}>
+            <SectionHead eyebrow="Coverage" title="What it understands today.">
+              Anything else that can change a path is reported as unknown with the reason, so a gap never hides an open port.
+            </SectionHead>
+          </div>
+          <div className="grid gap-px border-y border-litt-line bg-litt-line md:grid-cols-2">
             {COVERAGE.map((c) => (
-              <div key={c.group} className="grid content-start gap-4 bg-litt-surface-1 p-7">
-                <h3 className="font-display text-lg font-medium text-litt-fg">{c.group}</h3>
+              <div key={c.group} className="grid content-start gap-5 bg-litt-canvas px-6 py-10 md:px-16 md:py-12">
+                <h3 className="font-display text-lg font-normal text-litt-fg">{c.group}</h3>
                 <ul className="flex flex-wrap gap-2">
                   {c.items.map((i) => (
                     <li key={i}>
@@ -565,11 +471,12 @@ export function Landing() {
               </div>
             ))}
           </div>
-          <p className="text-litt-small text-litt-fg-subtle">Not yet: NAT gateways, VPC peering, Transit Gateway, VPC endpoints, IPv6, Aurora, and ECS services.</p>
-        </Reveal>
+          <p className={`${PAD} py-6 text-litt-small text-litt-fg-subtle`}>Not yet: NAT gateways, VPC peering, Transit Gateway, VPC endpoints, IPv6, Aurora, and ECS services.</p>
+        </Rail>
+        <Divider />
 
-        <Reveal id="faq" className="mx-auto grid max-w-[1088px] scroll-mt-28 gap-12 px-6 py-24 lg:grid-cols-[1fr_1.4fr]" label="Questions">
-          <SectionHead eyebrow="Questions" title="Before you try it" />
+        <Rail id="faq" label="Questions" className={`${PAD} grid gap-12 py-24 md:py-28 lg:grid-cols-[1fr_1.4fr]`}>
+          <SectionHead eyebrow="Questions" title="Before you try it." />
           <Accordion type="single" collapsible headingLevel={3}>
             {FAQ.map((f, i) => (
               <AccordionItem key={f.q} value={`q${i}`}>
@@ -580,12 +487,16 @@ export function Landing() {
               </AccordionItem>
             ))}
           </Accordion>
-        </Reveal>
+        </Rail>
+        <Divider />
 
-        <Reveal className="mx-auto max-w-[1088px] px-6 pt-12 pb-28" label="Get started">
-          <div className="relative grid justify-items-center gap-7 overflow-hidden rounded-[18px] border border-litt-line bg-litt-surface-1 px-6 py-20 text-center">
-            <Mark size={56} />
-            <FinalHeading />
+        <Rail label="Get started" className="relative overflow-hidden">
+          <div aria-hidden="true" className="absolute inset-0 [background-image:radial-gradient(color-mix(in_oklab,var(--litt-fg)_22%,transparent)_1px,transparent_1px)] [background-size:24px_24px] [mask-image:radial-gradient(ellipse_at_center,black,transparent_70%)]" />
+          <div className={`${PAD} relative grid justify-items-center gap-8 py-28 text-center md:py-36`}>
+            <Mark size={48} />
+            <h2 className="max-w-[720px] font-display text-4xl leading-[1.06] font-normal tracking-[-0.035em] text-litt-fg sm:text-6xl sm:leading-[1.02]">
+              Know what your next apply <span className="text-litt-fg-subtle">opens.</span>
+            </h2>
             <p className="max-w-[520px] text-lg text-litt-fg-muted">Open a plan in the viewer, or add the check to your pull requests. Free, open source, and offline.</p>
             <div className="flex flex-wrap justify-center gap-3">
               <Cta href={APP} primary>
@@ -596,49 +507,45 @@ export function Landing() {
               </Cta>
             </div>
           </div>
-        </Reveal>
+        </Rail>
+        <Divider />
       </main>
 
-      <footer className="border-t border-litt-line">
-        <div className="mx-auto grid max-w-[1088px] gap-8 px-6 py-12 text-litt-small text-litt-fg-subtle md:grid-cols-[1fr_auto]">
-          <div className="grid gap-3">
+      <footer id="footer" className="relative mx-3 border-x border-litt-line sm:mx-6 xl:mx-auto xl:max-w-[1200px]">
+        <div className={`${PAD} grid gap-10 py-14 text-litt-small text-litt-fg-subtle md:grid-cols-[1fr_auto]`}>
+          <div className="grid gap-4">
             <Wordmark size={16} />
             <p className="max-w-[560px]">Privacy: no analytics and no cookies. Fonts load from Google Fonts; nothing about your plan is ever sent. Your theme choice stays in your browser.</p>
             <p className="max-w-[560px]">Terraform, AWS, Amazon EC2, Amazon RDS, HashiCorp, GitHub, and GitHub Actions are trademarks of their owners. vpcdiff is not affiliated with or endorsed by them.</p>
           </div>
-          <nav aria-label="Footer" className="flex flex-wrap items-start gap-x-6 gap-y-2">
-            <DrawUnderlineLink href={APP} underlineColor="var(--litt-accent)">Viewer</DrawUnderlineLink>
-            <DrawUnderlineLink href={REPO} underlineColor="var(--litt-accent)">GitHub</DrawUnderlineLink>
-            <DrawUnderlineLink href={`${REPO}/blob/main/LICENSE`} underlineColor="var(--litt-accent)">MIT license</DrawUnderlineLink>
-            <DrawUnderlineLink href={`${REPO}/blob/main/DESIGN.md`} underlineColor="var(--litt-accent)">Design system</DrawUnderlineLink>
+          <nav aria-label="Footer" className="grid content-start gap-3">
+            <Eyebrow>Links</Eyebrow>
+            <DrawUnderlineLink href={APP} underlineColor="var(--litt-fg)" variant="sm" className="justify-self-start text-litt-small text-litt-fg-muted hover:text-litt-fg">
+              Viewer
+            </DrawUnderlineLink>
+            <DrawUnderlineLink href={REPO} underlineColor="var(--litt-fg)" variant="sm" className="justify-self-start text-litt-small text-litt-fg-muted hover:text-litt-fg">
+              GitHub
+            </DrawUnderlineLink>
+            <DrawUnderlineLink href={`${REPO}/blob/main/LICENSE`} underlineColor="var(--litt-fg)" variant="sm" className="justify-self-start text-litt-small text-litt-fg-muted hover:text-litt-fg">
+              MIT license
+            </DrawUnderlineLink>
+            <DrawUnderlineLink href={`${REPO}/blob/main/DESIGN.md`} underlineColor="var(--litt-fg)" variant="sm" className="justify-self-start text-litt-small text-litt-fg-muted hover:text-litt-fg">
+              Design system
+            </DrawUnderlineLink>
           </nav>
         </div>
       </footer>
+      <Divider />
+      <div className="h-6" />
     </TooltipProvider>
-  );
-}
-
-/** The final call to action types itself in once it is on screen. */
-function FinalHeading() {
-  const [ref, seen] = useInViewOnce<HTMLHeadingElement>();
-  return (
-    <h2 ref={ref} className="max-w-[680px] font-display text-4xl leading-tight font-medium tracking-[-0.03em] text-litt-fg sm:text-5xl sm:leading-[1.05]" aria-label="Know what your next apply opens">
-      {seen ? (
-        <Typer as="span" fg="var(--litt-fg)" bg="var(--litt-surface-1)" accent="var(--litt-accent)" accentInk="var(--litt-accent-fg)" border="var(--litt-line-strong)">
-          Know what your next apply opens
-        </Typer>
-      ) : (
-        <span className="opacity-0">Know what your next apply opens</span>
-      )}
-    </h2>
   );
 }
 
 function Step({ n, title, children }: { n: number; title: string; children: ReactNode }) {
   return (
     <div className="grid gap-2">
-      <span className="grid size-8 place-items-center rounded-full border border-litt-line font-litt-mono text-litt-caption text-litt-accent-text">{n}</span>
-      <h3 className="font-display text-xl font-medium tracking-[-0.01em] text-litt-fg">{title}</h3>
+      <span className="font-litt-mono text-litt-caption text-litt-fg-subtle">0{n}</span>
+      <h3 className="font-display text-xl font-normal tracking-[-0.01em] text-litt-fg">{title}</h3>
       <p className="text-litt-small text-litt-fg-muted">{children}</p>
     </div>
   );
