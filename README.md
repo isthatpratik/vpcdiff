@@ -15,7 +15,7 @@
 </p>
 
 <p align="center">
-  <a href="https://isthatpratik.github.io/vpcdiff/app/"><b>Open the viewer</b></a> ·
+  <a href="https://isthatpratik.github.io/vpcdiff/app/"><b>Check your plan</b></a> ·
   <a href="https://isthatpratik.github.io/vpcdiff/">Site</a> ·
   <a href="#github-action">GitHub Action</a> ·
   <a href="#quick-start-cli">CLI</a> ·

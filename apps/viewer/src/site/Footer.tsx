@@ -3,7 +3,7 @@
 // framed card with the brand, links, and the call to action; and a bottom bar.
 // The drift and the segments are constant motion, so they are linear. Both stop under
 // reduced motion.
-import { Mark, REPO, Wordmark } from "../shared/brand.tsx";
+import { REPO, Wordmark } from "../shared/brand.tsx";
 import { GithubLink } from "../shared/github.tsx";
 import { Cta } from "./Cta.tsx";
 import { Divider, PAD } from "./rails.tsx";
@@ -156,7 +156,7 @@ export function Footer() {
             </div>
             <div className="self-end md:justify-self-end">
               <Cta href={APP} primary>
-                Open the viewer
+                Check your plan
               </Cta>
             </div>
           </div>
@@ -180,9 +180,8 @@ export function Footer() {
         </div>
       </footer>
       <Divider />
-      <div className="flex justify-center py-6" aria-hidden="true">
-        <Mark size={14} />
-      </div>
+      {/* A little room under the last line, so the page does not end on the edge. */}
+      <div aria-hidden="true" className="h-10" />
     </>
   );
 }
