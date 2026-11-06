@@ -3,10 +3,11 @@
 One note per concept. Each note states the rule, links the AWS documentation,
 and lists the edge cases the engine must handle.
 
-Planned notes:
+Each note also has a "Slice 1 scope" section: what the engine handles now, and what
+returns `unknown` with a reason.
 
-- `security-groups.md`: stateful, allow-only, SG-to-SG references
-- `network-acls.md`: stateless, ordered rules, ephemeral ports, implicit deny
-- `route-tables.md`: longest-prefix match, `local` route, main vs explicit association
-- `gateways.md`: IGW, NAT gateway, egress-only IGW
-- `terraform-plan-json.md`: `before`, `after`, `after_unknown`, modules, replace actions
+- [security-groups.md](security-groups.md): stateful, allow-only, Terraform removes the default egress rule
+- [network-acls.md](network-acls.md): stateless, ordered rules, implicit deny, default NACL, ephemeral ports
+- [route-tables.md](route-tables.md): main vs explicit association, `local` route, longest-prefix match
+- [gateways.md](gateways.md): internet gateway, public IPv4 address (NAT and egress-only IGW later)
+- [terraform-plan-json.md](terraform-plan-json.md): `actions`, `before`, `after`, `after_unknown`, replacements
