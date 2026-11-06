@@ -1,40 +1,40 @@
 name: vpcdiff
-description: Show how a Terraform plan changes AWS network reachability from the internet, with the deciding rule at each hop.
+description: "Show how a Terraform plan changes AWS network reachability from the internet, with the deciding rule at each hop."
 author: Pratik Desai
 branding:
   icon: shield
   color: blue
 inputs:
   plan:
-    description: Path to the plan as JSON (`terraform show -json tfplan > plan.json`).
+    description: "Path to the plan as JSON (`terraform show -json tfplan > plan.json`)."
     required: true
   fail-on:
-    description: Fail the step when the plan has paths of this kind or worse: added, changed, unknown, or never.
+    description: "Fail the step when the plan has paths of this kind or worse: added, changed, unknown, or never."
     required: false
     default: added
   comment:
-    description: On pull requests, create or update one comment with the report.
+    description: "On pull requests, create or update one comment with the report."
     required: false
     default: "true"
   all:
-    description: Also list unchanged paths.
+    description: "Also list unchanged paths."
     required: false
     default: "false"
   github-token:
-    description: Token used to write the pull request comment. Needs `pull-requests: write`.
+    description: "Token used to write the pull request comment. Needs `pull-requests: write`."
     required: false
     default: ${{ github.token }}
 outputs:
   added:
-    description: Number of paths that become reachable.
+    description: "Number of paths that become reachable."
   removed:
-    description: Number of paths that are no longer reachable.
+    description: "Number of paths that are no longer reachable."
   changed:
-    description: Number of paths whose allowed sources change.
+    description: "Number of paths whose allowed sources change."
   unknown:
-    description: Number of paths the engine cannot decide.
+    description: "Number of paths the engine cannot decide."
   unchanged:
-    description: Number of paths that do not change.
+    description: "Number of paths that do not change."
 runs:
   using: node24
   main: packages/action/dist/index.mjs
