@@ -135,3 +135,37 @@ describe("public addresses and gateways", () => {
     expect(only(analyze(plan(network({ igw }, [attach]))).paths).after.verdict).toBe("allowed");
   });
 });
+
+describe("second review findings", () => {
+  it("1: keeps routes unknown when VPN propagation targets the default table through a reference", () => {
+    const prop: Res = { type: "aws_vpn_gateway_route_propagation", name: "p", before: null, after: { route_table_id: null, vpn_gateway_id: "vgw-1" }, unknown: { id: true, route_table_id: true }, config: { route_table_id: ["aws_vpc.main", "aws_vpc.main.default_route_table_id"] } };
+    const route = res("aws_route", "internet", { id: "r-1", route_table_id: "rtb-main", destination_cidr_block: "0.0.0.0/0", gateway_id: "igw-1" });
+    expect(only(analyze(plan(network({ vpc: vpcWithDefaults, assoc: null }, [route, prop]))).paths).after.verdict).toBe("unknown");
+  });
+
+  it("2: does not depend on address order for a route that targets the main table", () => {
+    const route = res("aws_route", "r", { id: "r-1", route_table_id: "rtb-main", destination_cidr_block: "0.0.0.0/0", gateway_id: "igw-1" });
+    const main = (module?: [string, string]): Res => ({ ...res("aws_main_route_table_association", "m", { id: "rtbassoc-m", vpc_id: "vpc-1", route_table_id: "rtb-1" }), ...(module ? { module } : {}) });
+    const a = analyze(plan(network({ vpc: vpcWithDefaults, assoc: null }, [route, main()])));
+    const b = analyze(plan(network({ vpc: vpcWithDefaults, assoc: null }, [route, main(["net", ""])])));
+    expect(a.paths.map((p) => p.after.verdict)).toEqual(b.paths.map((p) => p.after.verdict));
+  });
+
+  it("3: resolves a known ID to its own route table before the VPC's main table", () => {
+    const vpc: Res = { ...vpcWithDefaults, after: { ...vpcWithDefaults.after, main_route_table_id: "rtb-1" } };
+    const main = res("aws_main_route_table_association", "m", { id: "rtbassoc-m", vpc_id: "vpc-1", route_table_id: "rtb-1" });
+    const route = res("aws_route", "extra", { id: "r-2", route_table_id: "rtb-1", destination_cidr_block: "198.51.100.0/24", gateway_id: "igw-1" });
+    expect(only(analyze(plan(network({ vpc }, [main, route]))).paths).after.verdict).toBe("allowed");
+  });
+
+  it("4: uses an EIP's instance even when its network interface is known", () => {
+    const priv = res("aws_instance", "app", { id: "i-1", subnet_id: "subnet-1", vpc_security_group_ids: ["sg-1"], associate_public_ip_address: false, network_interface: [] });
+    const eip = res("aws_eip", "app", { id: "eipalloc-1", instance: "i-1", network_interface: "eni-123", domain: "vpc" });
+    expect(only(analyze(plan(network({ instance: priv }, [eip]))).paths).after.verdict).toBe("allowed");
+  });
+
+  it("5: skips an ICMP NACL rule without ports", () => {
+    const rule = res("aws_network_acl_rule", "icmp", { id: "r", network_acl_id: "acl-1", rule_number: 10, egress: false, protocol: "icmp", rule_action: "allow", cidr_block: "0.0.0.0/0", from_port: null, to_port: null, icmp_type: 8, icmp_code: 0 });
+    expect(only(analyze(plan(network({ vpc: vpcWithDefaults }, [rule]))).paths).after.verdict).toBe("allowed");
+  });
+});

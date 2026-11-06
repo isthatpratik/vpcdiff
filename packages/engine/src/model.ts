@@ -162,7 +162,11 @@ export class ModelBuilder {
   /** VPC address to internet gateways attached by aws_internet_gateway_attachment. */
   private readonly igwAttach = new Index<string>();
 
+  /** Unmodeled resources whose target cannot be resolved: they may change anything of their kind. */
+  private readonly touchesAnything: Resource[] = [];
+
   constructor(private readonly snap: Snapshot) {
+    this.indexRuleResources();
     for (const r of snap.resources.values()) {
       if (!UNMODELED.has(r.type)) continue;
       const targets = new Set<string>();
@@ -170,17 +174,23 @@ export class ModelBuilder {
       for (const v of Object.values(r.values)) {
         const t = typeof v === "string" ? snap.byId.get(v) : undefined;
         if (t) targets.add(t);
-        for (const vpc of this.ofType("aws_vpc")) for (const [attr, kind] of VPC_DEFAULTS) if (typeof v === "string" && vpc.values[attr] === v) targets.add(`${kind}:${vpc.address}`);
+      }
+      // Targets through VPC defaults and managed defaults (`aws_vpc.x.default_route_table_id`).
+      for (const attr of new Set([...Object.keys(r.fullRefs), ...Object.keys(r.values).filter((k) => k.endsWith("_id"))])) {
+        const key = this.target(r, attr, false);
+        if (!key.ok) this.touchesAnything.push(r);
+        else if (key.value !== null) targets.add(key.value);
       }
       for (const t of targets) this.touchedBy.set(t, [...(this.touchedBy.get(t) ?? []), r]);
     }
-    this.indexRuleResources();
   }
 
   /** Reason why `address` is unknown because an unmodeled resource of `types` changes it. */
   private touched(address: string, types: string[]): string | undefined {
     const r = (this.touchedBy.get(address) ?? []).find((x) => types.includes(x.type));
-    return r ? `${r.address} (${r.type}) changes ${address}, and ${r.type} is not modeled yet` : undefined;
+    if (r) return `${r.address} (${r.type}) changes ${address}, and ${r.type} is not modeled yet`;
+    const any = this.touchesAnything.find((x) => types.includes(x.type));
+    return any ? `${any.address} (${any.type}) may change ${address}, and ${any.type} is not modeled yet` : undefined;
   }
 
   private get(address: string): Resource | undefined {
@@ -212,13 +222,16 @@ export class ModelBuilder {
    * or NACL. Handles VPC default objects (`aws_vpc.x.default_route_table_id`), managed
    * defaults, and plain resources. A known ID outside the plan is `null`.
    */
-  private target(r: Resource, attr: string): Known<Key | null> {
+  private target(r: Resource, attr: string, normalize = true): Known<Key | null> {
+    const norm = (key: Key): Known<Key> => (normalize ? this.normalizeKey(key) : known(key));
     if (isNull(r, attr)) return known(null);
     const v = r.values[attr];
     if (!isUnknown(r, [attr]) && typeof v === "string") {
-      for (const vpc of this.ofType("aws_vpc")) for (const [a, kind] of VPC_DEFAULTS) if (vpc.values[a] === v) return this.normalizeKey(`${kind}:${vpc.address}`);
+      // A resource that owns the ID wins; only an ID no resource owns can be a VPC default.
       const address = this.snap.byId.get(v);
-      return address ? this.canonical(address) : known(null);
+      if (address) return this.canonical(address);
+      for (const vpc of this.ofType("aws_vpc")) for (const [a, kind] of VPC_DEFAULTS) if (vpc.values[a] === v) return norm(`${kind}:${vpc.address}`);
+      return known(null);
     }
     if (r.otherRefs.has(attr)) return unknown(`${r.address}: ${attr} uses values that are unknown until apply`);
     const bases = new Map<string, string | undefined>();
@@ -234,7 +247,7 @@ export class ModelBuilder {
     if (!address) return unknown(`${r.address}: ${attr} refers to ${base}, which is not one resource on the ${this.snap.side} side`);
     if (typeOf(address) === "aws_vpc") {
       const kind = VPC_DEFAULTS.find(([a]) => a === part)?.[1];
-      return kind ? this.normalizeKey(`${kind}:${address}`) : unknown(`${r.address}: ${attr} refers to ${address}.${part ?? "id"}`);
+      return kind ? norm(`${kind}:${address}`) : unknown(`${r.address}: ${attr} refers to ${address}.${part ?? "id"}`);
     }
     return this.canonical(address);
   }
@@ -285,7 +298,10 @@ export class ModelBuilder {
   }
 
   private indexRuleResources(): void {
-    for (const r of this.snap.resources.values()) {
+    // Main route table associations first: rules that target `main_route_table_id` depend on them.
+    const all = [...this.snap.resources.values()];
+    const ordered = [...all.filter((r) => r.type === "aws_main_route_table_association"), ...all.filter((r) => r.type !== "aws_main_route_table_association")];
+    for (const r of ordered) {
       switch (r.type) {
         case "aws_security_group_rule": {
           // https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/security_group_rule
@@ -325,12 +341,14 @@ export class ModelBuilder {
         }
         case "aws_eip": {
           // https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/elastic-ip-addresses-eip.html
-          if (!isNull(r, "network_interface")) this.eips.add(unknown(`${r.address} is associated with a network interface, which is not modeled yet`), known(r.address));
+          // The instance wins; a network interface alone is not modeled. After apply, an EIP on
+          // an instance also shows the instance's network interface.
+          if (isNull(r, "instance") && !isNull(r, "network_interface")) this.eips.add(unknown(`${r.address} is associated with a network interface, which is not modeled yet`), known(r.address));
           else this.eips.add(this.optionalRefTo(r, "instance", "aws_instance"), known(r.address));
           break;
         }
         case "aws_eip_association": {
-          if (!isNull(r, "network_interface_id")) this.eips.add(unknown(`${r.address} is associated with a network interface, which is not modeled yet`), known(r.address));
+          if (isNull(r, "instance_id") && !isNull(r, "network_interface_id")) this.eips.add(unknown(`${r.address} is associated with a network interface, which is not modeled yet`), known(r.address));
           else this.eips.add(this.optionalRefTo(r, "instance_id", "aws_instance"), known(r.address));
           break;
         }
@@ -355,6 +373,7 @@ export class ModelBuilder {
     if (prefixList) return unknown(`${r.address} uses a prefix list, which is not modeled yet`);
     if (!cidrs.length) return known(null); // Security group or IPv6 source: no IPv4 internet source.
     const protocol = normalizeProtocol(protocolValue);
+    if (protocol === "other") return known(null); // ICMP and others never match TCP or UDP traffic.
     const ports = portSet(protocol, from, to);
     const sets = cidrs.map((c) => cidrToSet(c));
     if (!ports || sets.some((s) => !s)) return unknown(`${r.address} has a value the engine cannot read`);
@@ -368,6 +387,8 @@ export class ModelBuilder {
     const cidr = str(r.values.cidr_block);
     if (!cidr) return known({ egress, rule: { ruleNo: num(r.values.rule_number) ?? 0, allow: false, protocol: "other", ports: [], cidr: [], text: `${r.address} (IPv6)` } });
     const protocol = normalizeProtocol(r.values.protocol);
+    // ICMP and other protocols never match TCP or UDP traffic; their ports are not read.
+    if (protocol === "other") return known({ egress, rule: { ruleNo: num(r.values.rule_number) ?? 0, allow: false, protocol, ports: [], cidr: [], text: `${r.address} (${String(r.values.protocol)})` } });
     const ports = portSet(protocol, r.values.from_port, r.values.to_port);
     const set = cidrToSet(cidr);
     const ruleNo = num(r.values.rule_number);
@@ -467,6 +488,7 @@ export class ModelBuilder {
       if (!isObj(raw)) continue;
       if (hasUnknown(r, ["ingress", i])) return { address, ingress: unknown(`${address}: ingress rule ${i} has values that are unknown until apply`) };
       const protocol = normalizeProtocol(raw.protocol);
+      if (protocol === "other") continue; // ICMP and others never match TCP or UDP traffic.
       const ports = portSet(protocol, raw.from_port, raw.to_port);
       const cidrs = arr(raw.cidr_blocks).map(String);
       if (arr(raw.prefix_list_ids).length) return { address, ingress: unknown(`${address}: ingress rule ${i} uses a prefix list, which is not modeled yet`) };
@@ -486,6 +508,7 @@ export class ModelBuilder {
       if (hasUnknown(r, [key, i])) return unknown(`${r.address}: ${key} rule ${i} has values that are unknown until apply`);
       if (str(raw.ipv6_cidr_block)) continue; // IPv6 rules never match IPv4 traffic.
       const protocol = normalizeProtocol(raw.protocol);
+      if (protocol === "other") continue; // ICMP and others never match TCP or UDP traffic.
       const ports = portSet(protocol, raw.from_port, raw.to_port);
       const cidr = str(raw.cidr_block);
       const set = cidr ? cidrToSet(cidr) : undefined;
@@ -627,7 +650,7 @@ export class ModelBuilder {
       if (!r) return { resource, routes: unknown(`${key} is not in this plan`) };
       base = this.inlineRoutes(r);
     }
-    const touched = this.touched(key, UNMODELED_ROUTES) ?? (key.startsWith("default-rt:") ? this.touched(`main-rt:${vpc.address}`, UNMODELED_ROUTES) : undefined);
+    const touched = this.touched(key, UNMODELED_ROUTES) ?? (isMain ? this.touched(`main-rt:${vpc.address}`, UNMODELED_ROUTES) : undefined);
     if (touched) return { resource, routes: unknown(touched) };
     if (!base.ok) return { resource, routes: base };
     const extra = this.routes.get(key);
