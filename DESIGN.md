@@ -147,8 +147,15 @@ Fonts load from Google Fonts (see section 10 for what that means for privacy).
 - `prefers-reduced-motion` replaces movement with a plain fade or the final state.
 - Landing page motion is few and slow, each part with a cause:
   - The hero field: a plan widens one rule (shown as the cause at the top), and one
-    path draws from the internet to the database, hop by hop. The rule goes back and the
-    path retracts, so the loop ends on its first frame.
+    path draws from the internet to the database, hop by hop. The path is never seen to
+    retract: the camera pans up and away, the path resets while it is out of view, and
+    the camera pans back down onto the internet to begin again.
+  - The hero camera moves on a critically damped spring (no overshoot, soft start, slow
+    landing): close on the internet, then it follows each hop as it lights and pulls back
+    to the whole path. The caption stays still, like a caption on a frame.
+  - On the left of the hero, the spokes from "any public address" keep moving: one
+    spoke at a time slides its far end to an adjacent block (one cell, in-out), and only
+    the blocks a spoke lands on are lit.
   - The headline blurs in once. Sections rise 24 px and fade in once.
   - Section bars draw down the rail when the title comes into view.
   - "How it works" is a row of step tabs (Plan, Run, Read, Gate) over a split panel,
@@ -166,10 +173,6 @@ Fonts load from Google Fonts (see section 10 for what that means for privacy).
   - Film grain on the hero animation only: a self-made 6-frame noise GIF (33 KB) at
     3.5%, after ui-layouts' Noise, served from this origin and faded out radially so it
     melts into the page. Hidden under reduced motion.
-  - The hero camera: it moves with the story (wide, a push as the rule changes, then it
-    follows each hop as it lights and pulls back to the whole path) on
-    `cubic-bezier(0.16, 1, 0.3, 1)`: a fast start and a long, smooth landing. The path
-    and the nodes use the same curve. The caption stays still, like a caption on a frame.
   - Sections already on screen at first paint show at once; only sections below the
     fold rise in on scroll.
 - **Smooth scroll:** Lenis on the landing page only (ADR 0007), off under reduced
