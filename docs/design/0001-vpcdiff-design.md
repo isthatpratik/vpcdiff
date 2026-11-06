@@ -1,6 +1,6 @@
 # 0001: vpcdiff design
 
-- **Status:** Draft
+- **Status:** Accepted; v0.1 implemented (sections 5 to 8 describe the code)
 - **Author:** Pratik Desai
 - **Created:** 2026-11-06
 
@@ -87,27 +87,41 @@ intent (behavior diff on a PR), so re-check it before major decisions.
 - Fogel et al., "A General Approach to Network Configuration Analysis", NSDI 2015.
 - Kazemian et al., "Header Space Analysis: Static Checking for Networks", NSDI 2012.
 
-## 5. Model (draft)
+## 5. Model
 
-**Endpoint:** something traffic starts from or arrives at: an ENI-backed resource
-(instance, RDS, ALB, ECS task), the internet, or a CIDR.
+**Endpoint:** a resource that internet traffic can arrive at: an EC2 instance, an RDS DB
+instance, or a load balancer. RDS and load balancers can sit in several subnets; the engine
+evaluates each placement and returns `unknown` when they disagree
+([endpoints.md](../semantics/endpoints.md)).
 
-**Packet class:** `(protocol, src CIDR set, dst port range)`, represented as interval sets.
+**Source:** the internet, meaning every public IPv4 address outside the endpoint's VPC
+([gateways.md](../semantics/gateways.md), "Internet sources").
 
-**Hop sequence for a VPC-to-internet path:**
+**Packet class:** `(protocol, destination port range)`, with the source as an IPv4 address
+set. Ports are split where any rule changes the answer, then merged where both sides of
+the plan give the same outcome. Sets are interval sets, so results are exact.
+
+**Hop sequence for internet to endpoint, in the order the engine checks them:**
 
 ```
-src ENI → SG egress → subnet NACL outbound → route table → IGW/NAT → internet
+public IP → internet gateway → subnet NACL inbound → security groups
+          → subnet NACL outbound (response to ephemeral 1024-65535) → subnet route (response)
 ```
 
-and the reverse for inbound traffic. Security groups are stateful. NACLs are
-stateless, so return traffic must also be allowed (ephemeral ports).
+Security groups are stateful, so the response needs no outbound group rule. NACLs are
+stateless, so the response must pass the outbound rules. The response must route back
+through the VPC's internet gateway by longest prefix match.
 
-**Result per (src, dst, protocol, port):**
+**Result per (endpoint, protocol, port range), before and after:**
 
-- `allowed` with the hop list and the deciding rule at each hop
-- `blocked` with the first hop that denies it
-- `unknown` with the reason (unknown value in the plan, unsupported resource)
+- `allowed` with the source CIDRs, and the hop list with the deciding rule at each hop
+- `blocked` with the first hop that denies everything
+- `unknown` with the reason (a value unknown until apply, an unmodeled resource, placements
+  that disagree)
+- `absent` when the endpoint does not exist on that side
+
+The change is `added`, `removed`, `changed` (both allowed, different sources), `unchanged`,
+or `unknown` (either side unknown).
 
 ## 6. Pipeline
 
@@ -122,15 +136,40 @@ plan.json
   → render        (CLI text/JSON, PR comment, viewer)
 ```
 
-## 7. Open questions
+## 7. Decisions on the open questions
 
-1. How to treat `after_unknown` values (for example, a CIDR computed at apply time)?
-2. Which endpoint pairs to evaluate by default, so the matrix stays small?
-3. How to show "transient outage during replace" in the diff?
-4. Graph layout for the viewer: precomputed or interactive?
+1. **`after_unknown` values.** A hop that depends on an unknown value returns `unknown`,
+   naming the resource and attribute. Links between resources use the plan's
+   configuration references when IDs are unknown, but only when the expression uses
+   resources alone and the count matches ([terraform-plan-json.md](../semantics/terraform-plan-json.md)).
+2. **Default endpoint pairs.** From the internet to every endpoint, for each TCP and UDP
+   port range that one of its security groups (or, for a Network Load Balancer without
+   groups, its listeners) opens to a public address on either side of the plan.
+3. **Transient outage during replace.** Not in v0.1. See future work.
+4. **Graph layout.** Fixed: one row per hop, before and after as two columns
+   ([ADR 0005](../adr/0005-viewer-stack.md)).
 
-## 8. Testing strategy
+## 8. Future work
 
-- Golden fixtures: `main.tf`, `plan.json`, `expected.json`, `ORACLE.md`.
-- Each fixture is verified once against AWS Reachability Analyzer (free tier account, then destroyed).
-- Property tests, for example: adding an allow rule never removes a path.
+- Paths between endpoints inside the VPC (security group references), so a change that
+  cuts "load balancer to service" shows up.
+- Outage risk when a security group or endpoint on a path is replaced (delete before
+  create).
+- NAT gateways, VPC peering, Transit Gateway, VPC endpoints, IPv6, prefix lists.
+- Aurora, ECS services, Classic Load Balancers.
+- Reachability Analyzer runs for every fixture (ADR 0004); today each fixture has a
+  written proof.
+
+## 9. Testing strategy
+
+- Golden fixtures in `fixtures/<name>/`: `before/main.tf` (optional), `after/main.tf`,
+  `plan.json`, `expected.json`, `ORACLE.md`. `pnpm fixture:plan` makes a real plan without
+  an AWS account (a synthetic state from the `before/` plan, then `-refresh=false`), with
+  fake credentials and sensitive values removed.
+- `expected.json` is written by hand from the proof in `ORACLE.md` before the engine runs
+  on the fixture; the test compares engine output byte for byte.
+- Each fixture can be checked once against AWS Reachability Analyzer (paid; the steps are
+  in each `ORACLE.md`).
+- Unit tests build small synthetic plans in memory for edge cases (unknown values,
+  module instances, rule order, partial ephemeral ports).
+- Each engine change was reviewed by an independent reviewer before merge.
