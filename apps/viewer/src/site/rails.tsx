@@ -59,12 +59,13 @@ export function Rail({ children, className = "", id, label, reveal = true, as: T
  * (under the nav), around the tagline, and where the frame ends (the last line of the
  * page). Every other crossing stays a plain gap.
  */
-export function Divider({ dots = false }: { dots?: boolean }) {
+export function Divider({ dots = false, dashed = false }: { dots?: boolean; dashed?: boolean }) {
   const gap = "absolute -top-3 grid size-6 place-items-center bg-litt-canvas";
   const dot = dots ? <span className="size-1 rounded-full bg-litt-fg-muted" /> : null;
   return (
     <div aria-hidden="true" className="relative z-10 h-px">
-      <div className="intro-line absolute inset-x-3 top-0 h-px bg-litt-line" />
+      {/* Dashed only for a soft break (the footer's fine print), never between sections. */}
+      <div className={`intro-line absolute inset-x-3 top-0 h-px ${dashed ? "bg-[repeating-linear-gradient(90deg,var(--litt-line-strong)_0_4px,transparent_4px_8px)]" : "bg-litt-line"}`} />
       <div className="relative mx-3 h-px sm:mx-6 xl:mx-auto xl:max-w-[1200px]">
         <span className={`${gap} -left-3`}>{dot}</span>
         <span className={`${gap} -right-3`}>{dot}</span>

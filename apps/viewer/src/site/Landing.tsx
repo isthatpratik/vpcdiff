@@ -169,6 +169,9 @@ const COVERAGE: { group: string; items: string[] }[] = [
   { group: "Addresses and listeners", items: ["aws_eip", "aws_eip_association", "aws_lb_listener", "aws_db_subnet_group"] },
 ];
 
+/** Not modeled yet (README support matrix); paths through them are reported as unknown. */
+const NOT_YET = ["NAT gateway", "VPC peering", "Transit Gateway", "VPC endpoints", "IPv6", "Aurora", "ECS services"];
+
 const FAQ: { q: string; a: string }[] = [
   { q: "Does vpcdiff need AWS credentials or an AWS account?", a: "No. It reads the JSON that terraform show produces. Terraform needs credentials to make the plan; vpcdiff does not." },
   { q: "Does my plan leave my machine?", a: "No. The CLI and the GitHub Action run where you run them. The viewer analyzes the file in your browser tab, and its Content Security Policy blocks every data request. The Action writes a comment to your own pull request only when you turn that on." },
@@ -381,7 +384,7 @@ export function Landing() {
               Anything else that can change a path is reported as unknown with the reason, so a gap never hides an open port.
             </SectionHead>
           </div>
-          <div className="grid gap-px border-y border-litt-line bg-litt-line md:grid-cols-2">
+          <div className="grid gap-px border-t border-litt-line bg-litt-line md:grid-cols-2">
             {COVERAGE.map((c) => (
               <div key={c.group} className="grid content-start gap-5 bg-litt-canvas px-6 py-10 md:px-16 md:py-12">
                 <h3 className="font-display text-lg font-normal text-litt-fg">{c.group}</h3>
@@ -397,7 +400,18 @@ export function Landing() {
               </div>
             ))}
           </div>
-          <p className={`${PAD} py-6 text-litt-small text-litt-fg-subtle`}>Not yet: NAT gateways, VPC peering, Transit Gateway, VPC endpoints, IPv6, Aurora, and ECS services.</p>
+          {/* What is not modeled yet, in the viewer's language for "not checked": a dashed
+              line and dashed outlines. Paths through these are reported as unknown. */}
+          <div className={`${PAD} grid gap-4 border-t border-dashed border-litt-line-strong py-8 md:grid-cols-[auto_minmax(0,1fr)] md:items-center md:gap-8`}>
+            <p className="text-litt-small text-litt-fg-subtle">Not yet, reported as unknown</p>
+            <ul className="flex flex-wrap gap-2">
+              {NOT_YET.map((i) => (
+                <li key={i} className="rounded-[6px] border border-dashed border-litt-line-strong px-2 py-0.5 font-litt-mono text-xs text-litt-fg-subtle">
+                  {i}
+                </li>
+              ))}
+            </ul>
+          </div>
         </Rail>
         <Divider />
 

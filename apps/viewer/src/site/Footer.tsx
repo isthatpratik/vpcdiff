@@ -109,7 +109,7 @@ export function Footer() {
           ))}
         </div>
       </div>
-      <Divider />
+      <Divider dashed />
       <div className={RAIL}>
         <div className={`${PAD} grid gap-4 py-8 text-litt-caption text-litt-fg-subtle`}>
           <Report />
