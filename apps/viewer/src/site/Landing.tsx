@@ -310,7 +310,14 @@ function Hero() {
             page. Hidden under reduced motion (a GIF cannot pause). */}
         <div aria-hidden="true" className="pointer-events-none absolute inset-0 opacity-[0.035] [mask-image:radial-gradient(ellipse_at_55%_45%,black_30%,transparent_75%)] motion-reduce:hidden" style={{ backgroundImage: `url(${import.meta.env.BASE_URL}noise.gif)` }} />
       </div>
-      <div className={`${PAD} relative -mt-16 grid gap-8 pb-16 sm:-mt-20 lg:pb-20`}>
+      <div className={`${PAD} relative isolate -mt-16 grid gap-8 pb-16 sm:-mt-20 lg:pb-20`}>
+        {/* A feathered frost behind the headline and the buttons: where the animation runs
+            under the text, it blurs and fades into the text area instead of meeting it at
+            a hard edge. A wide ellipse covers both the left text and the right buttons. */}
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-x-0 -top-28 bottom-0 -z-10 bg-litt-canvas/55 backdrop-blur-[10px] [mask-image:radial-gradient(ellipse_75%_70%_at_45%_62%,black_40%,transparent_80%)] [@media(prefers-reduced-transparency:reduce)]:backdrop-blur-none"
+        />
         <h1 id="hero-title" className="font-display text-5xl leading-[1.02] font-normal tracking-[-0.045em] text-litt-fg sm:text-7xl">
           <TextEffect as="span" per="word" preset="fade-in-blur" speedReveal={1.2} className="block leading-[inherit]">
             See what a Terraform plan
