@@ -1267,9 +1267,11 @@ html.site {
 }
 
 /* Signal Cyan, the vpcdiff accent (DESIGN.md, section 3). It replaces litt's Blue 4 in
-   both themes; contrast is measured in DESIGN.md. */
+   both themes; contrast is measured in DESIGN.md. React Flow puts a .light or .dark
+   class on its root, and litt's tokens match those classes too, so they are listed. */
 :root,
 [data-theme="light"],
+.light,
 html[data-theme="light"][data-material] {
   --litt-accent: #0e7490;
   --litt-accent-hover: #155e75;
@@ -1279,6 +1281,7 @@ html[data-theme="light"][data-material] {
   --litt-focus: #0e7490;
 }
 [data-theme="dark"],
+.dark,
 html[data-theme="dark"][data-material] {
   --litt-accent: #22d3ee;
   --litt-accent-hover: #67e8f9;
