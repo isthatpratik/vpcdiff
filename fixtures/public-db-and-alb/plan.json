@@ -2,6 +2,13 @@
   "format_version": "1.2",
   "terraform_version": "1.13.3",
   "planned_values": {
+    "outputs": {
+      "pw": {
+        "sensitive": true,
+        "type": "string",
+        "value": "(sensitive value removed)"
+      }
+    },
     "root_module": {
       "resources": [
         {
@@ -1174,6 +1181,32 @@
       }
     }
   ],
+  "output_changes": {
+    "pw": {
+      "actions": [
+        "create"
+      ],
+      "before": null,
+      "after": "(sensitive value removed)",
+      "after_unknown": false,
+      "before_sensitive": true,
+      "after_sensitive": true
+    }
+  },
+  "prior_state": {
+    "format_version": "1.0",
+    "terraform_version": "1.13.3",
+    "values": {
+      "outputs": {
+        "pw": {
+          "sensitive": true,
+          "value": "(sensitive value removed)",
+          "type": "string"
+        }
+      },
+      "root_module": {}
+    }
+  },
   "configuration": {
     "provider_config": {
       "aws": {
@@ -1188,6 +1221,17 @@
       }
     },
     "root_module": {
+      "outputs": {
+        "pw": {
+          "sensitive": true,
+          "expression": {
+            "references": [
+              "aws_db_instance.main.password",
+              "aws_db_instance.main"
+            ]
+          }
+        }
+      },
       "resources": [
         {
           "address": "aws_db_instance.main",
@@ -1504,6 +1548,12 @@
     }
   },
   "relevant_attributes": [
+    {
+      "resource": "aws_db_instance.main",
+      "attribute": [
+        "password"
+      ]
+    },
     {
       "resource": "aws_db_subnet_group.db",
       "attribute": [

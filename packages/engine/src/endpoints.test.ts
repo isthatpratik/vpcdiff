@@ -65,3 +65,46 @@ describe("aws_lb", () => {
     expect(p.after.verdict).toBe("unknown");
   });
 });
+
+describe("endpoint review findings", () => {
+  const lb = (over: Values = {}) => res("aws_lb", "web", { id: "arn:lb", arn: "arn:lb", internal: false, load_balancer_type: "application", ip_address_type: "ipv4", subnets: ["subnet-1", "subnet-2"], subnet_mapping: [], security_groups: ["sg-1"], ...over });
+  const webSg = res("aws_security_group", "app", { id: "sg-1", ingress: [sgRule(443, 443, ["0.0.0.0/0"])] });
+
+  it("1: has no public IPv4 address with dualstack-without-public-ipv4", () => {
+    const p = only(analyze(plan(network({ instance: null, sg: webSg }, [publicSubnet2, assoc2, lb({ ip_address_type: "dualstack-without-public-ipv4" })]))).paths);
+    expect(p.after.verdict).toBe("blocked");
+    expect(p.after.hops[0]?.hop).toBe("public-ip");
+  });
+
+  it("2: returns unknown when load_balancer_type comes from a variable", () => {
+    const l: Res = { ...lb({ load_balancer_type: null, security_groups: [] }), unknown: { load_balancer_type: true }, config: { load_balancer_type: ["var.type"] } };
+    const listener = res("aws_lb_listener", "tls", { id: "arn:listener", load_balancer_arn: "arn:lb", port: 8443, protocol: "TLS" });
+    const paths = analyze(plan(network({ instance: null, sg: null }, [publicSubnet2, assoc2, l, listener]))).paths;
+    expect(paths.length).toBeGreaterThan(0);
+    expect(paths.every((p) => p.after.verdict === "unknown")).toBe(true);
+  });
+
+  it("4: gives one answer when placements agree on verdict and sources", () => {
+    const rt2 = res("aws_route_table", "b", { id: "rtb-2", vpc_id: "vpc-1", route: [{ cidr_block: "0.0.0.0/0", gateway_id: "igw-1" }] });
+    const assocB = res("aws_route_table_association", "b", { id: "rtbassoc-2", subnet_id: "subnet-2", route_table_id: "rtb-2" });
+    const p = only(analyze(plan(network({ instance: null, sg: webSg }, [publicSubnet2, rt2, assocB, lb()]))).paths);
+    expect(p.after.verdict).toBe("allowed");
+    expect(p.after.sources).toEqual(["internet"]);
+  });
+
+  it("5: keeps a private DB instance blocked when its subnet group is unknown", () => {
+    const paths = analyze(plan(network({ instance: null, sg: dbSg }, [db({ publicly_accessible: false, db_subnet_group_name: null })]))).paths;
+    expect(paths.every((p) => p.after.verdict === "blocked")).toBe(true);
+  });
+
+  it("6: returns unknown when publicly_accessible is unknown even if not configured", () => {
+    const d: Res = { ...db({ publicly_accessible: null }), unknown: { publicly_accessible: true } };
+    expect(only(analyze(plan(network({ instance: null, sg: dbSg }, [dbGroup(["subnet-1"]), d]))).paths).after.verdict).toBe("unknown");
+  });
+
+  it("7: returns unknown when subnets and subnet_mapping disagree", () => {
+    const l = lb({ subnet_mapping: [{ subnet_id: "subnet-1" }] });
+    const paths = analyze(plan(network({ instance: null, sg: webSg }, [publicSubnet2, assoc2, l]))).paths;
+    expect(paths.every((p) => p.after.verdict === "unknown")).toBe(true);
+  });
+});
