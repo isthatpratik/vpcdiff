@@ -47,11 +47,16 @@ Handled:
 - `protocol` values `tcp`, `6`, and `-1`.
 - `vpc_security_group_ids` on `aws_instance`.
 
+Skipped for internet paths, because they cannot match an internet address: a source
+that is another security group (`security_groups`, `self`), and IPv6 sources (IPv6 is
+not modeled yet).
+
 Returns `unknown` with a reason:
 
 - A separate rule resource that references the group. The engine cannot yet merge
   it, and ignoring it could hide an allow.
-- A source that is another security group, a prefix list, or an IPv6 CIDR.
+- A source that is a prefix list. It can contain public ranges that the engine cannot
+  expand offline.
 - An instance with no `vpc_security_group_ids`. It gets the VPC's default group,
   which is not in the plan unless `aws_default_security_group` manages it.
 - Any rule value that is unknown in the plan (`after_unknown`).

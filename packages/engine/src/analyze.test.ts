@@ -8,19 +8,31 @@ interface Res {
   before?: Values | null;
   after?: Values | null;
   unknown?: Values;
+  /** Configuration expressions: attribute name to referenced names (resources, var., local.). */
+  config?: Record<string, string[]>;
+  /** Module call and instance key, for example ["net", '["a"]']. */
+  module?: [string, string];
 }
 
-/** A minimal `terraform show -json` plan. Resources link through known IDs. */
+/** A minimal `terraform show -json` plan. Resources link through known IDs or `config`. */
 function plan(resources: Res[]): unknown {
+  const root: { resources: unknown[]; module_calls: Record<string, { module: { resources: unknown[] } }> } = { resources: [], module_calls: {} };
+  for (const r of resources) {
+    const expressions = Object.fromEntries(Object.entries(r.config ?? {}).map(([k, refs]) => [k, { references: refs.flatMap((x) => (/^(var|local)\./.test(x) ? [x] : [`${x}.id`, x])) }]));
+    const entry = { address: `${r.type}.${r.name}`, mode: "managed", type: r.type, name: r.name, expressions };
+    if (r.module) (root.module_calls[r.module[0]] ??= { module: { resources: [] } }).module.resources.push(entry);
+    else root.resources.push(entry);
+  }
   return {
     format_version: "1.2",
     resource_changes: resources.map((r) => {
       const before = r.before === undefined ? r.after : r.before;
       const after = r.after === undefined ? r.before : r.after;
       const actions = !before ? ["create"] : !after ? ["delete"] : JSON.stringify(before) === JSON.stringify(after) ? ["no-op"] : ["update"];
-      return { address: `${r.type}.${r.name}`, mode: "managed", type: r.type, name: r.name, change: { actions, before, after, after_unknown: r.unknown ?? {} } };
+      const prefix = r.module ? `module.${r.module[0]}${r.module[1]}.` : "";
+      return { address: `${prefix}${r.type}.${r.name}`, mode: "managed", type: r.type, name: r.name, change: { actions, before, after, after_unknown: r.unknown ?? {} } };
     }),
-    configuration: { root_module: { resources: [] } },
+    configuration: { root_module: root },
   };
 }
 
@@ -134,5 +146,80 @@ describe("analyze", () => {
 
   it("rejects input that is not a plan", () => {
     expect(() => analyze({ hello: "world" })).toThrow(PlanError);
+  });
+
+  describe("review findings", () => {
+    const sgRuleRes = (cidr: string): Values => ({ id: "sgrule-1", security_group_id: "sg-1", type: "ingress", from_port: 443, to_port: 443, protocol: "tcp", cidr_blocks: [cidr] });
+    const igwRoutes = (extra: Values[]): Res => ({ type: "aws_route_table", name: "a", after: { id: "rtb-1", vpc_id: "vpc-1", route: [{ cidr_block: "0.0.0.0/0", gateway_id: "igw-1" }, ...extra] } });
+
+    it("1: reports unknown, not unchanged, when an unmodeled rule changes on both sides", () => {
+      const rule: Res = { type: "aws_security_group_rule", name: "web", before: sgRuleRes("10.0.0.0/8"), after: sgRuleRes("0.0.0.0/0") };
+      const res = analyze(plan(network({}, [rule])));
+      expect(res.paths.every((p) => p.change === "unknown")).toBe(true);
+      expect(res.summary.unchanged).toBe(0);
+    });
+
+    it("2: reports the part of the sources whose response route is unresolved", () => {
+      const p = only(analyze(plan(network({ rt: igwRoutes([{ cidr_block: "198.51.100.0/24", gateway_id: "igw-elsewhere" }]) }))).paths);
+      expect(p.after.verdict).toBe("allowed");
+      expect(p.after.reason).toContain("198.51.100.0/24");
+      expect(p.after.hops.at(-1)?.decision).toBe("partial");
+    });
+
+    it("3: reports sources whose response is allowed only for some ephemeral ports", () => {
+      const acl = nacl([naclRule(100, "allow", "-1", 0, 0)], [naclRule(50, "deny", "tcp", 40000, 65535, "198.51.100.0/24"), naclRule(100, "allow", "tcp", 1024, 65535)]);
+      const p = only(analyze(plan(network({}, [acl]))).paths);
+      expect(p.after.verdict).toBe("allowed");
+      expect(p.after.reason).toContain("198.51.100.0/24");
+    });
+
+    it("4: returns unknown when a security group list mixes a resource and a variable", () => {
+      const instance: Res = { type: "aws_instance", name: "app", before: null, after: { subnet_id: "subnet-1", vpc_security_group_ids: ["sg-1", null], associate_public_ip_address: true, network_interface: [] }, unknown: { id: true, vpc_security_group_ids: [false, true] }, config: { vpc_security_group_ids: ["aws_security_group.app", "var.extra_sg"] } };
+      const paths = analyze(plan(network({ instance })));
+      expect(paths.paths.every((p) => p.after.verdict === "unknown")).toBe(true);
+    });
+
+    it("5: does not take another route's gateway reference for an unknown gateway", () => {
+      const rt: Res = { type: "aws_route_table", name: "a", after: { id: "rtb-1", vpc_id: "vpc-1", route: [{ cidr_block: "0.0.0.0/0", gateway_id: "igw-1" }, { cidr_block: "192.0.2.0/24", gateway_id: null }] }, unknown: { route: [{}, { gateway_id: true }] }, config: { route: ["aws_internet_gateway.main", "var.gw"] } };
+      const p = only(analyze(plan(network({ rt }))).paths);
+      expect(p.after.reason).toContain("192.0.2.0/24");
+      expect(p.after.sources).not.toContain("192.0.2.0/24");
+    });
+
+    it("6: finds a managed default NACL for a VPC in a keyed module", () => {
+      const mod: [string, string] = ["net", '["a"]'];
+      const inModule = network().map((r): Res => ({ ...r, module: mod }));
+      const vpc = inModule.find((r) => r.type === "aws_vpc") as Res;
+      vpc.after = { ...vpc.after, default_network_acl_id: null };
+      vpc.unknown = { default_network_acl_id: true };
+      const def: Res = { type: "aws_default_network_acl", name: "d", module: mod, before: null, after: { default_network_acl_id: null, subnet_ids: [], ingress: [], egress: [] }, unknown: { default_network_acl_id: true, id: true }, config: { default_network_acl_id: ["aws_vpc.main"] } };
+      const p = only(analyze(plan([...inModule, def])).paths);
+      expect(p.after.hops.find((h) => h.hop === "nacl-inbound")?.decision).toBe("deny");
+    });
+
+    it("7: returns unknown, not blocked, when the internet gateway is outside the plan", () => {
+      const p = only(analyze(plan(network({ igw: null, rt: igwRoutes([]) }))).paths);
+      expect(p.after.verdict).toBe("unknown");
+      expect(p.after.hops.at(-1)?.hop).toBe("internet-gateway");
+    });
+
+    it("8: returns unknown when associate_public_ip_address is set to a value unknown until apply", () => {
+      const instance: Res = { type: "aws_instance", name: "app", after: { id: "i-1", subnet_id: "subnet-1", vpc_security_group_ids: ["sg-1"], associate_public_ip_address: null, network_interface: [] }, unknown: { associate_public_ip_address: true }, config: { associate_public_ip_address: ["var.public"] } };
+      expect(only(analyze(plan(network({ instance }))).paths).after.hops.at(-1)).toMatchObject({ hop: "public-ip", decision: "unknown" });
+    });
+
+    it("9: returns unknown when a VPN gateway can add more specific routes", () => {
+      const prop: Res = { type: "aws_vpn_gateway_route_propagation", name: "p", after: { id: "p-1", route_table_id: "rtb-1", vpn_gateway_id: "vgw-1" } };
+      expect(only(analyze(plan(network({}, [prop]))).paths).after.verdict).toBe("unknown");
+      const rt: Res = { type: "aws_route_table", name: "a", after: { id: "rtb-1", vpc_id: "vpc-1", propagating_vgws: ["vgw-1"], route: [{ cidr_block: "0.0.0.0/0", gateway_id: "igw-1" }] } };
+      expect(only(analyze(plan(network({ rt }))).paths).after.verdict).toBe("unknown");
+    });
+
+    it("11: orders security groups the same way on both sides", () => {
+      const sg = (name: string, id: string): Res => ({ type: "aws_security_group", name, after: { id, ingress: [sgRule(443, 443, ["0.0.0.0/0"])] } });
+      const instance: Res = { type: "aws_instance", name: "app", before: { id: "i-1", subnet_id: "subnet-1", vpc_security_group_ids: ["sg-a", "sg-b"], associate_public_ip_address: true, network_interface: [] }, after: { id: "i-1", subnet_id: "subnet-1", vpc_security_group_ids: null, associate_public_ip_address: true, network_interface: [] }, unknown: { vpc_security_group_ids: true }, config: { vpc_security_group_ids: ["aws_security_group.a", "aws_security_group.b"] } };
+      const p = only(analyze(plan(network({ sg: null, instance }, [sg("a", "sg-b"), sg("b", "sg-a")]))).paths);
+      expect(p.change).toBe("unchanged");
+    });
   });
 });

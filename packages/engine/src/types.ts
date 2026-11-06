@@ -30,7 +30,10 @@ export interface Outcome {
   /** Source addresses that reach the target, as CIDRs. "internet" means every public address. */
   sources: string[];
   hops: Hop[];
-  /** Why the verdict is blocked or unknown. Empty when allowed or absent. */
+  /**
+   * Why the verdict is blocked or unknown. When allowed: sources that some hop could not
+   * decide (they are not in `sources`), or empty. Empty when absent.
+   */
   reason: string;
 }
 

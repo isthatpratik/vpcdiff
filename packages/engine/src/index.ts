@@ -1,7 +1,7 @@
 import { evaluate, exposedPorts, portCuts, segment } from "./evaluate.js";
 import { formatPorts, union, type Range } from "./intervals.js";
 import { ModelBuilder, type Endpoint } from "./model.js";
-import { parsePlan, type Snapshot } from "./plan.js";
+import { cmp, parsePlan, type Snapshot } from "./plan.js";
 import { RESULT_FORMAT, type Change, type Note, type Outcome, type Path, type Protocol, type Result } from "./types.js";
 
 export { PlanError } from "./plan.js";
@@ -14,17 +14,18 @@ const PROTOCOLS: Protocol[] = ["tcp", "udp"];
 
 // Endpoint and network types the engine models. Other aws_* types in a plan get a note.
 const MODELED = new Set(["aws_vpc", "aws_subnet", "aws_internet_gateway", "aws_route_table", "aws_route_table_association", "aws_security_group", "aws_network_acl", "aws_default_network_acl", "aws_instance"]);
-const NETWORK_TYPE = /^aws_(vpc\w*|subnet|route\w*|internet_gateway\w*|nat_gateway|egress_only_internet_gateway|network_acl\w*|default_\w+|security_group\w*|vpc_security_group_\w+|eip\w*|network_interface\w*|lb|alb|elb|db_instance|rds_cluster\w*|ecs_service|ec2_transit_gateway\w*|vpc_peering_connection\w*|vpc_endpoint\w*|instance)$/;
+const NETWORK_TYPE = /^aws_(vpc\w*|vpn_gateway\w*|subnet|route\w*|internet_gateway\w*|nat_gateway|egress_only_internet_gateway|network_acl\w*|default_\w+|security_group\w*|vpc_security_group_\w+|eip\w*|network_interface\w*|lb|alb|elb|db_instance|rds_cluster\w*|ecs_service|ec2_transit_gateway\w*|vpc_peering_connection\w*|vpc_endpoint\w*|instance)$/;
 
 function changeOf(before: Outcome, after: Outcome): Change {
-  if (JSON.stringify(before) === JSON.stringify(after)) return "unchanged";
   const b = before.verdict;
   const a = after.verdict;
+  // An unknown side cannot prove that nothing changed, even if both sides look the same.
+  if (a === "unknown" || b === "unknown") return "unknown";
+  if (JSON.stringify(before) === JSON.stringify(after)) return "unchanged";
   if (a === "allowed" && (b === "blocked" || b === "absent")) return "added";
   if (b === "allowed" && (a === "blocked" || a === "absent")) return "removed";
   if (a === "allowed" && b === "allowed") return "changed";
-  if (a === b || (a !== "unknown" && b !== "unknown")) return "unchanged";
-  return "unknown";
+  return "unchanged";
 }
 
 function endpointsOf(snap: Snapshot): Map<string, Endpoint> {
@@ -39,7 +40,7 @@ function notesFor(before: Snapshot, after: Snapshot): Note[] {
       seen.set(r.address, { resource: r.address, message: `${r.type} is not modeled yet; paths it can change are reported as unknown or not reported` });
     }
   }
-  return [...seen.values()].toSorted((a, b) => a.resource.localeCompare(b.resource));
+  return [...seen.values()].toSorted((a, b) => cmp(a.resource, b.resource));
 }
 
 /**
@@ -50,7 +51,7 @@ export function analyze(plan: unknown): Result {
   const { before, after } = parsePlan(plan);
   const epBefore = endpointsOf(before);
   const epAfter = endpointsOf(after);
-  const addresses = [...new Set([...epBefore.keys(), ...epAfter.keys()])].toSorted();
+  const addresses = [...new Set([...epBefore.keys(), ...epAfter.keys()])].toSorted(cmp);
   const paths: Path[] = [];
 
   for (const address of addresses) {

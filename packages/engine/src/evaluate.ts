@@ -76,6 +76,12 @@ export function evaluate(ep: Endpoint | undefined, p: Protocol, ports: Range): O
   const universe = internetOf(ep);
   const portText = `${p}/${formatPorts([ports])}`;
   const add = (hop: HopKind, resource: string, decision: Hop["decision"], rule: string) => hops.push({ hop, resource, decision, rule, doc: DOC[hop] });
+  // Sources dropped because a hop could not decide them. They are reported, never hidden.
+  const undecided: string[] = [];
+  const cidrList = (set: IntervalSet) => {
+    const list = setToCidrs(set);
+    return list.length > 6 ? `${list.slice(0, 6).join(", ")} and ${list.length - 6} more` : list.join(", ");
+  };
   const stop = (verdict: "blocked" | "unknown", reason: string): Outcome => ({ verdict, sources: [], hops, reason });
   const unknownAt = (hop: HopKind, resource: string, reason: string) => {
     add(hop, resource, "unknown", reason);
@@ -95,6 +101,11 @@ export function evaluate(ep: Endpoint | undefined, p: Protocol, ports: Range): O
   const vpc = ep.vpc.value;
   if (!vpc.igw.ok) return unknownAt("internet-gateway", vpc.address, vpc.igw.reason);
   if (!vpc.igw.value) {
+    // A route to a gateway that is not in this plan may point at an attached internet
+    // gateway managed elsewhere, so the plan alone cannot show that none is attached.
+    const table = ep.routeTable.ok ? ep.routeTable.value : undefined;
+    const external = !table || !table.routes.ok ? (table?.routes.ok === false ? table.routes.reason : ep.routeTable.ok ? "" : ep.routeTable.reason) : table.routes.value.filter((r) => r.target.kind === "unknown").map((r) => r.text).join("; ");
+    if (external) return unknownAt("internet-gateway", vpc.address, `no internet gateway for ${vpc.address} is in this plan, but its route table may use one managed elsewhere: ${external}`);
     add("internet-gateway", vpc.address, "deny", `no internet gateway is attached to ${vpc.address}`);
     return stop("blocked", `no internet gateway is attached to ${vpc.address}`);
   }
@@ -160,6 +171,8 @@ export function evaluate(ep: Endpoint | undefined, p: Protocol, ports: Range): O
     add("nacl-outbound", nacl.resource, "unknown", outText);
     return stop("unknown", reason);
   }
+  const someOnly = subtract(intersect(some, sources), full);
+  if (!isEmpty(someOnly)) undecided.push(`responses to ${cidrList(someOnly)} are allowed only for some client ephemeral ports, so they depend on the client's operating system`);
   add("nacl-outbound", nacl.resource, equals(full, sources) ? "allow" : "partial", outText);
   sources = full;
 
@@ -195,9 +208,10 @@ export function evaluate(ep: Endpoint | undefined, p: Protocol, ports: Range): O
     add("route", table.resource, "deny", why);
     return stop("blocked", `the response cannot return to the internet: ${why}`);
   }
+  if (!isEmpty(unresolved)) undecided.push(`responses to ${cidrList(unresolved)} cannot be decided: ${unresolvedReasons.join("; ")}`);
   add("route", table.resource, equals(viaIgw, sources) ? "allow" : "partial", routeTexts.join("; "));
 
-  return { verdict: "allowed", sources: equals(viaIgw, universe) ? ["internet"] : setToCidrs(viaIgw), hops, reason: "" };
+  return { verdict: "allowed", sources: equals(viaIgw, universe) ? ["internet"] : setToCidrs(viaIgw), hops, reason: undecided.join("; ") };
 }
 
 /**

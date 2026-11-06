@@ -1,5 +1,5 @@
 import { ALL_IPV4, ALL_PORTS, cidrPrefixLength, cidrToSet, fromRanges, type IntervalSet } from "./intervals.js";
-import { hasUnknown, isObj, isUnknown, resolveRef, resolveRefs, type Obj, type Ref, type Resource, type Snapshot } from "./plan.js";
+import { fromConfig, hasUnknown, isObj, isUnknown, resolveRef, resolveRefs, type Obj, type Ref, type Resource, type Snapshot } from "./plan.js";
 
 export type Known<T> = { ok: true; value: T } | { ok: false; reason: string };
 const known = <T>(value: T): Known<T> => ({ ok: true, value });
@@ -72,7 +72,7 @@ export interface Endpoint {
 // Resource types that change network behavior but are not modeled yet. A hop that one
 // of them can change becomes `unknown`, so an unmodeled rule never hides a path (ADR 0003).
 const UNMODELED_SG = ["aws_security_group_rule", "aws_vpc_security_group_ingress_rule", "aws_vpc_security_group_egress_rule"];
-const UNMODELED_ROUTES = ["aws_route"];
+const UNMODELED_ROUTES = ["aws_route", "aws_vpn_gateway_route_propagation"];
 const UNMODELED_MAIN_ROUTES = ["aws_main_route_table_association", "aws_default_route_table"];
 const UNMODELED_NACL = ["aws_network_acl_rule"];
 const UNMODELED_SUBNET = ["aws_network_acl_association"];
@@ -249,12 +249,22 @@ export class ModelBuilder {
     if (claims.length > 1) return unknown(`${subnet} is listed in ${claims.length} network ACLs`);
     if (claims[0]) return known(this.nacl(claims[0]));
 
-    const managedDefault = this.ofType("aws_default_network_acl").find((d) => {
-      const v = this.get(vpc);
+    // An aws_default_network_acl replaces the default rules of its VPC. Match it by the
+    // known ID, else by the configuration reference to the VPC (instance keys removed).
+    let managedDefault: Resource | undefined;
+    for (const d of this.ofType("aws_default_network_acl")) {
       const id = str(d.values.default_network_acl_id);
-      if (id && v && !isUnknown(d, ["default_network_acl_id"])) return id === v.values.default_network_acl_id;
-      return (d.refs.default_network_acl_id ?? []).includes(vpc);
-    });
+      let match: boolean;
+      if (id && !isUnknown(d, ["default_network_acl_id"])) match = id === this.get(vpc)?.values.default_network_acl_id;
+      else {
+        const refs = d.otherRefs.has("default_network_acl_id") ? [] : fromConfig(this.snap, d, "default_network_acl_id", "aws_vpc");
+        const ref = refs.length === 1 ? refs[0] : undefined;
+        if (ref?.kind !== "resource") return unknown(`${d.address}: cannot tell which VPC's default NACL it manages`);
+        match = ref.address === vpc;
+      }
+      if (match && managedDefault) return unknown(`${vpc} has more than one aws_default_network_acl`);
+      if (match) managedDefault = d;
+    }
     if (managedDefault) return known(this.nacl(managedDefault));
     // The default NACL allows all inbound and outbound traffic. The engine assumes it
     // was not changed outside Terraform.
@@ -263,7 +273,7 @@ export class ModelBuilder {
     return known({ resource: `default NACL of ${vpc}`, ingress: known(all("ingress")), egress: known(all("egress")) });
   }
 
-  private routeTarget(r: Resource, raw: Obj, path: (string | number)[]): RouteTarget {
+  private routeTarget(r: Resource, raw: Obj, path: (string | number)[], unknownGateways: number, knownGateways: number): RouteTarget {
     const gwUnknown = isUnknown(r, [...path, "gateway_id"]);
     const gw = str(raw.gateway_id);
     if (gw === "local") return { kind: "local" };
@@ -273,12 +283,15 @@ export class ModelBuilder {
         if (a && this.get(a)?.type === "aws_internet_gateway") return { kind: "igw", address: a };
         return { kind: "unknown", reason: `${r.address}: gateway_id ${gw} is not an internet gateway in this plan` };
       }
-      // References of all `route` blocks are merged (see terraform-plan-json.md), so only
-      // one gateway-type reference in the block list is unambiguous.
+      // References of all `route` blocks are merged (see terraform-plan-json.md). One
+      // gateway-type reference is unambiguous only when this is the only route with a
+      // gateway, and the blocks use resources alone.
+      if (unknownGateways !== 1 || knownGateways > 0 || r.otherRefs.has(String(path[0]))) {
+        return { kind: "unknown", reason: `${r.address}: gateway_id of a route is unknown until apply and cannot be matched to one resource` };
+      }
       const gateways = (r.refs[String(path[0])] ?? []).filter((a) => ["aws_internet_gateway", "aws_vpn_gateway"].includes(typeOf(a)));
-      const only = gateways.length === 1 ? (gateways[0] as string) : undefined;
-      const inst = only ? (this.snap.resources.has(only) ? [only] : (this.snap.instancesOf.get(only) ?? [])) : [];
-      if (only && typeOf(only) === "aws_internet_gateway" && inst.length === 1) return { kind: "igw", address: inst[0] as string };
+      const ref = gateways.length === 1 && typeOf(gateways[0] as string) === "aws_internet_gateway" ? fromConfig(this.snap, r, String(path[0]), "aws_internet_gateway") : [];
+      if (ref.length === 1 && ref[0]?.kind === "resource") return { kind: "igw", address: ref[0].address };
       return { kind: "unknown", reason: `${r.address}: gateway_id is unknown until apply and its reference is ambiguous` };
     }
     for (const key of ["nat_gateway_id", "network_interface_id", "transit_gateway_id", "vpc_peering_connection_id", "vpc_endpoint_id", "egress_only_gateway_id", "carrier_gateway_id", "local_gateway_id", "core_network_arn"]) {
@@ -292,6 +305,15 @@ export class ModelBuilder {
     if (touched) return { resource: r.address, routes: unknown(touched) };
     if (isUnknown(r, ["route"])) return { resource: r.address, routes: unknown(`${r.address}: route is unknown until apply`) };
     if (!vpc.cidrs.ok) return { resource: r.address, routes: unknown(vpc.cidrs.reason) };
+    // Routes propagated from a virtual private gateway can be more specific than static routes.
+    // https://docs.aws.amazon.com/vpc/latest/userguide/route-tables-priority.html
+    const vgws = r.values.propagating_vgws;
+    if ((Array.isArray(vgws) && vgws.length) || (isUnknown(r, ["propagating_vgws"]) && r.configured.has("propagating_vgws"))) {
+      return { resource: r.address, routes: unknown(`${r.address}: route propagation from a virtual private gateway is not modeled yet`) };
+    }
+    const blocks = arr(r.values.route);
+    const unknownGateways = blocks.filter((_, i) => isUnknown(r, ["route", i, "gateway_id"])).length;
+    const knownGateways = blocks.filter((b, i) => isObj(b) && !isUnknown(r, ["route", i, "gateway_id"]) && str(b.gateway_id) && b.gateway_id !== "local").length;
     // Every route table has a local route for the VPC CIDR.
     // https://docs.aws.amazon.com/vpc/latest/userguide/RouteTables.html
     const routes: Route[] = vpc.cidrs.value.map((range) => ({ cidr: [range], prefix: 32 - Math.log2(range[1] - range[0] + 1), target: { kind: "local" }, text: `${r.address} local route` }));
@@ -306,7 +328,7 @@ export class ModelBuilder {
       const set = cidrToSet(cidr);
       const prefix = cidrPrefixLength(cidr);
       if (!set || prefix === undefined) return { resource: r.address, routes: unknown(`${r.address}: route ${i} has destination ${cidr}, which the engine cannot read`) };
-      const target = this.routeTarget(r, raw, ["route", i]);
+      const target = this.routeTarget(r, raw, ["route", i], unknownGateways, knownGateways);
       const to = target.kind === "igw" ? target.address : target.kind === "other" ? target.text : target.kind;
       routes.push({ cidr: set, prefix, target, text: `${r.address} route ${cidr} -> ${to}` });
     }
@@ -362,7 +384,9 @@ export class ModelBuilder {
     // https://docs.aws.amazon.com/vpc/latest/userguide/vpc-ip-addressing.html
     let publicIp: Known<string | undefined>;
     const assoc = r.values.associate_public_ip_address;
-    if (!isUnknown(r, ["associate_public_ip_address"]) && typeof assoc === "boolean") {
+    if (isUnknown(r, ["associate_public_ip_address"]) && r.configured.has("associate_public_ip_address")) {
+      publicIp = unknown(`${r.address}: associate_public_ip_address is set to a value that is unknown until apply`);
+    } else if (!isUnknown(r, ["associate_public_ip_address"]) && typeof assoc === "boolean") {
       publicIp = known(assoc ? `${r.address} associate_public_ip_address = true` : undefined);
     } else if (!isUnknown(s, ["map_public_ip_on_launch"]) && typeof s.values.map_public_ip_on_launch === "boolean") {
       publicIp = known(s.values.map_public_ip_on_launch ? `${s.address} map_public_ip_on_launch = true` : undefined);
