@@ -3,18 +3,20 @@ import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig, type Plugin } from "vite";
 
-// The viewer never sends plan data off the device (AGENTS.md). In the build, this
-// Content Security Policy blocks every data request from the page and its worker:
-// connect-src 'none'. The only other origins allowed are Google Fonts, for the font
-// stylesheet and font files. The dev server needs a websocket, so the policy is build only.
-const CSP = [
+// The viewer never sends plan data off the device (AGENTS.md). In the build, the
+// viewer's Content Security Policy blocks every data request from the page and its
+// worker: connect-src 'none'. The landing page holds no plan data, so it may fetch its
+// own origin (crawlers and audit tools read robots.txt and llms.txt that way). The only
+// other origins allowed are Google Fonts, for the font stylesheet and font files. The
+// dev server needs a websocket, so the policy is build only.
+const policy = (connect: string) => [
   "default-src 'none'",
   "script-src 'self'",
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "font-src https://fonts.gstatic.com",
   "img-src 'self' data:",
   "worker-src 'self'",
-  "connect-src 'none'",
+  `connect-src ${connect}`,
   "base-uri 'none'",
   "form-action 'none'",
 ].join("; ");
@@ -22,7 +24,10 @@ const CSP = [
 const csp = (): Plugin => ({
   name: "vpcdiff-csp",
   apply: "build",
-  transformIndexHtml: (html) => html.replace("<head>", `<head>\n    <meta http-equiv="Content-Security-Policy" content="${CSP}" />`),
+  transformIndexHtml: (html, ctx) => {
+    const viewer = ctx.filename.replaceAll("\\", "/").endsWith("/app/index.html");
+    return html.replace("<head>", `<head>\n    <meta http-equiv="Content-Security-Policy" content="${policy(viewer ? "'none'" : "'self'")}" />`);
+  },
 });
 
 export default defineConfig({

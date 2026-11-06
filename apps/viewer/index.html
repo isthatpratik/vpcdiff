@@ -1,22 +1,72 @@
 <!doctype html>
-<html lang="en" class="site" data-material="flat">
+<html lang="en" class="site" data-material="flat" data-theme="dark">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>vpcdiff: see what a Terraform plan opens to the internet</title>
-    <meta name="description" content="vpcdiff reads a Terraform plan and shows every path the internet gains or loses, with the security group, network ACL, and route that decides each hop. Free, open source, offline." />
-    <meta property="og:title" content="vpcdiff: see what a Terraform plan opens to the internet" />
-    <meta property="og:description" content="Every path the internet gains or loses, with the rule that decides each hop. Before you apply." />
+    <meta name="description" content="vpcdiff reads a Terraform plan and shows every path the internet gains or loses, with the security group, network ACL, and route that decides each hop. Free, open source, and offline." />
+    <link rel="canonical" href="https://isthatpratik.github.io/vpcdiff/" />
+    <meta name="robots" content="index, follow, max-image-preview:large" />
+    <meta name="author" content="Pratik Desai" />
+    <meta name="theme-color" content="#090909" />
+    <meta name="color-scheme" content="dark light" />
     <meta property="og:type" content="website" />
-    <meta name="twitter:card" content="summary" />
-    <meta name="color-scheme" content="light dark" />
+    <meta property="og:site_name" content="vpcdiff" />
+    <meta property="og:url" content="https://isthatpratik.github.io/vpcdiff/" />
+    <meta property="og:title" content="vpcdiff: see what a Terraform plan opens to the internet" />
+    <meta property="og:description" content="Every path the internet gains or loses in a Terraform plan, with the rule that decides each hop. Before you apply." />
+    <meta property="og:image" content="https://isthatpratik.github.io/vpcdiff/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="vpcdiff: see what a Terraform plan opens to the internet. A path drawn from the internet through the gateway, network ACL, and security group to aws_instance.db." />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="vpcdiff: see what a Terraform plan opens to the internet" />
+    <meta name="twitter:description" content="Every path the internet gains or loses in a Terraform plan, with the rule that decides each hop." />
+    <meta name="twitter:image" content="https://isthatpratik.github.io/vpcdiff/og.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Google+Sans:wght@400..700&amp;family=Google+Sans+Code:wght@400..600&amp;family=Source+Sans+3:wght@400..700&amp;display=swap" />
     <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+    <link rel="alternate" type="text/plain" title="LLM summary" href="./llms.txt" />
+    <script type="application/ld+json">[{"@context": "https://schema.org", "@type": "SoftwareApplication", "name": "vpcdiff", "applicationCategory": "DeveloperApplication", "operatingSystem": "Any (Node.js 20+, or a web browser)", "description": "vpcdiff reads a Terraform plan (terraform show -json) and computes which AWS resources the internet can reach before and after the plan, hop by hop: public IP, internet gateway, network ACL, security groups, and routes. It runs as a CLI, a GitHub Action, and an offline web viewer.", "url": "https://isthatpratik.github.io/vpcdiff/", "codeRepository": "https://github.com/isthatpratik/vpcdiff", "license": "https://opensource.org/licenses/MIT", "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"}, "image": "https://isthatpratik.github.io/vpcdiff/og.png"}, {"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "Does vpcdiff need AWS credentials or an AWS account?", "acceptedAnswer": {"@type": "Answer", "text": "No. It reads the JSON that terraform show produces. Terraform needs credentials to make the plan; vpcdiff does not."}}, {"@type": "Question", "name": "Does my plan leave my machine?", "acceptedAnswer": {"@type": "Answer", "text": "No. The CLI and the GitHub Action run where you run them. The viewer analyzes the file in your browser tab, and its Content Security Policy blocks every data request. The Action writes a comment to your own pull request only when you turn that on."}}, {"@type": "Question", "name": "What does unknown mean?", "acceptedAnswer": {"@type": "Answer", "text": "The engine could not decide that hop: a value Terraform learns only at apply time, a resource it does not model yet, or a load balancer whose subnets give different answers. The reason is always shown. Unknown is a result, never a guess."}}, {"@type": "Question", "name": "How is this different from Checkov, tfsec, or Trivy?", "acceptedAnswer": {"@type": "Answer", "text": "Those tools judge each rule on its own. vpcdiff follows the whole path: an open security group behind a network ACL that denies the port is not an exposure, and a narrow rule can still open a path when a route changes."}}, {"@type": "Question", "name": "How is it different from AWS Reachability Analyzer?", "acceptedAnswer": {"@type": "Answer", "text": "Reachability Analyzer checks a live account, one path at a time, after you deploy. vpcdiff works on the plan, before you apply, for every endpoint at once. Each test fixture includes the steps to check it against Reachability Analyzer; those paid checks have not been run yet."}}, {"@type": "Question", "name": "Does it check traffic between my own services?", "acceptedAnswer": {"@type": "Answer", "text": "Not yet. Today it checks paths from the internet to instances, databases, and load balancers. Paths inside the VPC are next on the roadmap."}}, {"@type": "Question", "name": "Can it block a pull request?", "acceptedAnswer": {"@type": "Answer", "text": "Yes. The GitHub Action fails the check when the plan adds a path from the internet (you choose the level with fail-on), writes the report to the job summary, and keeps one comment on the pull request up to date."}}, {"@type": "Question", "name": "What does it cost?", "acceptedAnswer": {"@type": "Answer", "text": "Nothing. vpcdiff is free and open source under the MIT license."}}]}]</script>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <!-- Static summary for crawlers and readers without JavaScript; the app replaces it. -->
+      <main>
+        <h1>See what a Terraform plan opens to the internet.</h1>
+        <p>vpcdiff reads a Terraform plan and shows every path the internet gains or loses, with the security group, network ACL, and route that decides each hop. Free, open source, and offline.</p>
+        <p><a href="./app/">Open the viewer</a> · <a href="https://github.com/isthatpratik/vpcdiff">View on GitHub</a></p>
+        <h2>How it works</h2>
+        <ol>
+          <li>Make the plan: <code>terraform plan -out=tfplan</code>, then <code>terraform show -json tfplan &gt; plan.json</code>.</li>
+          <li>Run vpcdiff: the GitHub Action on every pull request, the CLI, or the offline web viewer.</li>
+          <li>Read the diff: every path from the internet, its verdict before and after the plan, and the hop that changed.</li>
+          <li>Gate the merge: the Action fails the check when the plan adds a path from the internet.</li>
+        </ol>
+        <h2>What it checks</h2>
+        <p>Public IP, internet gateway, network ACL inbound, security groups, network ACL outbound (ephemeral ports), and the return route, for aws_instance, aws_db_instance, and aws_lb. Anything it cannot decide is reported as unknown with the reason.</p>
+        <h2>Questions</h2>
+        <dl>
+          <dt>Does vpcdiff need AWS credentials or an AWS account?</dt>
+          <dd>No. It reads the JSON that terraform show produces. Terraform needs credentials to make the plan; vpcdiff does not.</dd>
+          <dt>Does my plan leave my machine?</dt>
+          <dd>No. The CLI and the GitHub Action run where you run them. The viewer analyzes the file in your browser tab, and its Content Security Policy blocks every data request. The Action writes a comment to your own pull request only when you turn that on.</dd>
+          <dt>What does unknown mean?</dt>
+          <dd>The engine could not decide that hop: a value Terraform learns only at apply time, a resource it does not model yet, or a load balancer whose subnets give different answers. The reason is always shown. Unknown is a result, never a guess.</dd>
+          <dt>How is this different from Checkov, tfsec, or Trivy?</dt>
+          <dd>Those tools judge each rule on its own. vpcdiff follows the whole path: an open security group behind a network ACL that denies the port is not an exposure, and a narrow rule can still open a path when a route changes.</dd>
+          <dt>How is it different from AWS Reachability Analyzer?</dt>
+          <dd>Reachability Analyzer checks a live account, one path at a time, after you deploy. vpcdiff works on the plan, before you apply, for every endpoint at once. Each test fixture includes the steps to check it against Reachability Analyzer; those paid checks have not been run yet.</dd>
+          <dt>Does it check traffic between my own services?</dt>
+          <dd>Not yet. Today it checks paths from the internet to instances, databases, and load balancers. Paths inside the VPC are next on the roadmap.</dd>
+          <dt>Can it block a pull request?</dt>
+          <dd>Yes. The GitHub Action fails the check when the plan adds a path from the internet (you choose the level with fail-on), writes the report to the job summary, and keeps one comment on the pull request up to date.</dd>
+          <dt>What does it cost?</dt>
+          <dd>Nothing. vpcdiff is free and open source under the MIT license.</dd>
+        </dl>
+      </main>
+    </div>
     <script type="module" src="./src/site/main.tsx"></script>
   </body>
 </html>

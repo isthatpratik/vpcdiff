@@ -250,3 +250,8 @@
   line-height: 16px;
   color: var(--litt-fg-muted);
 }
+
+/* The window's URL reads at AA contrast in both themes. */
+.hero-demo .ss-window__url {
+  color: var(--litt-fg-muted);
+}

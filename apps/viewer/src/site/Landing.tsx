@@ -1,13 +1,9 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/litt/accordion";
-import { CodeBlock } from "@/components/litt/code-block";
-import { Tabs, TabsList, TabsPanel, TabsPanels, TabsTrigger } from "@/components/litt/tabs";
 import { Tag } from "@/components/litt/tag";
 import { TooltipProvider } from "@/components/litt/tooltip";
 import { NumberFlow } from "@/components/sora-ui/texts/number-flow";
 import { TextEffect } from "@/components/sora-ui/texts/text-effect";
-import { DrawUnderlineLink } from "@/components/sora-ui/texts/draw-underline-link";
-import { HoverLink } from "@/components/sora-ui/texts/hover-link";
 import { TextLoop } from "@/components/sora-ui/texts/text-loop";
 import aws from "../logos/aws-icon-mono.svg?url";
 import actions from "../logos/github-actions-icon-mono.svg?url";
@@ -20,7 +16,11 @@ import { ThemeCycle } from "../shared/theme.tsx";
 import { Cta } from "./Cta.tsx";
 import { HeroDemo } from "./HeroDemo.tsx";
 import { PathField } from "./PathField.tsx";
-import { CrossCard, Divider, EASE, Eyebrow, PAD, Rail, SectionHead, useInViewOnce } from "./rails.tsx";
+import { Footer } from "./Footer.tsx";
+import { HopStrip } from "./HopStrip.tsx";
+import { Plate } from "./Plate.tsx";
+import { StepTabs } from "./StepTabs.tsx";
+import { CrossCard, Divider, EASE, PAD, Rail, SectionHead, useInViewOnce } from "./rails.tsx";
 import { ScrollFrost } from "./ScrollFrost.tsx";
 import { startSmoothScroll } from "./smooth.ts";
 
@@ -61,7 +61,8 @@ function TaglineReveal({ lines }: { lines: string[] }) {
     };
   }, [words.length]);
   return (
-    <p ref={ref} className="mx-auto max-w-[820px] text-center font-display text-4xl leading-[1.1] font-normal tracking-[-0.035em] text-balance sm:text-6xl sm:leading-[1.04]" aria-label={lines.join(" ")}>
+    <p ref={ref} className="mx-auto max-w-[820px] text-center font-display text-4xl leading-[1.1] font-normal tracking-[-0.035em] text-balance sm:text-6xl sm:leading-[1.04]">
+      <span className="sr-only">{lines.join(" ")}</span>
       {words.map((x, i) => (
         <span key={x.key} aria-hidden="true">
           <span data-word className={`transition-colors duration-500 ${EASE} ${i < lit ? "text-litt-fg" : "text-litt-fg/20"}`}>
@@ -188,11 +189,15 @@ function Stats() {
     <dl ref={ref} className="grid gap-px border-t border-litt-line bg-litt-line sm:grid-cols-2 lg:grid-cols-4">
       {facts.map((f) => (
         <div key={f.label} className="grid content-start gap-4 bg-litt-canvas px-6 py-10 md:px-10 md:py-12 md:first:pl-16">
-          <dt className="sr-only">{f.label}</dt>
-          <dd className="font-display text-6xl leading-none font-normal tracking-[-0.04em] text-litt-fg tabular-nums">
+          <dt className="sr-only">
+            {f.value} {f.label}
+          </dt>
+          <dd aria-hidden="true" className="font-display text-6xl leading-none font-normal tracking-[-0.04em] text-litt-fg tabular-nums">
             <NumberFlow value={seen ? f.value : 0} />
           </dd>
-          <dd className="text-litt-small text-litt-fg-muted">{f.label}</dd>
+          <dd aria-hidden="true" className="text-litt-small text-litt-fg-muted">
+            {f.label}
+          </dd>
         </div>
       ))}
     </dl>
@@ -239,27 +244,25 @@ const FAQ: { q: string; a: string }[] = [
   { q: "What does it cost?", a: "Nothing. vpcdiff is free and open source under the MIT license." },
 ];
 
-const ACTION_YAML = `- run: |
-    terraform show -json tfplan \\
-      > plan.json
-- uses: isthatpratik/vpcdiff@main
-  with:
-    plan: plan.json
-    fail-on: added`;
-
-const CLI_OUTPUT = `$ vpcdiff plan.json
-vpcdiff: 1 added, 0 removed, 0 changed
-
-ADDED  internet -> aws_instance.db
-  tcp/5432
-  before: blocked at security-group
-  after:  allowed from internet`;
-
 const NAV_LINKS: [string, string][] = [
   ["How it works", "#how"],
   ["Coverage", "#coverage"],
   ["FAQ", "#faq"],
 ];
+
+/**
+ * A nav link whose underline sits 2px under the text (on the inner span, so padding
+ * never moves it) and draws in from the left on hover, with a strong ease-out.
+ */
+function NavLink({ href, children }: { href: string; children: string }) {
+  return (
+    <a href={href} className="group inline-flex px-2 py-2 transition-colors duration-200 hover:text-litt-fg focus-visible:outline-2 focus-visible:outline-litt-focus">
+      <span className="relative after:absolute after:inset-x-0 after:-bottom-[3px] after:h-px after:origin-right after:scale-x-0 after:bg-current after:transition-transform after:duration-300 after:ease-[cubic-bezier(0.23,1,0.32,1)] [@media(hover:hover)]:group-hover:after:origin-left [@media(hover:hover)]:group-hover:after:scale-x-100">
+        {children}
+      </span>
+    </a>
+  );
+}
 
 /** The nav sits between the rails like a section of its own, over a frosted canvas. */
 function Nav() {
@@ -270,9 +273,7 @@ function Nav() {
           <ul className="hidden items-center gap-1 text-litt-small text-litt-fg-subtle md:flex">
             {NAV_LINKS.map(([l, h]) => (
               <li key={h}>
-                <HoverLink href={h} variant="underline-left" className="px-2 py-1.5 transition-colors duration-200 hover:text-litt-fg">
-                  {l}
-                </HoverLink>
+                <NavLink href={h}>{l}</NavLink>
               </li>
             ))}
           </ul>
@@ -302,6 +303,9 @@ function Nav() {
 function Hero() {
   return (
     <Rail reveal={false} label="vpcdiff" className="relative">
+      {/* Film grain over the hero, after ui-layouts' Noise: a self-made 6-frame noise GIF
+          at 5%, served from this origin. Hidden under reduced motion (a GIF cannot pause). */}
+      <div aria-hidden="true" className="pointer-events-none absolute inset-0 z-10 opacity-[0.05] motion-reduce:hidden" style={{ backgroundImage: `url(${import.meta.env.BASE_URL}noise.gif)` }} />
       <div className="relative h-[300px] sm:h-[420px] lg:h-[460px]">
         <PathField />
       </div>
@@ -354,10 +358,14 @@ export function Landing() {
           <SectionHead eyebrow="In review" title="The check runs on the pull request." rest="Before anyone applies." bar>
             A rule widens in a pull request. vpcdiff finds the new path from the internet and shows the hop that changed.
           </SectionHead>
-          <CrossCard className="bg-litt-surface-1 p-2 sm:p-3">
-            <div className="overflow-hidden bg-litt-canvas" aria-label="Product demo: a pull request widens a security group rule, and vpcdiff finds and explains the new path from the internet">
-              <HeroDemo />
-            </div>
+          <CrossCard>
+            <Plate inset="p-4 sm:p-10 lg:p-14">
+              <div role="img" aria-label="Product demo: a pull request widens a security group rule, and vpcdiff finds and explains the new path from the internet">
+                <div aria-hidden="true">
+                  <HeroDemo />
+                </div>
+              </div>
+            </Plate>
           </CrossCard>
         </Rail>
         <Divider />
@@ -393,49 +401,7 @@ export function Landing() {
               }
             />
           </div>
-          <ol className="grid gap-px border-t border-litt-line bg-litt-line lg:grid-cols-3">
-            <li className="grid min-w-0 content-start gap-6 bg-litt-canvas px-6 py-10 md:px-10 md:py-12 md:first:pl-16">
-              <Step n={1} title="Make the plan">
-                The same plan you would apply, written as JSON.
-              </Step>
-              <CodeBlock lang="shell" filename="Terminal" code={"terraform plan -out=tfplan\nterraform show -json tfplan \\\n  > plan.json"} />
-            </li>
-            <li className="grid min-w-0 content-start gap-6 bg-litt-canvas px-6 py-10 md:px-10 md:py-12 md:first:pl-16">
-              <Step n={2} title="Run vpcdiff">
-                On every pull request, in a terminal, or in the browser.
-              </Step>
-              <Tabs defaultValue="action">
-                <TabsList aria-label="Where to run vpcdiff">
-                  <TabsTrigger value="action">Action</TabsTrigger>
-                  <TabsTrigger value="cli">CLI</TabsTrigger>
-                  <TabsTrigger value="viewer">Viewer</TabsTrigger>
-                </TabsList>
-                <TabsPanels>
-                  <TabsPanel value="action">
-                    <CodeBlock lang="text" filename="plan.yml" code={ACTION_YAML} />
-                  </TabsPanel>
-                  <TabsPanel value="cli">
-                    <CodeBlock lang="shell" filename="Terminal" code={"node packages/cli/dist/vpcdiff.mjs \\\n  plan.json"} />
-                  </TabsPanel>
-                  <TabsPanel value="viewer">
-                    <p className="border border-litt-line bg-litt-surface-1 p-4 text-litt-small text-litt-fg-muted">
-                      Drop plan.json on the{" "}
-                      <DrawUnderlineLink href={APP} underlineColor="var(--litt-fg)" className="text-litt-fg">
-                        viewer
-                      </DrawUnderlineLink>
-                      . It runs entirely in your tab.
-                    </p>
-                  </TabsPanel>
-                </TabsPanels>
-              </Tabs>
-            </li>
-            <li className="grid min-w-0 content-start gap-6 bg-litt-canvas px-6 py-10 md:px-10 md:py-12 md:first:pl-16">
-              <Step n={3} title="Read the diff">
-                New exposure fails the check. Every path shows its hops before and after.
-              </Step>
-              <CodeBlock lang="text" filename="Output" code={CLI_OUTPUT} />
-            </li>
-          </ol>
+          <StepTabs />
         </Rail>
         <Divider />
 
@@ -445,6 +411,7 @@ export function Landing() {
               Every AWS networking rule in the code cites its documentation. When the engine cannot decide a hop, it says unknown and why.
             </SectionHead>
           </div>
+          <HopStrip />
           <Stats />
         </Rail>
         <Divider />
@@ -511,42 +478,7 @@ export function Landing() {
         <Divider />
       </main>
 
-      <footer id="footer" className="relative mx-3 border-x border-litt-line sm:mx-6 xl:mx-auto xl:max-w-[1200px]">
-        <div className={`${PAD} grid gap-10 py-14 text-litt-small text-litt-fg-subtle md:grid-cols-[1fr_auto]`}>
-          <div className="grid gap-4">
-            <Wordmark size={16} />
-            <p className="max-w-[560px]">Privacy: no analytics and no cookies. Fonts load from Google Fonts; nothing about your plan is ever sent. Your theme choice stays in your browser.</p>
-            <p className="max-w-[560px]">Terraform, AWS, Amazon EC2, Amazon RDS, HashiCorp, GitHub, and GitHub Actions are trademarks of their owners. vpcdiff is not affiliated with or endorsed by them.</p>
-          </div>
-          <nav aria-label="Footer" className="grid content-start gap-3">
-            <Eyebrow>Links</Eyebrow>
-            <DrawUnderlineLink href={APP} underlineColor="var(--litt-fg)" variant="sm" className="justify-self-start text-litt-small text-litt-fg-muted hover:text-litt-fg">
-              Viewer
-            </DrawUnderlineLink>
-            <DrawUnderlineLink href={REPO} underlineColor="var(--litt-fg)" variant="sm" className="justify-self-start text-litt-small text-litt-fg-muted hover:text-litt-fg">
-              GitHub
-            </DrawUnderlineLink>
-            <DrawUnderlineLink href={`${REPO}/blob/main/LICENSE`} underlineColor="var(--litt-fg)" variant="sm" className="justify-self-start text-litt-small text-litt-fg-muted hover:text-litt-fg">
-              MIT license
-            </DrawUnderlineLink>
-            <DrawUnderlineLink href={`${REPO}/blob/main/DESIGN.md`} underlineColor="var(--litt-fg)" variant="sm" className="justify-self-start text-litt-small text-litt-fg-muted hover:text-litt-fg">
-              Design system
-            </DrawUnderlineLink>
-          </nav>
-        </div>
-      </footer>
-      <Divider />
-      <div className="h-6" />
+      <Footer />
     </TooltipProvider>
-  );
-}
-
-function Step({ n, title, children }: { n: number; title: string; children: ReactNode }) {
-  return (
-    <div className="grid gap-2">
-      <span className="font-litt-mono text-litt-caption text-litt-fg-subtle">0{n}</span>
-      <h3 className="font-display text-xl font-normal tracking-[-0.01em] text-litt-fg">{title}</h3>
-      <p className="text-litt-small text-litt-fg-muted">{children}</p>
-    </div>
   );
 }

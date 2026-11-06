@@ -26,9 +26,9 @@ export function Mark({ size = 24, small = size <= 20, className = "", title }: M
 
 export function Wordmark({ size = 20 }: { size?: number }) {
   return (
-    <span className="inline-flex items-center gap-2 text-litt-fg" aria-label="vpcdiff">
+    <span className="inline-flex items-center gap-2 text-litt-fg">
       <Mark size={Math.round(size * 1.15)} />
-      <span aria-hidden="true" className="font-display font-semibold tracking-[-0.02em]" style={{ fontSize: size, lineHeight: 1 }}>
+      <span className="font-display font-semibold tracking-[-0.02em]" style={{ fontSize: size, lineHeight: 1 }}>
         vpcdiff
       </span>
     </span>

@@ -1316,3 +1316,23 @@ html[data-theme="dark"][data-material] {
   h1, h2, h3 { text-wrap: balance; }
   p { text-wrap: pretty; }
 }
+
+/* Landing page step tabs (src/site/StepTabs.tsx). */
+@keyframes step-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes step-progress {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
+/* Landing page footer (src/site/Footer.tsx): the name band drifts by one copy of two. */
+@keyframes footer-drift {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+@keyframes footer-track {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(calc(100vw + 100%)); }
+}

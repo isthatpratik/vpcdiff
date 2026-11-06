@@ -123,15 +123,18 @@ Fonts load from Google Fonts (see section 10 for what that means for privacy).
   sides, so lines never cross. Grids of cells inside a section are drawn with the same
   1px line. A few section titles get a 2px ink bar on the left rail. Content sits 64 px
   inside the rails (24 px on small screens).
-- **Radius:** controls 8 px (`--litt-radius-control`), landing buttons 10 px, surfaces
-  8 px. Cells and framed panels are square. A nested shape gets the outer radius minus
+- **Radius:** controls 8 px (`--litt-radius-control`), landing buttons 6 px, surfaces
+  8 px, the footer card 14 px. Cells and framed panels are square. A nested shape gets the outer radius minus
   the gap.
 - **Cards:** a framed panel has a small cross at each corner, after cardcn's basic card
   #6.
 - **Depth:** a hairline, not a shadow, separates things. Dark themes use a lighter
   surface.
-- **Backgrounds are flat.** No background gradients. The one pattern is a faint dot grid
-  behind the final call to action.
+- **Plates:** a product panel (the pull request demo, the "How it works" terminals) sits
+  on a plate: a surface step with a faint dot grid that fades toward the panel. The panel
+  is offset from the top left and runs off the right and bottom edges, after unkey.com.
+- **Backgrounds are flat.** No background gradients. The only patterns are faint dot
+  grids: behind the final call to action and on plates.
 
 ## 6. Motion
 
@@ -148,10 +151,22 @@ Fonts load from Google Fonts (see section 10 for what that means for privacy).
     path retracts, so the loop ends on its first frame.
   - The headline blurs in once. Sections rise 24 px and fade in once.
   - Section bars draw down the rail when the title comes into view.
-  - "How it works" loops through where you run it. Numbers count up.
+  - "How it works" is a row of step tabs (Plan, Run, Read, Gate) over a split panel,
+    after unkey.com. The steps advance every 7 s, with a thin progress line, until
+    someone picks one. Tabs are plain buttons; the focus ring shows for the keyboard
+    only. The heading loops through where you run it. Numbers count up.
   - Links draw an underline. Buttons scale their background on hover while the label
     stays still.
   - The Stageshow pull request demo.
+  - The footer, after primora.xyz: the name and the mark drawn large in outline, full
+    bleed (outside the rails), scrolling sideways without end (linear, because it is
+    constant motion), faded at its top and bottom; hairline tracks with moving segments
+    above and below it. Both stop under reduced motion. A variable font draws overlapping
+    contours when stroked, so the outline is a stroke behind a canvas-colored copy.
+  - Film grain over the hero: a self-made 6-frame noise GIF (33 KB) at 5%, after
+    ui-layouts' Noise, served from this origin. Hidden under reduced motion.
+  - Sections already on screen at first paint show at once; only sections below the
+    fold rise in on scroll.
 - **Smooth scroll:** Lenis on the landing page only (ADR 0007), off under reduced
   motion.
 - **Frost:** a 240 px band at the foot of the screen, five blur layers from 1.5 px to
@@ -212,7 +227,10 @@ Status in components:
 ## 10. Privacy is part of the design
 
 The viewer never sends plan data anywhere. Its build carries a Content Security Policy
-with `connect-src 'none'`, so the page and its worker cannot make a data request.
+with `connect-src 'none'`, so the page and its worker cannot make a data request. The
+landing page holds no plan data; its policy allows `connect-src 'self'` so crawlers and
+audit tools can read `robots.txt` and `llms.txt` from the page. CI checks that the
+viewer's built page keeps `connect-src 'none'`.
 
 Fonts come from Google Fonts, so a visitor's browser fetches the font stylesheet and font
 files from Google (`fonts.googleapis.com`, `fonts.gstatic.com`). Those requests carry no

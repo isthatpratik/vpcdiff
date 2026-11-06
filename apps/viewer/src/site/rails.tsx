@@ -2,17 +2,25 @@
 // rails, cut into sections by hairlines that run edge to edge. Where a hairline meets a
 // rail it stops short, so lines never cross; a few headings get a short ink bar on the
 // left rail. Every line is 1px in the line token, so the frame stays quiet.
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 
 export const EASE = "ease-[cubic-bezier(0.22,1,0.36,1)]";
 /** Horizontal padding inside the rails. The ink bar offsets below match it. */
 export const PAD = "px-6 md:px-16";
 const RAIL = "relative mx-3 border-x border-litt-line sm:mx-6 xl:mx-auto xl:max-w-[1200px]";
 
-/** True once the element has entered the viewport (or at once under reduced motion). */
+/**
+ * True once the element has entered the viewport. Elements already on screen at first
+ * paint (and everything under reduced motion) count as seen at once, so nothing that is
+ * visible on load starts faded.
+ */
 export function useInViewOnce<T extends Element>(margin = "0px 0px -12% 0px") {
   const ref = useRef<T>(null);
   const [seen, setSeen] = useState(false);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (el && el.getBoundingClientRect().top < window.innerHeight) setSeen(true);
+  }, []);
   useEffect(() => {
     const el = ref.current;
     if (!el) return;

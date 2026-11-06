@@ -64,9 +64,9 @@ export function ThemeSwitch() {
         apply(v);
       }}
       options={[
-        { value: "system", label: <MonitorIcon aria-label="System" /> },
-        { value: "light", label: <SunIcon aria-label="Light" /> },
-        { value: "dark", label: <MoonIcon aria-label="Dark" /> },
+        { value: "system", label: <><MonitorIcon aria-hidden="true" /><span className="sr-only">System theme</span></> },
+        { value: "light", label: <><SunIcon aria-hidden="true" /><span className="sr-only">Light theme</span></> },
+        { value: "dark", label: <><MoonIcon aria-hidden="true" /><span className="sr-only">Dark theme</span></> },
       ]}
     />
   );
