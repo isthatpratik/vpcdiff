@@ -13,7 +13,29 @@ export const ENGINE_VERSION = "0.0.0";
 const PROTOCOLS: Protocol[] = ["tcp", "udp"];
 
 // Endpoint and network types the engine models. Other aws_* types in a plan get a note.
-const MODELED = new Set(["aws_vpc", "aws_subnet", "aws_internet_gateway", "aws_route_table", "aws_route_table_association", "aws_security_group", "aws_network_acl", "aws_default_network_acl", "aws_instance"]);
+const MODELED = new Set([
+  "aws_vpc",
+  "aws_subnet",
+  "aws_internet_gateway",
+  "aws_internet_gateway_attachment",
+  "aws_route_table",
+  "aws_route",
+  "aws_route_table_association",
+  "aws_main_route_table_association",
+  "aws_default_route_table",
+  "aws_security_group",
+  "aws_security_group_rule",
+  "aws_vpc_security_group_ingress_rule",
+  "aws_vpc_security_group_egress_rule",
+  "aws_default_security_group",
+  "aws_network_acl",
+  "aws_network_acl_rule",
+  "aws_network_acl_association",
+  "aws_default_network_acl",
+  "aws_eip",
+  "aws_eip_association",
+  "aws_instance",
+]);
 const NETWORK_TYPE = /^aws_(vpc\w*|vpn_gateway\w*|subnet|route\w*|internet_gateway\w*|nat_gateway|egress_only_internet_gateway|network_acl\w*|default_\w+|security_group\w*|vpc_security_group_\w+|eip\w*|network_interface\w*|lb|alb|elb|db_instance|rds_cluster\w*|ecs_service|ec2_transit_gateway\w*|vpc_peering_connection\w*|vpc_endpoint\w*|instance)$/;
 
 function changeOf(before: Outcome, after: Outcome): Change {

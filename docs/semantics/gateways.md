@@ -48,15 +48,18 @@ target. Otherwise `sources` lists the CIDRs that can.
 
 Handled:
 
-- `aws_internet_gateway` with `vpc_id`.
+- `aws_internet_gateway` with `vpc_id`, and `aws_internet_gateway_attachment`.
+- `aws_eip` with `instance`, and `aws_eip_association` with `instance_id`: the instance
+  has a public IPv4 address.
+  Source: <https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/elastic-ip-addresses-eip.html>
 - `associate_public_ip_address` set to `true` or `false` on `aws_instance`.
 - `map_public_ip_on_launch` on `aws_subnet`, when the instance does not set
   `associate_public_ip_address`.
 
 Returns `unknown` with a reason:
 
-- Elastic IPs (`aws_eip`, `aws_eip_association`).
-- `aws_internet_gateway_attachment`.
+- An Elastic IP associated with a network interface.
+- An internet gateway outside the plan that a route points at.
 - A public IP setting that is unknown in the plan.
 
 Not modeled yet: NAT gateways and egress-only internet gateways. They carry traffic

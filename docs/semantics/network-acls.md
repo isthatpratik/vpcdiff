@@ -61,10 +61,12 @@ Handled:
   NACL was not changed outside Terraform. Use `aws_default_network_acl` to make its
   rules part of the plan.
 - `aws_default_network_acl` and `aws_network_acl` with inline `ingress`/`egress`
-  blocks, associated through `subnet_ids`.
+  blocks, associated through `subnet_ids` or `aws_network_acl_association`.
+- `aws_network_acl_rule`, merged by rule number with the inline rules (or with the AWS
+  default rules of an unmanaged default NACL). Two rules with the same number and
+  direction return `unknown`.
 
 Returns `unknown` with a reason:
 
 - A VPC that is not created or managed in the plan. Its default NACL rules are unknown.
-- `aws_network_acl_rule` and `aws_network_acl_association` resources (not yet merged).
 - IPv6 rules, ICMP rules, and any unknown value in the plan.

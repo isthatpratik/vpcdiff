@@ -76,17 +76,17 @@ reported as `unknown` with a reason, never as allowed or blocked by guess.
 | Resource | Status |
 |---|---|
 | `aws_vpc` (primary IPv4 CIDR), `aws_subnet` | supported |
-| `aws_internet_gateway` (with `vpc_id`) | supported |
-| `aws_route_table` (inline `route` blocks), `aws_route_table_association`, main route table | supported |
-| `aws_security_group` (inline `ingress` blocks, IPv4 CIDR sources) | supported |
-| `aws_network_acl` (inline rules, `subnet_ids`), `aws_default_network_acl`, default NACL | supported |
-| `aws_instance` (as endpoint; `associate_public_ip_address`, `map_public_ip_on_launch`) | supported |
-| `aws_security_group_rule`, `aws_vpc_security_group_ingress_rule`, `aws_vpc_security_group_egress_rule` | planned; unknown |
-| `aws_route`, `aws_main_route_table_association`, `aws_default_route_table` | planned; unknown |
-| `aws_network_acl_rule`, `aws_network_acl_association` | planned; unknown |
-| `aws_eip`, `aws_eip_association`, `aws_internet_gateway_attachment` | planned; unknown |
+| `aws_internet_gateway`, `aws_internet_gateway_attachment` | supported |
+| `aws_route_table` (inline routes), `aws_route`, `aws_route_table_association` | supported |
+| Main route table: `aws_default_route_table`, `aws_main_route_table_association`, unmanaged default | supported |
+| `aws_security_group` (inline), `aws_security_group_rule`, `aws_vpc_security_group_ingress_rule` | supported (IPv4 CIDR sources) |
+| `aws_default_security_group`, unmanaged default security group | supported |
+| `aws_network_acl` (inline), `aws_network_acl_rule`, `aws_network_acl_association`, `aws_default_network_acl`, unmanaged default NACL | supported |
+| `aws_instance` (endpoint), `aws_eip`, `aws_eip_association` | supported |
+| `aws_vpc_security_group_egress_rule` | read; does not affect inbound paths (security groups are stateful) |
 | `aws_db_instance`, `aws_lb` (as endpoints) | planned; noted |
-| NAT gateway, VPC peering, Transit Gateway, VPC endpoints, prefix lists, IPv6 | not yet; unknown or noted |
+| Prefix lists, VPN route propagation, network interface attachments, secondary VPC CIDRs | unknown |
+| NAT gateway, VPC peering, Transit Gateway, VPC endpoints, IPv6 | not yet; unknown or noted |
 
 Paths evaluated: from the internet to each endpoint, for every TCP and UDP port that one
 of its security groups opens to a public address.

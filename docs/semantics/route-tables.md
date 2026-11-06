@@ -42,15 +42,21 @@ The result names the deciding route: table, destination CIDR, and target.
 
 Handled:
 
-- Inline `route` blocks with `cidr_block` and `gateway_id` on `aws_route_table`.
+- Inline `route` blocks with `cidr_block` and `gateway_id` on `aws_route_table`, and
+  `aws_route` resources.
 - `aws_route_table_association` with `subnet_id`.
-- The main route table of a VPC created in the plan (local route only).
+- The main route table: the table set by `aws_main_route_table_association`, else the
+  VPC's default route table. `aws_default_route_table` removes all routes when Terraform
+  adopts it, then adds its configured routes. Unmanaged, it has only the local route.
+  Source: <https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/default_route_table>
 
 Returns `unknown` with a reason:
 
 - A winning route whose target is not an internet gateway (NAT gateway, instance,
   network interface, peering, transit gateway, VPC endpoint).
-- Separate `aws_route` resources, prefix list destinations, and IPv6 routes.
+- Prefix list destinations, and IPv6 routes (skipped for IPv4 traffic).
+- Route propagation from a virtual private gateway (`propagating_vgws`,
+  `aws_vpn_gateway_route_propagation`).
 - Two routes with the same prefix length that match (the tie rules are not modeled yet).
 - Gateway route tables (associated with the internet gateway itself).
 - A VPC that is not created or managed in the plan.

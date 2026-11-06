@@ -44,8 +44,14 @@
 Handled:
 
 - Inline `ingress` blocks with `cidr_blocks`.
-- `protocol` values `tcp`, `6`, and `-1`.
-- `vpc_security_group_ids` on `aws_instance`.
+- `aws_security_group_rule` (`type = "ingress"`) and `aws_vpc_security_group_ingress_rule`,
+  merged into the group they target. Egress rules do not affect inbound paths.
+- `aws_default_security_group`, and the unmanaged default security group of a VPC
+  managed in the plan. AWS's default group allows inbound traffic only from itself, so it
+  has no internet source.
+  Source: <https://docs.aws.amazon.com/vpc/latest/userguide/default-security-group.html>
+- `protocol` values `tcp`, `6`, `udp`, `17`, and `-1`.
+- `vpc_security_group_ids` on `aws_instance`; an empty list means the VPC's default group.
 
 Skipped for internet paths, because they cannot match an internet address: a source
 that is another security group (`security_groups`, `self`), and IPv6 sources (IPv6 is
@@ -53,10 +59,8 @@ not modeled yet).
 
 Returns `unknown` with a reason:
 
-- A separate rule resource that references the group. The engine cannot yet merge
-  it, and ignoring it could hide an allow.
+- A rule resource whose target group cannot be resolved. Then every group is unknown,
+  because the rule could belong to any of them.
 - A source that is a prefix list. It can contain public ranges that the engine cannot
   expand offline.
-- An instance with no `vpc_security_group_ids`. It gets the VPC's default group,
-  which is not in the plan unless `aws_default_security_group` manages it.
 - Any rule value that is unknown in the plan (`after_unknown`).
