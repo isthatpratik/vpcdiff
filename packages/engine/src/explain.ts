@@ -46,10 +46,14 @@ export function portLabel(path: Pick<Path, "protocol" | "ports">): string {
   return `${path.protocol}/${path.ports}${svc ? ` (${svc})` : ""}`;
 }
 
-/** Who can connect: "anyone on the internet" or the CIDRs. */
+/**
+ * Who can connect: "any public IPv4 address" or the CIDRs. The engine checks the network
+ * path only (not a host firewall or whether a service listens), and IPv4 only, so the
+ * words say what the network allows, not who can log in.
+ */
 export function whoText(sources: string[]): string {
   if (!sources.length) return "nobody";
-  if (sources.length === 1 && sources[0] === "internet") return "anyone on the internet";
+  if (sources.length === 1 && sources[0] === "internet") return "any public IPv4 address";
   return sources.join(", ");
 }
 
@@ -97,6 +101,28 @@ export interface Verdict {
   action?: string;
   /** A Terraform snippet that fixes the problem, when there is a standard one. */
   snippet?: string;
+  /**
+   * Sources the engine could not decide on a path it calls reachable. The engine reports
+   * them in the path's reason; they are neither allowed nor blocked.
+   */
+  doubt?: string;
+}
+
+/** Ports where exposure to the internet is usually serious: remote admin and data stores. */
+const SENSITIVE = new Set(["22", "23", "445", "1433", "1521", "2049", "2379", "3306", "3389", "5432", "5601", "6379", "6443", "9200", "11211", "27017"]);
+const CHANGE_RANK: Record<Path["change"], number> = { added: 0, unknown: 1, changed: 2, unchanged: 5, removed: 4 };
+
+/**
+ * Sort key for paths, most serious first: opened, then unknown, then changed, then outage
+ * risk, then closed, then the rest. Within a group, open to every address before some
+ * addresses, and admin or database ports before others.
+ */
+export function severityOf(path: Path): number {
+  const rank = path.change === "unchanged" && path.outageRisk?.length ? 3 : CHANGE_RANK[path.change];
+  const sources = path.after.verdict === "allowed" ? path.after.sources : path.before.sources;
+  const wide = sources.includes("internet") ? 0 : 1;
+  const sensitive = SENSITIVE.has(path.ports) ? 0 : 1;
+  return rank * 4 + wide * 2 + sensitive;
 }
 
 /** The first hop label where the given side stops the traffic, for "blocked at …". */
@@ -106,8 +132,14 @@ function stoppedAt(path: Path, side: "before" | "after"): string | undefined {
   return i >= 0 ? `${COLUMNS[i]?.label} hop` : undefined;
 }
 
-/** The verdict for one path, in plain words. */
+/** The verdict for one path, in plain words, with any undecided sources. */
 export function verdictOf(path: Path): Verdict {
+  const v = baseVerdict(path);
+  const doubt = path.change !== "unknown" && path.after.verdict === "allowed" ? path.after.reason : undefined;
+  return doubt ? { ...v, doubt } : v;
+}
+
+function baseVerdict(path: Path): Verdict {
   const lanes = lanesOf(path);
   const port = portLabel(path);
   const firstChanged = lanes.changed.indexOf(true);
@@ -130,7 +162,7 @@ export function verdictOf(path: Path): Verdict {
     return {
       tone: "danger",
       title: path.after.sources.includes("internet") ? "Opened to the internet" : "Opened to some addresses",
-      body: `After this plan, ${whoText(path.after.sources)} can connect to ${path.to} on ${port}.`,
+      body: `After this plan, the network lets ${whoText(path.after.sources)} reach ${path.to} on ${port}.`,
       ...(cause ? { cause } : {}),
       action:
         path.after.sources.includes("internet")
@@ -162,7 +194,7 @@ export function verdictOf(path: Path): Verdict {
   if (path.change === "unknown") {
     const reason = path.after.reason || path.before.reason;
     return {
-      tone: "neutral",
+      tone: "warning",
       title: "Could not decide",
       body: `vpcdiff could not decide whether the internet can reach ${path.to} on ${port}${reason ? `: ${reason}` : "."}`,
       action: "Check this path by hand. vpcdiff reports unknown instead of guessing.",
@@ -175,7 +207,7 @@ export function verdictOf(path: Path): Verdict {
       tone: "warning",
       title: "May drop during the apply",
       body: `${path.to} stays reachable on ${port}, but the plan replaces ${res} by deleting it before creating the new one. Traffic can drop until the new one exists.`,
-      action: `Add create_before_destroy to ${res}, so the new one exists before the old one is deleted.`,
+      action: `Add create_before_destroy to ${res}, so the new one exists before the old one is deleted.${path.outageRisk.some((r) => /^(module\.[^.]+\.)*aws_security_group\./.test(r)) ? " If the group has a fixed name, use name_prefix instead, because AWS does not allow two groups with the same name in a VPC." : ""}`,
       snippet: "lifecycle {\n  create_before_destroy = true\n}",
     };
   }
@@ -193,20 +225,67 @@ export function verdictOf(path: Path): Verdict {
 
 const CHANGE_WORD: Record<Path["change"], string> = { added: "New exposure", removed: "Closed", changed: "Sources changed", unknown: "Unknown", unchanged: "No change" };
 
+/**
+ * Inline code that a value cannot close early: the fence is one backtick longer than any
+ * run of backticks inside. Resource addresses can hold any characters (for_each keys).
+ */
+export function mdCode(value: string): string {
+  const text = value.replace(/[\r\n]+/g, " ");
+  const longest = Math.max(0, ...(text.match(/`+/g) ?? []).map((r) => r.length));
+  const fence = "`".repeat(longest + 1);
+  const pad = text.startsWith("`") || text.endsWith("`") ? " " : "";
+  return `${fence}${pad}${text}${pad}${fence}`;
+}
+
+/**
+ * Plain text that is safe to paste as Markdown: Markdown and HTML characters are escaped,
+ * and a zero-width space after "@" stops GitHub from notifying anyone.
+ */
+export function mdText(value: string): string {
+  return value
+    .replace(/[\r\n]+/g, " ")
+    .replace(/[\\`*_{}[\]()<>#+!|~]/g, (c) => `\\${c}`)
+    .replace(/@/g, "@\u200b");
+}
+
+/** The headline word for a path: the change, or the outage risk on an unchanged path. */
+function headline(path: Path): string {
+  return path.change === "unchanged" && path.outageRisk?.length ? verdictOf(path).title : CHANGE_WORD[path.change];
+}
+
 /** One path as Markdown, to paste into a pull request comment. */
 export function pathMarkdown(path: Path): string {
   const v = verdictOf(path);
-  const lines = [`**${CHANGE_WORD[path.change]}** · internet → \`${path.to}\` ${portLabel(path)}`, "", v.body];
-  if (v.cause && v.cause.rule) lines.push("", `Decided at the ${v.cause.hop} hop: \`${v.cause.rule}\``);
-  if (v.action) lines.push("", v.action);
+  const lines = [`**${headline(path)}** · internet → ${mdCode(path.to)} ${portLabel(path)}`, "", mdText(v.body)];
+  if (v.doubt) lines.push("", `**Partly undecided:** ${mdText(v.doubt)}`);
+  if (v.cause && v.cause.rule) lines.push("", `Decided at the ${v.cause.hop} hop: ${mdCode(v.cause.rule)}`);
+  if (v.action) lines.push("", mdText(v.action));
+  if (v.snippet) lines.push("", "```hcl", v.snippet, "```");
   return lines.join("\n");
 }
 
-/** The whole plan as Markdown: the counts, then every path that is not unchanged. */
-export function planMarkdown(name: string, result: Result): string {
+/** What the engine checks, for the scope line in the viewer and the Markdown. */
+export const SCOPE = "IPv4 paths from the internet";
+
+/**
+ * The whole plan as Markdown: the counts, the scope, every path that changes or carries a
+ * risk (most serious first), and what is not modeled. `meta` adds a footer so a reviewer
+ * can reproduce the result.
+ */
+export function planMarkdown(name: string, result: Result, meta?: { version?: string; sha256?: string }): string {
   const s = result.summary;
   const risky = result.paths.filter((p) => p.outageRisk?.length).length;
-  const head = `### vpcdiff · ${name}\n\n${s.added} opened · ${s.removed} closed · ${s.changed} changed · ${s.unknown} unknown${risky ? ` · ${risky} outage risk` : ""}`;
-  const items = result.paths.filter((p) => p.change !== "unchanged" || p.outageRisk?.length).map((p) => `- ${pathMarkdown(p).split("\n")[0]}`);
-  return [head, items.length ? `\n${items.join("\n")}` : "\nNo path from the internet changes."].join("\n");
+  const out = [`### vpcdiff · ${mdText(name)}`, "", `${s.added} opened · ${s.removed} closed · ${s.changed} changed · ${s.unknown} unknown${risky ? ` · ${risky} outage risk` : ""}`, "", `Scope: ${SCOPE}.${result.notes.length ? ` ${result.notes.length} not modeled yet (listed below).` : ""}`];
+  const items = result.paths
+    .filter((p) => p.change !== "unchanged" || p.outageRisk?.length)
+    .toSorted((a, b) => severityOf(a) - severityOf(b) || (a.id < b.id ? -1 : 1))
+    .map((p) => `- ${pathMarkdown(p).split("\n")[0]}`);
+  out.push("", items.length ? items.join("\n") : "No path from the internet changes.");
+  if (result.notes.length) {
+    out.push("", "Not modeled yet:", ...result.notes.map((n) => `- ${mdCode(n.resource)}: ${mdText(n.message)}`));
+  }
+  if (meta?.version || meta?.sha256) {
+    out.push("", `<sub>vpcdiff ${mdText(meta.version ?? "")}${meta.sha256 ? ` · plan sha256 ${meta.sha256.slice(0, 16)}` : ""}</sub>`);
+  }
+  return out.join("\n");
 }

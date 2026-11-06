@@ -2,7 +2,7 @@
 // it, hop by hop. The layout gives the most room to the change itself: a path strip that
 // shows the difference at a glance, and one hop table where the hops that changed are
 // open and the rest fold to a line. Nothing leaves the tab.
-import type { Path, Result } from "@vpcdiff/engine";
+import { ENGINE_VERSION, type Path, type Result } from "@vpcdiff/engine";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEvent, type ReactNode } from "react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/litt/accordion";
 import { Button } from "@/components/litt/button";
@@ -13,14 +13,24 @@ import { Loading, Skeleton } from "@/components/litt/states";
 import { Tooltip, TooltipProvider } from "@/components/litt/tooltip";
 import { analyzeInWorker } from "../engine.ts";
 import { EXAMPLES } from "../examples.ts";
-import { CHANGE_HELP, HOP_HELP, pathMarkdown, planMarkdown, portLabel, serviceOf, verdictOf, type Tone } from "@vpcdiff/engine/explain";
+import { CHANGE_HELP, HOP_HELP, pathMarkdown, planMarkdown, portLabel, SCOPE, serviceOf, severityOf, verdictOf, type Tone } from "@vpcdiff/engine/explain";
 import { COLUMNS, lanesOf, rowsDiffer, type Cell, type CellState, type ColumnKey } from "@vpcdiff/engine/lanes";
 import { Wordmark } from "../shared/brand.tsx";
 import { GithubLink } from "../shared/github.tsx";
 import { ThemeSwitch } from "../shared/theme.tsx";
-import { CHANGE_ORDER, CHANGE_TEXT, ChangeTag, DecisionTag, VERDICT_LABEL } from "./status.tsx";
+import { CHANGE_TEXT, ChangeTag, DecisionTag, VERDICT_LABEL } from "./status.tsx";
 
-type State = { kind: "empty"; error?: string } | { kind: "loading"; name: string } | { kind: "ready"; name: string; result: Result };
+type State = { kind: "empty"; error?: string } | { kind: "loading"; name: string } | { kind: "ready"; name: string; result: Result; sha256?: string };
+
+/** SHA-256 of the plan text, computed in the tab, so a PR comment can name the exact plan. */
+async function sha256(text: string): Promise<string | undefined> {
+  try {
+    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+    return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
+  } catch {
+    return undefined;
+  }
+}
 type Filter = "changes" | "all";
 
 const EASE = "ease-[cubic-bezier(0.23,1,0.32,1)]";
@@ -34,8 +44,9 @@ export function App() {
   const open = useCallback(async (name: string, text: Promise<string>) => {
     setState({ kind: "loading", name });
     try {
-      const result = await analyzeInWorker(await text);
-      setState({ kind: "ready", name, result });
+      const plan = await text;
+      const [result, hash] = await Promise.all([analyzeInWorker(plan), sha256(plan)]);
+      setState({ kind: "ready", name, result, ...(hash ? { sha256: hash } : {}) });
     } catch (e) {
       setState({ kind: "empty", error: (e as Error).message });
     }
@@ -86,7 +97,7 @@ export function App() {
             />
           )}
           {state.kind === "loading" && <Busy />}
-          {state.kind === "ready" && <Workspace key={state.name} name={state.name} result={state.result} />}
+          {state.kind === "ready" && <Workspace key={state.name} name={state.name} result={state.result} sha256={state.sha256} />}
         </main>
         <div
           aria-hidden={!dragging}
@@ -324,7 +335,7 @@ function sourcesOf(path: Path): string[] {
   return path.after.verdict === "allowed" ? path.after.sources : path.before.verdict === "allowed" ? path.before.sources : [];
 }
 
-function Workspace({ name, result }: { name: string; result: Result }) {
+function Workspace({ name, result, sha256: hash }: { name: string; result: Result; sha256?: string | undefined }) {
   const [filter, setFilter] = useState<Filter>("changes");
   const [query, setQuery] = useState("");
   const visible = useMemo(() => {
@@ -332,7 +343,7 @@ function Workspace({ name, result }: { name: string; result: Result }) {
     return result.paths
       .filter((p) => filter === "all" || p.change !== "unchanged" || p.outageRisk)
       .filter((p) => !q || [p.to, p.toType, `${p.protocol}/${p.ports}`, serviceOf(p.ports) ?? "", ...sourcesOf(p)].some((s) => s.toLowerCase().includes(q)))
-      .toSorted((a, b) => CHANGE_ORDER.indexOf(a.change) - CHANGE_ORDER.indexOf(b.change) || (a.id < b.id ? -1 : 1));
+      .toSorted((a, b) => severityOf(a) - severityOf(b) || (a.id < b.id ? -1 : 1));
   }, [result, filter, query]);
   const [selectedId, setSelectedId] = useState<string | undefined>(visible[0]?.id);
   useEffect(() => {
@@ -343,6 +354,8 @@ function Workspace({ name, result }: { name: string; result: Result }) {
   const risky = result.paths.filter((p) => p.outageRisk?.length).length;
   const list = useRef<HTMLUListElement>(null);
   const [copied, setCopied] = useState(false);
+  const [notesOpen, setNotesOpen] = useState("");
+  const notesRef = useRef<HTMLDivElement>(null);
 
   // Up and down move through the list, like a native list box.
   const onKey = (e: KeyboardEvent) => {
@@ -366,7 +379,7 @@ function Workspace({ name, result }: { name: string; result: Result }) {
 
   return (
     <div className="grid h-full min-h-0 grid-cols-1 overflow-auto md:grid-cols-[340px_minmax(0,1fr)] md:overflow-hidden">
-      <aside className="grid min-h-0 grid-rows-[auto_auto_minmax(0,1fr)_auto] border-b border-litt-line md:border-r md:border-b-0" aria-label="Paths">
+      <aside className="grid min-h-0 grid-rows-[auto_auto_auto_minmax(0,1fr)_auto] border-b border-litt-line md:border-r md:border-b-0" aria-label="Paths">
         <dl className="grid grid-cols-5 gap-px border-b border-litt-line bg-litt-line">
           {counters.map((c) => (
             <div key={c.key} className="grid content-start gap-1.5 bg-litt-canvas px-3 py-4">
@@ -377,6 +390,21 @@ function Workspace({ name, result }: { name: string; result: Result }) {
             </div>
           ))}
         </dl>
+        <p className="flex flex-wrap items-center gap-x-1.5 border-b border-litt-line px-4 py-2.5 text-litt-caption text-litt-fg-subtle">
+          <span>Checks {SCOPE} only.</span>
+          {result.notes.length > 0 && (
+            <button
+              type="button"
+              onClick={() => {
+                setNotesOpen("notes");
+                window.setTimeout(() => notesRef.current?.scrollIntoView({ block: "nearest" }), 0);
+              }}
+              className="text-litt-warning underline decoration-dotted underline-offset-4 hover:decoration-solid focus-visible:outline-2 focus-visible:outline-litt-focus"
+            >
+              {result.notes.length} {result.notes.length === 1 ? "resource" : "resources"} not modeled
+            </button>
+          )}
+        </p>
         <div className="grid gap-2.5 border-b border-litt-line p-4">
           <Tooltip content="Changes: only paths the plan opens, closes, or puts at risk. All paths: every path from the internet the engine checked.">
             <div>
@@ -419,6 +447,7 @@ function Workspace({ name, result }: { name: string; result: Result }) {
                   : result.paths.length
                     ? `This plan does not change any path from the internet. All paths shows the ${unchanged} the engine checked.`
                     : "No security group in this plan opens a port to a public address, so there is no path from the internet to check."}
+                {!query && result.notes.length > 0 && ` ${result.notes.length} ${result.notes.length === 1 ? "resource is" : "resources are"} not modeled yet, so check ${result.notes.length === 1 ? "it" : "them"} by hand.`}
               </p>
             </div>
           )}
@@ -427,7 +456,7 @@ function Workspace({ name, result }: { name: string; result: Result }) {
           <button
             type="button"
             onClick={() =>
-              void navigator.clipboard?.writeText(planMarkdown(name, result)).then(() => {
+              void navigator.clipboard?.writeText(planMarkdown(name, result, { version: ENGINE_VERSION, ...(hash ? { sha256: hash } : {}) })).then(() => {
                 setCopied(true);
                 window.setTimeout(() => setCopied(false), 1600);
               })
@@ -438,7 +467,8 @@ function Workspace({ name, result }: { name: string; result: Result }) {
             {copied ? "Copied the summary" : "Copy plan summary as Markdown"}
           </button>
           {result.notes.length > 0 && (
-            <Accordion type="single" collapsible headingLevel={2}>
+            <div ref={notesRef}>
+            <Accordion type="single" collapsible headingLevel={2} value={notesOpen} onValueChange={setNotesOpen}>
               <AccordionItem value="notes">
                 <AccordionTrigger>Not modeled yet · {result.notes.length}</AccordionTrigger>
                 <AccordionContent>
@@ -453,6 +483,7 @@ function Workspace({ name, result }: { name: string; result: Result }) {
                 </AccordionContent>
               </AccordionItem>
             </Accordion>
+            </div>
           )}
         </div>
       </aside>
@@ -650,6 +681,12 @@ function VerdictPanel({ path }: { path: Path }) {
         <div className="grid gap-1.5">
           <p className={`font-display text-xl font-normal tracking-[-0.01em] ${TONE_TEXT[v.tone]}`}>{v.title}</p>
           <p className="max-w-[68ch] text-base leading-relaxed text-litt-fg">{v.body}</p>
+          {v.doubt && (
+            <p className="max-w-[68ch] text-litt-small leading-relaxed text-litt-fg-muted">
+              <span className="font-medium text-litt-warning">Partly undecided · </span>
+              {v.doubt}. vpcdiff does not count these sources as allowed or blocked.
+            </p>
+          )}
         </div>
         <button
           type="button"

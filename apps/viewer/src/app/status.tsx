@@ -6,8 +6,8 @@ import type { CellState } from "@vpcdiff/engine/lanes";
 export const CHANGE_LABEL: Record<Change, string> = { added: "New exposure", removed: "Closed", changed: "Sources changed", unknown: "Unknown", unchanged: "No change" };
 export const STAT_LABEL: Record<Change, string> = { added: "Opened", removed: "Closed", changed: "Changed", unknown: "Unknown", unchanged: "Same" };
 export const CHANGE_ORDER: Change[] = ["added", "removed", "changed", "unknown", "unchanged"];
-const CHANGE_STATUS: Record<Change, TagStatus> = { added: "danger", removed: "success", changed: "warning", unknown: "neutral", unchanged: "neutral" };
-export const CHANGE_TEXT: Record<Change, string> = { added: "text-litt-danger", removed: "text-litt-success", changed: "text-litt-warning", unknown: "text-litt-fg-subtle", unchanged: "text-litt-fg-muted" };
+const CHANGE_STATUS: Record<Change, TagStatus> = { added: "danger", removed: "success", changed: "warning", unknown: "warning", unchanged: "neutral" };
+export const CHANGE_TEXT: Record<Change, string> = { added: "text-litt-danger", removed: "text-litt-success", changed: "text-litt-warning", unknown: "text-litt-warning", unchanged: "text-litt-fg-muted" };
 
 export const VERDICT_LABEL: Record<Verdict, string> = { allowed: "Reachable", blocked: "Blocked", unknown: "Unknown", absent: "Not in plan" };
 

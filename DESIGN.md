@@ -218,6 +218,16 @@ Fonts load from Google Fonts (see section 10 for what that means for privacy).
   (with a Terraform snippet when there is a standard fix), and "Copy for PR" as
   Markdown. Then the path strip with a legend, and the hop table (ADR 0008): hops that
   differ are open and marked; hops that are the same fold behind one toggle.
+- **Trust:** the list is sorted most serious first (opened, unknown, changed, outage
+  risk, closed; open to every address before some; admin and database ports first).
+  Unknown is amber, never the grey of a zero. Under the counters, a scope line says what
+  is checked ("IPv4 paths from the internet") and links to what is not modeled. When
+  the engine calls a path reachable but could not decide some sources, the verdict
+  says "Partly undecided" with the reason. The PR Markdown escapes every name and
+  rule (no links or @-mentions from a plan), and the plan summary ends with the
+  vpcdiff version and the plan's SHA-256, computed in the tab.
+- **Words for reach:** "the network lets any public IPv4 address reach …", not
+  "anyone can connect": the engine checks the network path, not the host.
 - **Plain words:** every hop name, counter, and the Changes / All paths toggle has a
   tooltip in plain language (`src/explain.ts`). One term per state: Allows, Allows some
   sources, Denies, Unknown, Not checked, Not in plan. Ports carry their service name

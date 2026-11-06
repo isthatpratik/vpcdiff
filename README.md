@@ -48,7 +48,7 @@ vpcdiff  plan.json
 
 ● Opened to the internet
   aws_instance.db  tcp/5432 (PostgreSQL)  Blocked → Reachable
-  After this plan, anyone on the internet can connect to aws_instance.db on tcp/5432 (PostgreSQL).
+  After this plan, the network lets any public IPv4 address reach aws_instance.db on tcp/5432 (PostgreSQL).
   Decided at the Security groups hop:
     aws_security_group.db ingress tcp 5432 from 0.0.0.0/0
   What to do: If this is not intended, narrow the rule's source to a private range, such as your VPC CIDR.

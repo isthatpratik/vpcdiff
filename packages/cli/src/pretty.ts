@@ -37,6 +37,7 @@ export function prettyPath(c: Colors, path: Path, full = false): string[] {
     `  ${c.bold(path.to)}  ${c.dim(portLabel(path))}  ${c.dim(`${VERDICT[path.before.verdict]} →`)} ${VERDICT[path.after.verdict]}`,
     `  ${v.body}`,
   ];
+  if (v.doubt) lines.push(`  ${c.yellow("Partly undecided:")} ${v.doubt}`);
   if (v.cause?.rule) lines.push(`  ${c.dim(`Decided at the ${v.cause.hop} hop:`)}`, `    ${c.cyan(v.cause.rule)}`);
   if (v.action) lines.push(`  ${c.dim("What to do:")} ${v.action}`);
   if (v.snippet) lines.push(...v.snippet.split("\n").map((l) => `    ${c.cyan(l)}`));

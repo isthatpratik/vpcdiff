@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { analyze, type Path, type Result } from "@vpcdiff/engine";
 import { describe, expect, it } from "vitest";
-import { pathMarkdown, planMarkdown, portLabel, serviceOf, verdictOf, whoText } from "@vpcdiff/engine/explain";
+import { mdCode, mdText, pathMarkdown, planMarkdown, portLabel, serviceOf, severityOf, verdictOf, whoText } from "@vpcdiff/engine/explain";
 
 const resultOf = (fixture: string): Result => analyze(JSON.parse(readFileSync(join(import.meta.dirname, "../../../fixtures", fixture, "plan.json"), "utf8")) as unknown);
 const pathOf = (fixture: string, id: string): Path => {
@@ -22,7 +22,7 @@ describe("ports and sources", () => {
   });
 
   it("says who can connect", () => {
-    expect(whoText(["internet"])).toBe("anyone on the internet");
+    expect(whoText(["internet"])).toBe("any public IPv4 address");
     expect(whoText(["198.51.100.0/24", "203.0.113.0/24"])).toBe("198.51.100.0/24, 203.0.113.0/24");
     expect(whoText([])).toBe("nobody");
   });
@@ -32,7 +32,7 @@ describe("verdictOf", () => {
   it("explains a path the plan opens, with the rule that opened it", () => {
     const v = verdictOf(pathOf("sg-5432-opened", "internet->aws_instance.db:tcp:5432"));
     expect(v.tone).toBe("danger");
-    expect(v.body).toBe("After this plan, anyone on the internet can connect to aws_instance.db on tcp/5432 (PostgreSQL).");
+    expect(v.body).toBe("After this plan, the network lets any public IPv4 address reach aws_instance.db on tcp/5432 (PostgreSQL).");
     expect(v.cause).toMatchObject({ hop: "Security groups", resource: "aws_security_group.db" });
     expect(v.cause?.rule).toContain("0.0.0.0/0");
     expect(v.action).toMatch(/narrow the rule's source/);
@@ -57,14 +57,14 @@ describe("verdictOf", () => {
     const v = verdictOf(pathOf("rule-resources", "internet->aws_instance.app:tcp:22"));
     expect(v.title).toBe("Opened to some addresses");
     expect(v.body).toContain("198.51.100.0/24");
-    expect(v.body).not.toContain("anyone on the internet");
+    expect(v.body).not.toContain("any public IPv4 address");
   });
 
   it("never guesses on an unknown path", () => {
     const p = pathOf("sg-5432-opened", "internet->aws_instance.db:tcp:5432");
     const unknown: Path = { ...p, change: "unknown", after: { ...p.after, verdict: "unknown", reason: "gateway_id is known only after apply" } };
     const v = verdictOf(unknown);
-    expect(v.tone).toBe("neutral");
+    expect(v.tone).toBe("warning");
     expect(v.body).toContain("known only after apply");
     expect(v.action).toMatch(/by hand/);
   });
@@ -87,5 +87,47 @@ describe("Markdown", () => {
     const r = resultOf("sg-5432-opened");
     const none: Result = { ...r, summary: { added: 0, removed: 0, changed: 0, unknown: 0, unchanged: 1 }, paths: r.paths.map((p) => ({ ...p, change: "unchanged" as const })) };
     expect(planMarkdown("plan.json", none)).toContain("No path from the internet changes.");
+  });
+});
+
+describe("trust", () => {
+  it("shows sources it could not decide on a reachable path", () => {
+    const p = pathOf("sg-5432-opened", "internet->aws_instance.db:tcp:5432");
+    const doubtful: Path = { ...p, after: { ...p.after, reason: "responses to 203.0.113.0/24 cannot be decided" } };
+    expect(verdictOf(doubtful).doubt).toContain("203.0.113.0/24");
+    expect(pathMarkdown(doubtful)).toContain("**Partly undecided:**");
+    expect(verdictOf(p).doubt).toBeUndefined();
+  });
+
+  it("names the outage risk in the PR text and includes the fix", () => {
+    const md = pathMarkdown(pathOf("sg-replaced", "internet->aws_instance.web:tcp:443"));
+    expect(md.split("\n")[0]).toMatch(/^\*\*May drop during the apply\*\*/);
+    expect(md).toContain("```hcl");
+    expect(md).toContain("create_before_destroy = true");
+    expect(md).toContain("name\\_prefix");
+  });
+
+  it("escapes resource names and text so a paste cannot add links or mentions", () => {
+    expect(mdCode("a`b")).toBe("``a`b``");
+    expect(mdCode("`x`")).toBe("`` `x` ``");
+    expect(mdText("see [click](http://x) @org/team")).toBe("see \\[click\\]\\(http://x\\) @\u200borg/team");
+    const p = pathOf("sg-5432-opened", "internet->aws_instance.db:tcp:5432");
+    const evil: Path = { ...p, to: 'aws_instance.x["`@org [a](http://e)"]' };
+    const line = pathMarkdown(evil).split("\n")[0] ?? "";
+    expect(line).toContain('``aws_instance.x["`@org [a](http://e)"]``');
+    expect(pathMarkdown(evil).split("\n")[2]).not.toMatch(/(^|[^\\])\[a\]/);
+  });
+
+  it("sorts the most serious paths first", () => {
+    const r = resultOf("rule-resources");
+    const sorted = r.paths.toSorted((a, b) => severityOf(a) - severityOf(b));
+    const opened = sorted.filter((p) => p.change === "added");
+    expect(opened[0]?.after.sources).toContain("internet");
+  });
+
+  it("puts the scope, the notes, and a reproducible footer in the plan summary", () => {
+    const md = planMarkdown("plan.json", resultOf("sg-5432-opened"), { version: "0.1.0", sha256: "abcdef0123456789ffff" });
+    expect(md).toContain("Scope: IPv4 paths from the internet.");
+    expect(md).toContain("<sub>vpcdiff 0.1.0 · plan sha256 abcdef0123456789</sub>");
   });
 });
