@@ -14,13 +14,15 @@ import { analyzeInWorker } from "../engine.ts";
 import { EXAMPLES } from "../examples.ts";
 import { CHANGE_HELP, changeWords, HOP_HELP, pathMarkdown, planMarkdown, planVerdict, portLabel, SCOPE, serviceOf, severityOf, verdictOf, type Tone } from "@vpcdiff/engine/explain";
 import { announce, Announcer, CopyButton } from "./copy.tsx";
+import { clearPlace, keptFile, placeExample, placeFile, placePath, readPlace } from "./place.ts";
 import { COLUMNS, lanesOf, rowsDiffer, type Cell, type CellState, type ColumnKey } from "@vpcdiff/engine/lanes";
 import { Wordmark } from "../shared/brand.tsx";
 import { GithubLink } from "../shared/github.tsx";
 import { ThemeSwitch } from "../shared/theme.tsx";
 import { CHANGE_TEXT, ChangeTag, DecisionTag } from "./status.tsx";
 
-type State = { kind: "empty"; error?: string } | { kind: "loading"; name: string } | { kind: "ready"; name: string; result: Result; sha256?: string };
+type State = { kind: "empty"; error?: string } | { kind: "loading"; name: string } | { kind: "ready"; name: string; result: Result; sha256?: string; path?: string };
+type Source = { example: string } | { file: true };
 
 /** SHA-256 of the plan text, computed in the tab, so a PR comment can name the exact plan. */
 async function sha256(text: string): Promise<string | undefined> {
@@ -41,22 +43,45 @@ export function App() {
   const [dragging, setDragging] = useState(false);
   const depth = useRef(0);
 
-  const open = useCallback(async (name: string, text: Promise<string>) => {
+  const open = useCallback(async (name: string, text: Promise<string>, source: Source, path?: string) => {
     setState({ kind: "loading", name });
     try {
       const plan = await text;
       const [result, hash] = await Promise.all([analyzeInWorker(plan), sha256(plan)]);
-      setState({ kind: "ready", name, result, ...(hash ? { sha256: hash } : {}) });
+      // Remember where we are, so a reload comes back here (src/app/place.ts).
+      if ("example" in source) placeExample(source.example);
+      else placeFile(name, plan);
+      setState({ kind: "ready", name, result, ...(hash ? { sha256: hash } : {}), ...(path ? { path } : {}) });
     } catch (e) {
+      clearPlace();
       setState({ kind: "empty", error: (e as Error).message });
     }
   }, []);
   const openFile = useCallback(
     (file: File | undefined) => {
-      if (file) void open(file.name, file.text());
+      if (file) void open(file.name, file.text(), { file: true });
     },
     [open],
   );
+  const openExample = useCallback(
+    (id: string, path?: string) => {
+      const ex = EXAMPLES.find((x) => x.id === id);
+      if (ex) void open(`${ex.id}/plan.json`, ex.load(), { example: ex.id }, path);
+      else clearPlace();
+    },
+    [open],
+  );
+
+  // On load, reopen what the URL or this tab remembers.
+  useEffect(() => {
+    const place = readPlace();
+    if (place.kind === "example") openExample(place.id, place.path);
+    if (place.kind === "file") {
+      const kept = keptFile();
+      if (kept) void open(kept.name, Promise.resolve(kept.text), { file: true }, place.path);
+      else clearPlace();
+    }
+  }, [open, openExample]);
 
   // A plan can be dropped anywhere on the page, at any time.
   const hasFiles = (e: DragEvent) => Array.from(e.dataTransfer.types).includes("Files");
@@ -85,20 +110,25 @@ export function App() {
         <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:top-3 focus:left-3 focus:z-50 focus:rounded-[6px] focus:bg-litt-canvas focus:px-3 focus:py-2 focus:text-litt-small focus:text-litt-fg focus:shadow-[inset_0_0_0_1px_var(--litt-line-strong)]">
           Skip to content
         </a>
-        <TopBar name={state.kind === "ready" || state.kind === "loading" ? state.name : undefined} onNew={state.kind === "ready" ? () => setState({ kind: "empty" }) : undefined} />
+        <TopBar name={state.kind === "ready" || state.kind === "loading" ? state.name : undefined} onNew={
+            state.kind === "ready"
+              ? () => {
+                  clearPlace();
+                  setState({ kind: "empty" });
+                }
+              : undefined
+          }
+        />
         <main id="main" className="min-h-0">
           {state.kind === "empty" && (
             <Start
               error={state.error}
               onFile={openFile}
-              onExample={(id) => {
-                const ex = EXAMPLES.find((x) => x.id === id);
-                if (ex) void open(`${ex.id}/plan.json`, ex.load());
-              }}
+              onExample={(id) => openExample(id)}
             />
           )}
           {state.kind === "loading" && <Busy />}
-          {state.kind === "ready" && <Workspace key={state.name} name={state.name} result={state.result} sha256={state.sha256} />}
+          {state.kind === "ready" && <Workspace key={state.name} name={state.name} result={state.result} sha256={state.sha256} initialPath={state.path} />}
         </main>
         <div
           aria-hidden={!dragging}
@@ -347,8 +377,10 @@ function sourcesOf(path: Path): string[] {
   return path.after.verdict === "allowed" ? path.after.sources : path.before.verdict === "allowed" ? path.before.sources : [];
 }
 
-function Workspace({ name, result, sha256: hash }: { name: string; result: Result; sha256?: string | undefined }) {
-  const [filter, setFilter] = useState<Filter>("changes");
+function Workspace({ name, result, sha256: hash, initialPath }: { name: string; result: Result; sha256?: string | undefined; initialPath?: string | undefined }) {
+  const remembered = initialPath ? result.paths.find((p) => p.id === initialPath) : undefined;
+  // A remembered path that the Changes view hides opens with All, so it stays selected.
+  const [filter, setFilter] = useState<Filter>(remembered && remembered.change === "unchanged" && !remembered.outageRisk?.length ? "all" : "changes");
   const [query, setQuery] = useState("");
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -357,7 +389,8 @@ function Workspace({ name, result, sha256: hash }: { name: string; result: Resul
       .filter((p) => !q || [p.to, p.toType, `${p.protocol}/${p.ports}`, serviceOf(p.ports) ?? "", ...sourcesOf(p)].some((s) => s.toLowerCase().includes(q)))
       .toSorted((a, b) => severityOf(a) - severityOf(b) || (a.id < b.id ? -1 : 1));
   }, [result, filter, query]);
-  const [selectedId, setSelectedId] = useState<string | undefined>(visible[0]?.id);
+  const [selectedId, setSelectedId] = useState<string | undefined>(remembered?.id ?? visible[0]?.id);
+  useEffect(() => placePath(selectedId), [selectedId]);
   useEffect(() => {
     if (!visible.some((p) => p.id === selectedId)) setSelectedId(visible[0]?.id);
   }, [visible, selectedId]);

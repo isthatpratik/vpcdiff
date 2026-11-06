@@ -340,6 +340,11 @@ landing page holds no plan data; its policy allows `connect-src 'self'` so crawl
 audit tools can read `robots.txt` and `llms.txt` from the page. CI checks that the
 viewer's built page keeps `connect-src 'none'`.
 
+A reload keeps your place (`src/app/place.ts`). An example plan and the selected path
+live in the URL hash. A plan you opened yourself is kept in this tab's
+`sessionStorage`, on the device only, up to about 5 MB; the browser deletes it when the
+tab closes, and "Open plan" deletes it at once. It is never sent anywhere.
+
 Fonts come from Google Fonts, so a visitor's browser fetches the font stylesheet and font
 files from Google (`fonts.googleapis.com`, `fonts.gstatic.com`). Those requests carry no
 plan content. The policy allows exactly those two origins for styles and fonts and
