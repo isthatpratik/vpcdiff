@@ -203,6 +203,17 @@ Fonts load from Google Fonts (see section 10 for what that means for privacy).
   24 px (after primora.xyz). It says "more below" and fades out when the footer comes
   into view.
 
+### Landing intro
+
+On every load that starts at the top of the page (no hash, not scrolled, motion allowed):
+the page waits for the fonts (at most 800 ms, so text never swaps fonts and shifts),
+then the frame draws (rails down, section lines out from the center), the nav slides
+down at 150 ms, the two headline lines rise from masks at 250 and 340 ms, the copy fades
+up at 450 ms, the dot field comes into focus from 450 ms, and everything below the hero
+rises in at 650 ms. Transform, opacity, and one filter only; the headline stays opaque,
+so it counts for Largest Contentful Paint. `src/site/main.tsx` adds the classes;
+`styles/app.css` ("Landing intro") holds the timing.
+
 ### The viewer
 
 - **App bar:** the wordmark, then a breadcrumb with the plan's file name in mono, and a

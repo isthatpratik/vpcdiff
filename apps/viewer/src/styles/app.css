@@ -1405,3 +1405,42 @@ html[data-theme="dark"][data-material] {
   from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: none; }
 }
+
+/* Landing intro (src/site/main.tsx adds html.intro once per session). The frame draws
+   first: rails down from the top, section lines out from the center; the nav slides
+   down; the headline rises line by line from masks; the copy fades up; the dot field
+   comes into focus. Transform, opacity, clip, and one filter only. When the class comes
+   off, every element is already at its resting style, so nothing jumps. */
+html.fonts-wait #root { visibility: hidden; }
+html.intro .intro-rail { border-color: transparent; }
+html.intro .intro-rail::before,
+html.intro .intro-rail::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--litt-line);
+  transform-origin: top;
+  animation: intro-draw-y 700ms cubic-bezier(0.65, 0, 0.35, 1) both;
+  pointer-events: none;
+}
+html.intro .intro-rail::before { left: -1px; }
+html.intro .intro-rail::after { right: -1px; }
+html.intro .intro-line { transform-origin: center; animation: intro-draw-x 700ms cubic-bezier(0.65, 0, 0.35, 1) 100ms both; }
+html.intro .intro-nav { animation: intro-nav 600ms cubic-bezier(0.16, 1, 0.3, 1) 150ms both; }
+html.intro .intro-up { animation: intro-up 900ms cubic-bezier(0.16, 1, 0.3, 1) var(--intro-d, 0ms) both; }
+html.intro .intro-fade { animation: intro-fade 800ms cubic-bezier(0.16, 1, 0.3, 1) var(--intro-d, 0ms) both; }
+/* Everything below the hero (the logo strip, and more on tall screens) waits for the
+   hero, then rises in after its copy, so the page builds top to bottom. */
+html.intro #main > section:not(:first-child) > div { animation: intro-fade 800ms cubic-bezier(0.16, 1, 0.3, 1) 650ms both; }
+html.intro .intro-focus { animation: intro-focus 1000ms cubic-bezier(0.22, 1, 0.36, 1) 450ms both; }
+@keyframes intro-draw-y { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+@keyframes intro-draw-x { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@keyframes intro-nav { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
+@keyframes intro-up { from { transform: translateY(105%); } to { transform: none; } }
+@keyframes intro-fade { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+@keyframes intro-focus { from { opacity: 0; filter: blur(12px); transform: scale(1.03); } to { opacity: 1; filter: blur(0); transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+  html.intro * { animation: none !important; }
+}

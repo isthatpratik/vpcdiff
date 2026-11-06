@@ -7,7 +7,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "re
 export const EASE = "ease-[cubic-bezier(0.22,1,0.36,1)]";
 /** Horizontal padding inside the rails. The ink bar offsets below match it. */
 export const PAD = "px-6 md:px-16";
-const RAIL = "relative mx-3 border-x border-litt-line sm:mx-6 xl:mx-auto xl:max-w-[1200px]";
+const RAIL = "intro-rail relative mx-3 border-x border-litt-line sm:mx-6 xl:mx-auto xl:max-w-[1200px]";
 
 /**
  * True once the element has entered the viewport. Elements already on screen at first
@@ -63,7 +63,7 @@ export function Divider({ dots = false }: { dots?: boolean }) {
   const dot = dots ? <span className="size-[3px] rounded-full bg-litt-fg-subtle" /> : null;
   return (
     <div aria-hidden="true" className="relative z-10 h-px">
-      <div className="absolute inset-x-3 top-0 h-px bg-litt-line" />
+      <div className="intro-line absolute inset-x-3 top-0 h-px bg-litt-line" />
       <div className="relative mx-3 h-px sm:mx-6 xl:mx-auto xl:max-w-[1200px]">
         <span className={`${gap} -left-3`}>{dot}</span>
         <span className={`${gap} -right-3`}>{dot}</span>

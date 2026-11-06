@@ -2,7 +2,6 @@ import { useEffect } from "react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/litt/accordion";
 import { Tag } from "@/components/litt/tag";
 import { TooltipProvider } from "@/components/litt/tooltip";
-import { TextEffect } from "@/components/sora-ui/texts/text-effect";
 import { TextLoop } from "@/components/sora-ui/texts/text-loop";
 import aws from "../logos/aws-icon-mono.svg?url";
 import actions from "../logos/github-actions-icon-mono.svg?url";
@@ -142,9 +141,10 @@ function Features() {
   );
 }
 
-const LOGOS = [
+const LOGOS: { name: string; src: string; wordmark?: boolean }[] = [
   { name: "Terraform", src: terraform },
-  { name: "AWS", src: aws },
+  // The AWS logo is its own wordmark ("aws" over the smile), so it shows without a label.
+  { name: "AWS", src: aws, wordmark: true },
   { name: "GitHub Actions", src: actions },
   { name: "GitHub", src: github },
   { name: "Node.js", src: nodejs },
@@ -156,8 +156,8 @@ function Logos() {
     <ul className="grid grid-cols-2 gap-px bg-litt-line sm:grid-cols-5" aria-label="Works with Terraform, AWS, GitHub Actions, GitHub, and Node.js">
       {LOGOS.map((l, i) => (
         <li key={l.name} className={`flex h-24 items-center justify-center gap-3 bg-litt-canvas ${i === LOGOS.length - 1 ? "col-span-2 sm:col-span-1" : ""}`}>
-          <span aria-hidden="true" className="h-6 w-8 bg-litt-fg-subtle" style={{ mask: `url("${l.src}") center / contain no-repeat`, WebkitMask: `url("${l.src}") center / contain no-repeat` }} />
-          <span className="text-litt-small text-litt-fg-subtle">{l.name}</span>
+          <span aria-hidden="true" className={`bg-litt-fg-subtle ${l.wordmark ? "h-7 w-12" : "h-6 w-8"}`} style={{ mask: `url("${l.src}") center / contain no-repeat`, WebkitMask: `url("${l.src}") center / contain no-repeat` }} />
+          <span className={l.wordmark ? "sr-only" : "text-litt-small text-litt-fg-subtle"}>{l.name}</span>
         </li>
       ))}
     </ul>
@@ -205,8 +205,8 @@ function NavLink({ href, children }: { href: string; children: string }) {
 /** The nav sits between the rails like a section of its own, over a frosted canvas. */
 function Nav() {
   return (
-    <header className="fixed inset-x-0 top-0 z-40 bg-litt-canvas/75 backdrop-blur-xl">
-      <div className="relative mx-3 border-x border-litt-line sm:mx-6 xl:mx-auto xl:max-w-[1200px]">
+    <header className="intro-nav fixed inset-x-0 top-0 z-40 bg-litt-canvas/75 backdrop-blur-xl">
+      <div className="intro-rail relative mx-3 border-x border-litt-line sm:mx-6 xl:mx-auto xl:max-w-[1200px]">
         <nav aria-label="Main" className="grid h-16 grid-cols-[1fr_auto] items-center gap-4 px-4 md:grid-cols-[1fr_auto_1fr] md:px-6">
           <ul className="hidden items-center gap-1 text-litt-small text-litt-fg-subtle md:flex">
             {NAV_LINKS.map(([l, h]) => (
@@ -241,7 +241,7 @@ function Nav() {
 function Hero() {
   return (
     <Rail reveal={false} label="vpcdiff" className="relative">
-      <div className="relative h-[300px] sm:h-[420px] lg:h-[460px]">
+      <div className="intro-focus relative h-[300px] sm:h-[420px] lg:h-[460px]">
         <PathField />
         {/* Film grain on the animation only, after ui-layouts' Noise: a self-made 6-frame
             noise GIF from this origin at 3.5%, faded out radially so it melts into the
@@ -257,14 +257,20 @@ function Hero() {
           className="pointer-events-none absolute inset-x-0 -top-28 bottom-0 -z-10 bg-litt-canvas/55 backdrop-blur-[10px] [mask-image:radial-gradient(ellipse_75%_70%_at_45%_62%,black_40%,transparent_80%)] [@media(prefers-reduced-transparency:reduce)]:backdrop-blur-none"
         />
         <h1 id="hero-title" className="font-display text-5xl leading-[1.02] font-normal tracking-[-0.045em] text-litt-fg sm:text-7xl">
-          <TextEffect as="span" per="word" preset="fade-in-blur" speedReveal={1.2} className="block leading-[inherit]">
-            See what a Terraform plan
-          </TextEffect>
-          <TextEffect as="span" per="word" preset="fade-in-blur" delay={0.3} speedReveal={1.2} className="block leading-[inherit] text-litt-fg-subtle">
-            opens to the internet.
-          </TextEffect>
+          {/* Each line rises from behind its own mask on load (the intro). The text is
+              opaque from the first paint, so it counts for Largest Contentful Paint. */}
+          <span className="block overflow-hidden pb-[0.1em] -mb-[0.1em]">
+            <span className="intro-up block leading-[inherit]" style={{ "--intro-d": "250ms" } as React.CSSProperties}>
+              See what a Terraform plan
+            </span>
+          </span>
+          <span className="block overflow-hidden pb-[0.1em] -mb-[0.1em]">
+            <span className="intro-up block leading-[inherit] text-litt-fg-subtle" style={{ "--intro-d": "340ms" } as React.CSSProperties}>
+              opens to the internet.
+            </span>
+          </span>
         </h1>
-        <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+        <div className="intro-fade grid gap-8 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end" style={{ "--intro-d": "450ms" } as React.CSSProperties}>
           <p className="max-w-[560px] text-lg leading-relaxed text-litt-fg-muted">vpcdiff reads your plan before you apply it and shows every path the internet gains or loses, with the security group, network ACL, and route that decides each hop.</p>
           <div className="grid justify-items-start gap-4 lg:justify-items-end">
             <div className="flex flex-wrap gap-3">
