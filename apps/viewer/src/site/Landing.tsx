@@ -51,6 +51,18 @@ function useInViewOnce<T extends Element>(margin = "0px 0px -12% 0px") {
   return [ref, seen] as const;
 }
 
+/** True when the media query matches; follows changes. */
+function useMedia(query: string) {
+  const [match, setMatch] = useState(() => window.matchMedia(query).matches);
+  useEffect(() => {
+    const mq = window.matchMedia(query);
+    const on = () => setMatch(mq.matches);
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, [query]);
+  return match;
+}
+
 /** Sections rise 32px and fade in once as they enter the viewport. */
 function Reveal({ children, className = "", id, label }: { children: ReactNode; className?: string; id?: string; label?: string }) {
   const [ref, seen] = useInViewOnce<HTMLElement>();
@@ -113,12 +125,14 @@ const H2 = "font-display text-3xl leading-tight font-medium tracking-[-0.03em] t
 
 /** A section heading: the title fogs in as it scrolls into view, or a custom title node (loops). */
 function SectionHead({ eyebrow, title, titleNode, children, center = false }: { eyebrow: string; title: string; titleNode?: ReactNode; children?: ReactNode; center?: boolean }) {
+  // Fog draws the title on a canvas on one line, so it is used only where one line fits.
+  const wide = useMedia("(min-width: 640px)");
   return (
     <div className={`grid max-w-[680px] gap-4 ${center ? "mx-auto justify-items-center text-center" : ""}`}>
       <p className="font-litt-mono text-litt-caption tracking-[0.08em] text-litt-accent-text uppercase">{eyebrow}</p>
       {titleNode ? (
         <h2 className={H2}>{titleNode}</h2>
-      ) : title.length <= 28 ? (
+      ) : wide && title.length <= 28 ? (
         <FogTextReveal as="h2" text={title} startOnView className={H2} />
       ) : (
         <TextEffect as="h2" per="word" preset="fade-in-blur" scrollTrigger once className={`${H2} leading-[inherit]`}>
@@ -331,7 +345,7 @@ function Nav() {
       <nav
         aria-label="Main"
         style={ON_HARBOR}
-        className={`pointer-events-auto flex w-full items-center justify-between gap-3 rounded-full border border-white/10 bg-[color-mix(in_oklab,var(--vd-harbor)_88%,transparent)] py-1.5 pr-1.5 pl-4 text-litt-fg backdrop-blur-xl transition-[max-width,box-shadow] duration-500 ${EASE} ${
+        className={`pointer-events-auto flex w-full min-w-0 items-center justify-between gap-3 rounded-full border border-white/10 bg-[color-mix(in_oklab,var(--vd-harbor)_88%,transparent)] py-1.5 pr-1.5 pl-4 text-litt-fg backdrop-blur-xl transition-[max-width,box-shadow] duration-500 ${EASE} ${
           scrolled ? "max-w-[760px] shadow-[0_12px_32px_-12px_rgba(4,18,23,0.55)]" : "max-w-[960px] shadow-none"
         }`}
       >
@@ -353,8 +367,8 @@ function Nav() {
           ))}
         </ul>
         <div className="flex items-center gap-1">
-          <ThemeCycle className="text-litt-fg-muted hover:bg-white/10 hover:text-litt-fg" />
-          <span className="[&_a]:rounded-full [&_a:hover]:bg-white/10">
+          <ThemeCycle className="hidden text-litt-fg-muted hover:bg-white/10 hover:text-litt-fg sm:inline-flex" />
+          <span className="hidden sm:inline [&_a]:rounded-full [&_a:hover]:bg-white/10">
             <GithubLink />
           </span>
           <Cta href={APP} primary size="sm" pill>
@@ -390,13 +404,13 @@ function Hero() {
           <TextEffect as="span" per="word" preset="fade-in-blur" speedReveal={1.1} className="block leading-[inherit]">
             See what a Terraform plan
           </TextEffect>
-          <span className="relative isolate inline-block leading-[inherit]">
+          <span className="relative isolate inline leading-[inherit] decoration-litt-accent decoration-[0.07em] underline-offset-[0.14em] max-sm:underline sm:inline-block">
             <TextEffect as="span" per="word" preset="fade-in-blur" delay={0.35} speedReveal={1.1} className="leading-[inherit]" onAnimationComplete={() => setReady(true)}>
               opens to the internet
             </TextEffect>
             <span
               aria-hidden="true"
-              className={`absolute inset-x-[0.04em] bottom-[0.02em] -z-10 h-[0.07em] origin-left rounded-full bg-litt-accent transition-transform duration-700 ${EASE} ${ready ? "scale-x-100" : "scale-x-0"}`}
+              className={`absolute inset-x-[0.04em] bottom-[0.02em] -z-10 hidden h-[0.07em] sm:block origin-left rounded-full bg-litt-accent transition-transform duration-700 ${EASE} ${ready ? "scale-x-100" : "scale-x-0"}`}
             />
           </span>
         </h1>
