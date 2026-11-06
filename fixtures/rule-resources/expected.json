@@ -1,0 +1,145 @@
+{
+  "format": "0.1",
+  "summary": {
+    "added": 2,
+    "removed": 0,
+    "changed": 0,
+    "unchanged": 0,
+    "unknown": 0
+  },
+  "paths": [
+    {
+      "id": "internet->aws_instance.app:tcp:22",
+      "from": "internet",
+      "to": "aws_instance.app",
+      "toType": "aws_instance",
+      "protocol": "tcp",
+      "ports": "22",
+      "change": "added",
+      "before": {
+        "verdict": "absent",
+        "sources": [],
+        "hops": [],
+        "reason": "the resource does not exist on this side of the plan"
+      },
+      "after": {
+        "verdict": "allowed",
+        "sources": [
+          "198.51.100.0/24"
+        ],
+        "hops": [
+          {
+            "hop": "public-ip",
+            "resource": "aws_instance.app",
+            "decision": "allow",
+            "rule": "aws_eip.app is associated with aws_instance.app",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/VPC_Internet_Gateway.html"
+          },
+          {
+            "hop": "internet-gateway",
+            "resource": "aws_internet_gateway.main",
+            "decision": "allow",
+            "rule": "aws_internet_gateway.main is attached to aws_vpc.main",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/VPC_Internet_Gateway.html"
+          },
+          {
+            "hop": "nacl-inbound",
+            "resource": "aws_network_acl.app",
+            "decision": "allow",
+            "rule": "aws_network_acl_rule.in ingress rule 100: allow tcp 1-65535 from 0.0.0.0/0",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/nacl-rules.html"
+          },
+          {
+            "hop": "security-group",
+            "resource": "aws_security_group.app",
+            "decision": "partial",
+            "rule": "aws_security_group_rule.admin ingress tcp 22 from 198.51.100.0/24",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/security-group-rules.html"
+          },
+          {
+            "hop": "nacl-outbound",
+            "resource": "aws_network_acl.app",
+            "decision": "allow",
+            "rule": "aws_network_acl_rule.out egress rule 100: allow tcp 1024-65535 to 0.0.0.0/0",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/custom-network-acl.html#nacl-ephemeral-ports"
+          },
+          {
+            "hop": "route",
+            "resource": "aws_default_route_table.main",
+            "decision": "allow",
+            "rule": "aws_route.internet 0.0.0.0/0 -> aws_internet_gateway.main",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/route-tables-priority.html"
+          }
+        ],
+        "reason": ""
+      }
+    },
+    {
+      "id": "internet->aws_instance.app:tcp:443",
+      "from": "internet",
+      "to": "aws_instance.app",
+      "toType": "aws_instance",
+      "protocol": "tcp",
+      "ports": "443",
+      "change": "added",
+      "before": {
+        "verdict": "absent",
+        "sources": [],
+        "hops": [],
+        "reason": "the resource does not exist on this side of the plan"
+      },
+      "after": {
+        "verdict": "allowed",
+        "sources": [
+          "internet"
+        ],
+        "hops": [
+          {
+            "hop": "public-ip",
+            "resource": "aws_instance.app",
+            "decision": "allow",
+            "rule": "aws_eip.app is associated with aws_instance.app",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/VPC_Internet_Gateway.html"
+          },
+          {
+            "hop": "internet-gateway",
+            "resource": "aws_internet_gateway.main",
+            "decision": "allow",
+            "rule": "aws_internet_gateway.main is attached to aws_vpc.main",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/VPC_Internet_Gateway.html"
+          },
+          {
+            "hop": "nacl-inbound",
+            "resource": "aws_network_acl.app",
+            "decision": "allow",
+            "rule": "aws_network_acl_rule.in ingress rule 100: allow tcp 1-65535 from 0.0.0.0/0",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/nacl-rules.html"
+          },
+          {
+            "hop": "security-group",
+            "resource": "aws_security_group.app",
+            "decision": "allow",
+            "rule": "aws_vpc_security_group_ingress_rule.https ingress tcp 443 from 0.0.0.0/0",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/security-group-rules.html"
+          },
+          {
+            "hop": "nacl-outbound",
+            "resource": "aws_network_acl.app",
+            "decision": "allow",
+            "rule": "aws_network_acl_rule.out egress rule 100: allow tcp 1024-65535 to 0.0.0.0/0",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/custom-network-acl.html#nacl-ephemeral-ports"
+          },
+          {
+            "hop": "route",
+            "resource": "aws_default_route_table.main",
+            "decision": "allow",
+            "rule": "aws_route.internet 0.0.0.0/0 -> aws_internet_gateway.main",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/route-tables-priority.html"
+          }
+        ],
+        "reason": ""
+      }
+    }
+  ],
+  "notes": []
+}
