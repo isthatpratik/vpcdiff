@@ -111,23 +111,22 @@ export function Footer() {
       </div>
       <Divider dashed />
       <div className={RAIL}>
-        <div className={`${PAD} grid gap-4 py-8 text-litt-caption text-litt-fg-subtle`}>
-          <Report />
-          <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
+        <div className={`${PAD} flex flex-wrap items-center justify-between gap-x-8 gap-y-5 py-8 text-litt-caption text-litt-fg-subtle`}>
+          <div className="grid gap-2">
+            <Report />
             <p>© {new Date().getFullYear()} vpcdiff · Apache 2.0</p>
-            <div className="flex gap-5">
-              <a href={`${REPO}/blob/main/LICENSE`} className={LINK}>
-                License
-              </a>
-              <a href={`${REPO}/blob/main/SECURITY.md`} className={LINK}>
-                Security
-              </a>
-              <a href={`${REPO}/blob/main/CONTRIBUTING.md`} className={LINK}>
-                Contributing
-              </a>
-            </div>
           </div>
-          <p className="max-w-[72ch] text-xs leading-relaxed text-litt-fg-subtle/80">Terraform, AWS, GitHub, GitHub Actions, and Node.js are trademarks of their owners. vpcdiff is not affiliated with them.</p>
+          <div className="flex gap-5">
+            <a href={`${REPO}/blob/main/LICENSE`} className={LINK}>
+              License
+            </a>
+            <a href={`${REPO}/blob/main/SECURITY.md`} className={LINK}>
+              Security
+            </a>
+            <a href={`${REPO}/blob/main/CONTRIBUTING.md`} className={LINK}>
+              Contributing
+            </a>
+          </div>
         </div>
       </div>
       <Divider dots />
