@@ -39,18 +39,26 @@ All three use the same engine.
 
 ## Support matrix
 
-Planned for v0.1:
+What the engine models today. "unknown" means a path that such a resource can change is
+reported as `unknown` with a reason, never as allowed or blocked by guess.
 
 | Resource | Status |
 |---|---|
-| `aws_vpc`, `aws_subnet` | planned |
-| `aws_route_table`, `aws_route`, `aws_route_table_association` | planned |
-| `aws_internet_gateway`, `aws_nat_gateway` | planned |
-| `aws_security_group` (inline rules) | planned |
-| `aws_security_group_rule`, `aws_vpc_security_group_ingress_rule`, `aws_vpc_security_group_egress_rule` | planned |
-| `aws_network_acl`, `aws_network_acl_rule` | planned |
-| `aws_instance`, `aws_db_instance`, `aws_lb`, `aws_ecs_service` (as endpoints) | planned |
-| VPC peering, Transit Gateway, VPC endpoints, prefix lists | not yet; reported as `unknown` |
+| `aws_vpc` (primary IPv4 CIDR), `aws_subnet` | supported |
+| `aws_internet_gateway` (with `vpc_id`) | supported |
+| `aws_route_table` (inline `route` blocks), `aws_route_table_association`, main route table | supported |
+| `aws_security_group` (inline `ingress` blocks, IPv4 CIDR sources) | supported |
+| `aws_network_acl` (inline rules, `subnet_ids`), `aws_default_network_acl`, default NACL | supported |
+| `aws_instance` (as endpoint; `associate_public_ip_address`, `map_public_ip_on_launch`) | supported |
+| `aws_security_group_rule`, `aws_vpc_security_group_ingress_rule`, `aws_vpc_security_group_egress_rule` | planned; unknown |
+| `aws_route`, `aws_main_route_table_association`, `aws_default_route_table` | planned; unknown |
+| `aws_network_acl_rule`, `aws_network_acl_association` | planned; unknown |
+| `aws_eip`, `aws_eip_association`, `aws_internet_gateway_attachment` | planned; unknown |
+| `aws_db_instance`, `aws_lb` (as endpoints) | planned; noted |
+| NAT gateway, VPC peering, Transit Gateway, VPC endpoints, prefix lists, IPv6 | not yet; unknown or noted |
+
+Paths evaluated: from the internet to each endpoint, for every TCP and UDP port that one
+of its security groups opens to a public address.
 
 ## Repository layout
 

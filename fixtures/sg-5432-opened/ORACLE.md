@@ -19,8 +19,8 @@ Can a client on the internet open a TCP connection to port 5432 on `aws_instance
 
 ## Proof
 
-Hops, in path order, for a client at a public address `C`
-(any address outside `10.0.0.0/16`):
+Hops, in path order, for a client at any public address `C` (see "Internet sources"
+in [gateways.md](../../docs/semantics/gateways.md); `C` is outside `10.0.0.0/16`):
 
 1. **Public address.** The instance has a public IPv4 address
    (`associate_public_ip_address = true`).

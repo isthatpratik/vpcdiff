@@ -56,8 +56,10 @@ This choice needs review. A Linux-only client would need only 32768-61000.
 
 Handled:
 
-- A subnet with no NACL association, in a VPC created in the plan: the AWS default
-  NACL (allow all, rule 5).
+- A subnet with no NACL association, in a VPC managed in the plan (created or
+  unchanged): the AWS default NACL (allow all, rule 5). The engine assumes the default
+  NACL was not changed outside Terraform. Use `aws_default_network_acl` to make its
+  rules part of the plan.
 - `aws_default_network_acl` and `aws_network_acl` with inline `ingress`/`egress`
   blocks, associated through `subnet_ids`.
 
