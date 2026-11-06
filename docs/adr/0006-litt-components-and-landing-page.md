@@ -23,10 +23,18 @@ three runtime dependencies; this changes that.
   and the tool at `/app/`. Both are built by Vite and served from the same origin.
 - **Product demo:** the Stageshow kit (MIT), vendored under
   `apps/viewer/src/stageshow/`. It needs `lucide-react` for its `Icon` part.
+- **Motion:** Sora UI components (MIT; parts derived from Animate UI are MIT plus the
+  Commons Clause, which permits use inside an app but not resale of the raw files),
+  installed as source with the shadcn CLI. They need only `motion` and
+  `class-variance-authority`. Sora's `cn` package dependency is not used; the project's
+  own `cn()` (clsx and tailwind-merge) serves.
 - **Logos:** CC0 SVG artwork from Logoforge, vendored. No runtime fetch.
-- **Privacy is unchanged:** the build keeps the Content Security Policy with
-  `connect-src 'none'` on every page, and no page loads anything from another origin.
-  Fonts stay vendored.
+- **Fonts:** Google Sans, Source Sans 3, and Google Sans Code from Google Fonts, at the
+  maintainer's request.
+- **Privacy:** the build keeps `connect-src 'none'` on every page. The policy allows
+  `https://fonts.googleapis.com` for styles and `https://fonts.gstatic.com` for fonts, and
+  nothing else. Font requests carry no plan data; the landing page footer says that fonts
+  load from Google.
 
 The engine keeps zero runtime dependencies. The CLI and the GitHub Action are not
 affected.

@@ -1,0 +1,252 @@
+/* The hero demo, scoped to its stage. Colors come from litt tokens (DESIGN.md). */
+.hero-demo .ss-stage {
+  overflow: hidden;
+  background: transparent;
+  font-family: var(--litt-font-sans);
+  --ss-accent: var(--litt-accent);
+}
+
+.hero-demo .hd-window {
+  position: absolute;
+  left: 24px;
+  top: 24px;
+  width: 880px;
+  height: 520px;
+  box-shadow: var(--ss-shadow-hero);
+}
+.hero-demo .hd-window--compact {
+  left: 16px;
+  top: 16px;
+  width: 520px;
+  height: 330px;
+}
+
+.hero-demo .hd-page {
+  display: grid;
+  align-content: start;
+  gap: 20px;
+  padding: 24px 28px;
+  background: var(--litt-surface-1);
+  height: 100%;
+}
+.hero-demo .hd-pr {
+  display: grid;
+  gap: 8px;
+}
+.hero-demo .hd-pr-title {
+  font-size: 20px;
+  line-height: 28px;
+  font-weight: 600;
+  color: var(--litt-fg);
+  letter-spacing: -0.01em;
+}
+.hero-demo .hd-commit {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--litt-fg-muted);
+}
+.hero-demo .hd-commit-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+  border: 2px solid var(--litt-fg-subtle);
+  flex: none;
+}
+.hero-demo .hd-tabs {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 12px 0 0;
+  border-bottom: 1px solid var(--litt-line);
+  padding-bottom: 12px;
+}
+.hero-demo .hd-tab-current {
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 500;
+  color: var(--litt-fg);
+}
+
+.hero-demo .hd-file {
+  border: 1px solid var(--litt-line);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--litt-surface-1);
+}
+.hero-demo .hd-file-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: var(--litt-surface-2);
+  border-bottom: 1px solid var(--litt-line);
+}
+.hero-demo .hd-file-name {
+  font-family: var(--litt-font-mono);
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--litt-fg);
+}
+.hero-demo .hd-diff {
+  padding: 8px 0;
+  font-family: var(--litt-font-mono);
+  font-size: 13px;
+  line-height: 22px;
+  color: var(--litt-fg);
+}
+.hero-demo .hd-line {
+  display: grid;
+  grid-template-columns: 28px 1fr;
+  white-space: pre;
+  transition: background-color 300ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.hero-demo .hd-line.is-add {
+  background: color-mix(in oklab, var(--litt-success) 14%, transparent);
+}
+.hero-demo .hd-line.is-del {
+  background: color-mix(in oklab, var(--litt-danger) 12%, transparent);
+  color: var(--litt-fg-muted);
+}
+.hero-demo .hd-sign {
+  text-align: center;
+  color: var(--litt-fg-subtle);
+}
+.hero-demo .hd-code {
+  display: flex;
+  align-items: baseline;
+}
+
+/* The satellite: vpcdiff's check, straddling the window's right edge. */
+.hero-demo .hd-satellite {
+  position: absolute;
+  left: 628px;
+  top: 96px;
+  width: 388px;
+}
+.hero-demo .hd-satellite--compact {
+  left: 16px;
+  top: 236px;
+  width: 326px;
+}
+.hero-demo .hd-card {
+  display: grid;
+  gap: 16px;
+  padding: 16px;
+  border-radius: 12px;
+  background: var(--litt-surface-1);
+  border: 1px solid var(--litt-line);
+  box-shadow: var(--ss-shadow-satellite);
+}
+.hero-demo .hd-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.hero-demo .hd-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--litt-fg);
+}
+.hero-demo .hd-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  color: var(--litt-fg-subtle);
+  white-space: nowrap;
+}
+.hero-demo .hd-status.is-ok {
+  color: var(--litt-success);
+}
+.hero-demo .hd-status.is-bad {
+  color: var(--litt-danger);
+}
+.hero-demo .hd-figure {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.hero-demo .hd-number {
+  font-size: 40px;
+  line-height: 40px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--litt-fg);
+  transition: color 200ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.hero-demo .hd-number.is-bad {
+  color: var(--litt-danger);
+}
+.hero-demo .hd-figure-label {
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--litt-fg-muted);
+}
+.hero-demo .hd-row {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 8px;
+  background: var(--litt-surface-2);
+}
+.hero-demo .hd-row-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  font-family: var(--litt-font-mono);
+  font-size: 13px;
+  line-height: 20px;
+}
+.hero-demo .hd-target {
+  color: var(--litt-fg);
+}
+.hero-demo .hd-port {
+  color: var(--litt-fg-subtle);
+}
+.hero-demo .hd-hops {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 4px;
+}
+.hero-demo .hd-hop {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: 9999px;
+  font-size: 11.5px;
+  white-space: nowrap;
+  line-height: 16px;
+  font-weight: 500;
+  color: var(--litt-fg-subtle);
+  background: var(--litt-surface-1);
+  box-shadow: inset 0 0 0 1px var(--litt-line);
+  transition: color 200ms cubic-bezier(0.22, 1, 0.36, 1), background-color 200ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 200ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.hero-demo .hd-hop.is-allow {
+  color: var(--litt-data-teal-text);
+  background: var(--litt-data-teal-tint);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--litt-data-teal) 24%, transparent);
+}
+.hero-demo .hd-hop.is-deny {
+  color: var(--litt-data-rose-text);
+  background: var(--litt-data-rose-tint);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--litt-data-rose) 24%, transparent);
+}
+.hero-demo .hd-rule {
+  font-family: var(--litt-font-mono);
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--litt-fg-muted);
+}

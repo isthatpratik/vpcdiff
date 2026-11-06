@@ -23,110 +23,107 @@ Three words guide every choice:
 
 ## 2. Logo
 
-### The mark
+### The mark: open delta
 
-Two paths start at two open nodes and meet at one solid node. The left path (ink) is
-the network before the plan; the right path (accent) is the network after it. The solid
-node is the resource they reach. Together they form a V, for VPC.
+A boundary drawn as a delta (Δ, the symbol for change) with a break in its left side,
+and a Signal Cyan dot in the break: the place where traffic gets in. It says what the
+tool does in one shape: a change to a boundary, and the opening it creates.
 
 | File | Use |
 |---|---|
-| `docs/brand/mark.svg` | Default: on light surfaces |
-| `docs/brand/mark-dark.svg` | On dark surfaces |
-| `docs/brand/mark-mono.svg`, `mark-mono-dark.svg` | One color: print, embossing, places where blue is not allowed |
-| `docs/brand/mark-small.svg` | 20 px and below: the rings are removed so the shape stays clear |
+| `docs/brand/mark.svg` | Default, on light surfaces |
+| `docs/brand/mark-dark.svg` | On dark surfaces and on Harbor |
+| `docs/brand/mark-mono.svg`, `mark-mono-dark.svg` | One color |
+| `docs/brand/mark-small.svg` | 20 px and below: thicker stroke, wider break, bigger dot |
 | `docs/brand/favicon.svg` | Favicon and app icon: the small mark on a `#0a0908` tile |
 
 Rules:
 
-- Use the small mark at 20 px and below, the full mark above.
-- Keep clear space around the mark equal to the diameter of the solid node on every side.
-- Never recolor the two paths with status colors, never swap their order, never add a
-  gradient, glow, or outline.
+- The dot is always Signal Cyan (or the one mono color). Never a status color.
+- Keep clear space equal to the dot's diameter on every side.
+- No gradients, glows, outlines, rotation, or a closed (unbroken) triangle.
 
 ### The wordmark
 
-`vpcdiff` in Geist, weight 600, tracking -0.02em, always lowercase, set in ink. The mark
-sits to its left at 1.15 times the cap height, 8 px away, aligned to the center of the x
-height. "diff" is never colored differently from "vpc": the accent belongs to the mark.
+`vpcdiff` in Google Sans, weight 600, tracking -0.02em, lowercase, in ink. The mark sits
+to its left at 1.15 times the cap height, 8 px away. On the landing page the wordmark may
+carry a small `v0.1` tag in Google Sans Code.
 
 ## 3. Color
 
 ### Rationale
 
-- **Warm stone neutrals** (litt's canvas and surfaces) carry almost every pixel. Warm
-  grays read as paper and stone rather than as a terminal, which keeps long review
-  sessions calm.
-- **One cool accent, Signal Blue,** sits opposite the warm neutrals on the color wheel.
-  That temperature contrast lets a small amount of blue lead the eye without a second
-  brand color. Blue is used for the brand mark, links, focus, and the one primary action
-  on a screen.
-- **Status colors keep fixed meanings and never double as brand color.** Red is new
-  exposure, green is closed exposure, amber is a change or a risk, and neutral gray is
-  unknown. Their hues (red near 25°, amber near 75°, green near 145°) sit far from Signal
-  Blue (about 255°), so a status can never be mistaken for a link or for the brand.
-- **Unknown is gray on purpose.** It is not an error and not a success. Giving it a
-  color would suggest the tool knows more than it does.
+- **Warm stone neutrals** (litt's canvas and surfaces) carry most pixels. They read as
+  paper and stone rather than a terminal.
+- **Signal Cyan is the one brand and action color.** Cyan is cool and technical (a
+  network cable, a terminal cursor) and sits opposite the warm neutrals, so a little of
+  it leads the eye. It marks the brand, links, focus, selection, and the primary action.
+- **Harbor is the depth color.** A deep navy teal (`#0b2027`) for the navigation capsule
+  and inverted bands. It gives the page contrast and rhythm without adding a hue, and
+  cyan glows on it.
+- **Status colors keep fixed meanings.** Red is new exposure, green is closed exposure,
+  amber is a change or a risk, gray is unknown. Their hues (about 25°, 75°, 145°) stay
+  clear of cyan (about 195°).
+- **Hop decisions use data hues, not status colors.** A hop that allows traffic is teal,
+  one that denies is rose, a partial allow is amber, so "allows" is never read as
+  "closed" and "denies" never as "new exposure".
+- **Tinted surfaces carry meaning on the landing page.** A section about hops sits on a
+  cyan tint, outage risk on an amber tint, privacy on Harbor. Color is used where it
+  says something, never as decoration.
 
 ### Tokens
 
-Use the litt variables in code (`var(--litt-…)`, Tailwind `bg-litt-…`). The vpcdiff
-roles map onto them:
+Use the litt variables in code (`var(--litt-…)`, Tailwind `bg-litt-…`); vpcdiff sets
+the accent and adds Harbor:
 
-| Role | Light | Dark | litt token |
+| Role | Light | Dark | Token |
 |---|---|---|---|
 | Canvas | `#fcfbfa` | `#0a0908` | `--litt-canvas` |
 | Surface | `#ffffff` | `#11100f` | `--litt-surface-1` |
-| Raised surface | `#f7f5f3` | `#191715` | `--litt-surface-2` |
-| Hairline | `#e8e4e1` | `#282421` | `--litt-line` |
-| Ink (text) | `#1c1917` | `#f5f4f2` | litt ink |
-| Signal Blue (accent) | `#0957fd` | `#0957fd` | `--litt-accent` |
-| Accent text and links | `#104dfd` | `#5e78fe` | `--litt-accent-text` |
-| New exposure (`added`) | `#be2e31` | `#ff756f` | `--litt-danger` |
-| Closed (`removed`) | `#007c3b` | `#4bc680` | `--litt-success` |
+| Ink | `#110f0d` | `#f9f8f7` | `--litt-fg` |
+| Signal Cyan (fill) | `#0e7490` | `#22d3ee` | `--litt-accent` |
+| Signal Cyan (text, focus) | `#0e7490` | `#22d3ee` | `--litt-accent-text`, `--litt-focus` |
+| On cyan | `#ffffff` | `#0a0908` | `--litt-accent-fg` |
+| Cyan tint | `#e6f4f7` | `#082f38` | `--litt-accent-tint` |
+| Harbor | `#0b2027` | `#0b2027` | `--vd-harbor` |
+| New exposure | `#be2e31` | `#ff756f` | `--litt-danger` |
+| Closed | `#007c3b` | `#4bc680` | `--litt-success` |
 | Changed, outage risk | `#9c5a00` | `#e19b1b` | `--litt-warning` |
-| Unknown, not reached | litt subtle ink | litt subtle ink | litt subtle ink |
 
 ### Contrast (measured, WCAG 2)
 
 | Pair | Ratio |
 |---|---|
 | Ink on canvas, light / dark | 16.9 / 18.1 |
-| Accent text on canvas, light / dark | 5.8 / 5.3 |
-| White on Signal Blue (primary button) | 5.5 |
-| Danger, success, warning on white | 5.8, 5.3, 5.4 |
-| Danger, success, warning on dark canvas | 7.6, 9.2, 8.4 |
+| White on Signal Cyan `#0e7490` (primary button, light) | 5.4 |
+| Dark ink on Signal Cyan `#22d3ee` (primary button, dark and on Harbor) | 11.0 |
+| Cyan text on canvas, light / dark | 5.2 / 11.0 |
+| Danger, success, warning on white / on dark canvas | 5.8, 5.3, 5.4 / 7.6, 9.2, 8.4 |
 
-Every text pair passes AA (4.5:1). Status is never shown by color alone: each status
-also has a label ("New exposure", "Closed", "Changed", "Unknown") and a shape (badge dot).
-
-### Themes
-
-Light and dark are both first class and follow the system setting, with a manual
-switch. Material is litt's **flat** material. The accent is litt's default **Blue 4**.
+Every text pair passes AA. Status always has a label too, never color alone.
 
 ## 4. Type
 
-- **One family: Geist.** Geist Mono only for code, Terraform addresses
-  (`aws_security_group.db`), CIDRs, and ports, where the fixed width helps reading.
-- Weights: 400 for reading, 500 for titles and labels, 600 for headings and the
-  wordmark. Never heavier, never italic.
-- Product UI uses litt's type scale (`--litt-type-*`): 13 to 14 px body, 12 px
-  captions. The landing page uses the Tailwind scale for its larger steps:
-  `text-6xl`/`text-5xl` (hero), `text-4xl` (section), `text-xl` (lead), `text-base`.
-- Headings use `text-wrap: balance`; body text uses `text-wrap: pretty`. No word sits
-  alone on a last line.
+Fonts load from Google Fonts (see section 10 for what that means for privacy).
+
+- **Google Sans:** the landing page, all headings, and the wordmark. Weights 400 to 600.
+- **Source Sans 3:** the viewer's interface text, chosen for dense, long reading.
+- **Google Sans Code:** code, Terraform addresses (`aws_security_group.db`), CIDRs,
+  ports, eyebrow labels.
+- Never heavier than 600, never italic.
+- Landing headings use the Tailwind scale (`text-5xl` to `text-7xl` for the hero) with
+  tight leading and negative tracking; the viewer uses litt's type scale.
+- Headings `text-wrap: balance`, body `text-wrap: pretty`. No word alone on a last line.
 
 ## 5. Space, shape, depth
 
-- **Spacing:** 4, 8, 12, 16, 24, 32, 40, 48, 64, 80, 96 px. Nothing in between.
-- **Radius:** litt's locked shape: 4 px controls, 8 px surfaces, full pills for badges.
-  A shape inside another shape gets the outer radius minus the gap between them.
-- **Depth:** on light themes, a hairline and litt's raised shadow; on dark themes, a
-  lighter surface instead of a shadow. One shadow for hero product shots on the landing
-  page.
-- **Backgrounds are flat.** No background gradients. The one gradient in the system is
-  on the landing page hero heading text.
+- **Spacing:** 4, 8, 12, 16, 24, 32, 40, 48, 64, 80, 96 px.
+- **Radius:** controls 8 px (`--litt-radius-control`), landing buttons 10 px, the
+  navigation capsule and its button fully round, cards 18 px, surfaces 8 px. A nested
+  shape gets the outer radius minus the gap.
+- **Depth:** light themes use a hairline and a soft shadow; dark themes use a lighter
+  surface. Harbor bands create depth on both.
+- **Backgrounds are flat.** No background gradients.
 
 ## 6. Motion
 
@@ -137,15 +134,23 @@ switch. Material is litt's **flat** material. The accent is litt's default **Blu
   visible cause.
 - Base curve `cubic-bezier(0.22, 1, 0.36, 1)`. Only `transform` and `opacity` animate.
 - `prefers-reduced-motion` replaces movement with a plain fade or the final state.
+- Landing page motion comes from Sora UI and Stageshow, each used where it carries
+  meaning: the headline blurs in and a cyan marker draws under "opens to the internet";
+  section headings fog or blur in on scroll; "How it works" loops through where you run
+  it; "How it is checked" types each hop; numbers count up; the final call to action
+  types itself in; nav and footer links draw an underline; buttons scale their background
+  on hover while the label stays still. A frosted band at the foot of the screen says
+  "more below" and fades out at the end of the page.
 
 ## 7. Icons and logos
 
 - **Interface icons:** litt's icon set, one size and one stroke weight per screen. No
-  hand-drawn glyphs.
+  hand-drawn glyphs. Hand-drawn marks are allowed only for the vpcdiff logo itself.
 - **Product logos** (AWS, Amazon EC2, Amazon RDS, Terraform, GitHub Actions) come from
   [Logoforge](https://logoforge.terravidhal.me/), whose artwork for these marks is CC0
   (from gilbarbara/logos and Simple Icons). They are vendored in `apps/viewer/src/logos/`
-  and used only to say what vpcdiff works with, at their original colors and proportions.
+  and used only to say what vpcdiff works with: in one color (Logoforge's mono
+  variants) on the landing page, at their original colors and proportions elsewhere.
   The names and marks remain trademarks of their owners; vpcdiff is not affiliated with
   or endorsed by them.
 - No sparkles, no robots, no purple "AI" color.
@@ -165,10 +170,14 @@ switch. Material is litt's **flat** material. The accent is litt's default **Blu
 
 ## 9. Components
 
-The viewer and the landing page use litt.md components, installed with the shadcn CLI
-from `https://littmd.vercel.app/r/<name>.json` into `apps/viewer/src/components/ui/`.
-Do not hand-build a control that litt provides. vpcdiff-specific parts (the hop graph,
-the path row, the hop inspector) are composed from litt parts and tokens.
+- **litt.md** (MIT): the viewer's controls and surfaces, installed with the shadcn CLI
+  into `apps/viewer/src/components/litt/`. Do not hand-build a control litt provides.
+- **Sora UI** (MIT; a few parts derive from Animate UI under MIT plus the Commons Clause,
+  which allows use in apps but not resale of the raw files): the landing page's motion,
+  in `apps/viewer/src/components/sora-ui/`.
+- **Stageshow kit** (MIT): the hero product demo, in `apps/viewer/src/stageshow/`.
+- Vendored files are not linted; a change to them is marked with a `vpcdiff patch`
+  comment.
 
 Status in components:
 
@@ -183,7 +192,11 @@ Status in components:
 
 ## 10. Privacy is part of the design
 
-The viewer never sends plan data anywhere. The interface says so once, quietly, in the
-header, and the build enforces it with a Content Security Policy (`connect-src 'none'`).
-The landing page also makes no third party requests: no analytics, no web fonts from a
-CDN, no embedded scripts.
+The viewer never sends plan data anywhere. Its build carries a Content Security Policy
+with `connect-src 'none'`, so the page and its worker cannot make a data request.
+
+Fonts come from Google Fonts, so a visitor's browser fetches the font stylesheet and font
+files from Google (`fonts.googleapis.com`, `fonts.gstatic.com`). Those requests carry no
+plan content. The policy allows exactly those two origins for styles and fonts and
+nothing else. There are no analytics, no cookies, and no other third party requests; the
+footer says so.

@@ -38,7 +38,17 @@ const impureGlobals = [
 ];
 
 export default defineConfig([
-  globalIgnores(["**/dist/**", "**/coverage/**", ".claude/**"]),
+  globalIgnores([
+    "**/dist/**",
+    "**/coverage/**",
+    ".claude/**",
+    // Vendored third party source: litt.md components and the Stageshow kit.
+    "apps/viewer/src/components/litt/**",
+    "apps/viewer/src/lib/litt/**",
+    "apps/viewer/src/stageshow/**",
+    "apps/viewer/src/components/sora-ui/**",
+    "apps/viewer/src/hooks/**",
+  ]),
   js.configs.recommended,
   tseslint.configs.strict,
   {

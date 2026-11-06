@@ -70,6 +70,8 @@ export function lanesOf(path: Path): Lanes {
   const firstChanged = changed.indexOf(true);
   const reached = (lane: Lane) => lane.cells.reduce((last, c, i) => (c.state !== "not-reached" && c.state !== "absent" ? i : last), 0);
   const sg = COLUMNS.findIndex((c) => c.key === "security-group");
-  const focus = oneSideAbsent ? sg : firstChanged >= 0 ? firstChanged : Math.max(reached(before), reached(after));
+  // A path with outage risk opens on the hop whose resource the plan replaces.
+  const risky = path.outageRisk ? after.cells.findIndex((c) => (path.outageRisk ?? []).some((r) => c.resource.split(", ").includes(r) || c.rule.includes(r))) : -1;
+  const focus = oneSideAbsent ? sg : firstChanged >= 0 ? firstChanged : risky >= 0 ? risky : Math.max(reached(before), reached(after));
   return { before, after, changed, focus };
 }

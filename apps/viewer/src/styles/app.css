@@ -1,0 +1,1315 @@
+@import "tailwindcss";
+
+/* dark: follows data-theme, which the page always sets (system resolves to light or dark). */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/* shadcn's theme names, used by the Sora UI components, mapped onto litt's tokens. */
+@theme inline {
+  --color-background: var(--litt-canvas);
+  --color-foreground: var(--litt-fg);
+  --color-muted: var(--litt-surface-2);
+  --color-muted-foreground: var(--litt-fg-muted);
+  --color-border: var(--litt-line);
+  --color-accent-pro: var(--litt-accent);
+  --color-primary: var(--litt-accent);
+  --color-primary-foreground: var(--litt-accent-fg);
+  --color-secondary: var(--litt-block);
+  --color-secondary-foreground: var(--litt-fg);
+  --color-accent: var(--litt-surface-2);
+  --color-accent-foreground: var(--litt-fg);
+  --color-ring: var(--litt-focus);
+  --color-input: var(--litt-line);
+  --color-destructive: var(--litt-danger);
+}
+
+/* Fonts come from Google Fonts (linked in each page's head). Google Sans: landing page,
+   headings, wordmark. Source Sans 3: the viewer's interface text. Google Sans Code: code,
+   Terraform addresses, CIDRs, ports. See DESIGN.md, section 4. */
+
+
+@theme inline {
+    --color-litt-canvas: var(--litt-canvas);
+    --color-litt-surface-1: var(--litt-surface-1);
+    --color-litt-surface-2: var(--litt-surface-2);
+    --color-litt-surface-3: var(--litt-surface-3);
+    --color-litt-tray: var(--litt-tray);
+    --color-litt-cut: var(--litt-cut);
+    --color-litt-field: var(--litt-field);
+    --color-litt-field-ink: var(--litt-field-ink);
+    --color-litt-field-ink-subtle: var(--litt-field-ink-subtle);
+    --color-litt-field-line: var(--litt-field-line);
+    --color-litt-block: var(--litt-block);
+    --color-litt-slot: var(--litt-slot);
+    --color-litt-slot-fill: var(--litt-slot-fill);
+    --color-litt-cap: var(--litt-cap);
+    --color-litt-cap-held: var(--litt-cap-held);
+    --color-litt-cap-grip: var(--litt-cap-grip);
+    --color-litt-notch: var(--litt-notch);
+    --color-litt-notch-home: var(--litt-notch-home);
+    --color-litt-line: var(--litt-line);
+    --color-litt-line-strong: var(--litt-line-strong);
+    --color-litt-line-control: var(--litt-line-control);
+    --color-litt-fg: var(--litt-fg);
+    --color-litt-fg-muted: var(--litt-fg-muted);
+    --color-litt-fg-subtle: var(--litt-fg-subtle);
+    --color-litt-fg-disabled: var(--litt-fg-disabled);
+    --color-litt-accent: var(--litt-accent);
+    --color-litt-accent-hover: var(--litt-accent-hover);
+    --color-litt-accent-fg: var(--litt-accent-fg);
+    --color-litt-accent-text: var(--litt-accent-text);
+    --color-litt-accent-tint: var(--litt-accent-tint);
+    --color-litt-focus: var(--litt-focus);
+    --color-litt-success: var(--litt-success);
+    --color-litt-warning: var(--litt-warning);
+    --color-litt-danger: var(--litt-danger);
+    --color-litt-danger-fg: var(--litt-danger-fg);
+    --color-litt-data-blue: var(--litt-data-blue);
+    --color-litt-data-blue-text: var(--litt-data-blue-text);
+    --color-litt-data-blue-tint: var(--litt-data-blue-tint);
+    --color-litt-data-amber: var(--litt-data-amber);
+    --color-litt-data-amber-text: var(--litt-data-amber-text);
+    --color-litt-data-amber-tint: var(--litt-data-amber-tint);
+    --color-litt-data-teal: var(--litt-data-teal);
+    --color-litt-data-teal-text: var(--litt-data-teal-text);
+    --color-litt-data-teal-tint: var(--litt-data-teal-tint);
+    --color-litt-data-violet: var(--litt-data-violet);
+    --color-litt-data-violet-text: var(--litt-data-violet-text);
+    --color-litt-data-violet-tint: var(--litt-data-violet-tint);
+    --color-litt-data-rose: var(--litt-data-rose);
+    --color-litt-data-rose-text: var(--litt-data-rose-text);
+    --color-litt-data-rose-tint: var(--litt-data-rose-tint);
+    --text-litt-display: var(--litt-type-display-size);
+    --text-litt-display--line-height: var(--litt-type-display-leading);
+    --text-litt-display--letter-spacing: var(--litt-type-display-tracking);
+    --text-litt-display--font-weight: var(--litt-weight-title);
+    --text-litt-h1: var(--litt-type-h1-size);
+    --text-litt-h1--line-height: var(--litt-type-h1-leading);
+    --text-litt-h1--letter-spacing: var(--litt-type-h1-tracking);
+    --text-litt-h1--font-weight: var(--litt-weight-title);
+    --text-litt-h2: var(--litt-type-h2-size);
+    --text-litt-h2--line-height: var(--litt-type-h2-leading);
+    --text-litt-h2--letter-spacing: var(--litt-type-h2-tracking);
+    --text-litt-h2--font-weight: var(--litt-weight-title);
+    --text-litt-h3: var(--litt-type-h3-size);
+    --text-litt-h3--line-height: var(--litt-type-h3-leading);
+    --text-litt-h3--letter-spacing: var(--litt-type-h3-tracking);
+    --text-litt-h3--font-weight: var(--litt-weight-title);
+    --text-litt-h4: var(--litt-type-h4-size);
+    --text-litt-h4--line-height: var(--litt-type-h4-leading);
+    --text-litt-h4--letter-spacing: var(--litt-type-h4-tracking);
+    --text-litt-h4--font-weight: var(--litt-weight-title);
+    --text-litt-reading: var(--litt-type-reading-size);
+    --text-litt-reading--line-height: var(--litt-type-reading-leading);
+    --text-litt-reading--letter-spacing: var(--litt-type-reading-tracking);
+    --text-litt-body: var(--litt-type-body-size);
+    --text-litt-body--line-height: var(--litt-type-body-leading);
+    --text-litt-body--letter-spacing: var(--litt-type-body-tracking);
+    --text-litt-small: var(--litt-type-small-size);
+    --text-litt-small--line-height: var(--litt-type-small-leading);
+    --text-litt-small--letter-spacing: var(--litt-type-small-tracking);
+    --text-litt-caption: var(--litt-type-caption-size);
+    --text-litt-caption--line-height: var(--litt-type-caption-leading);
+    --text-litt-caption--letter-spacing: var(--litt-type-caption-tracking);
+    --text-litt-caption--font-weight: var(--litt-weight-label);
+    --font-weight-litt-title: var(--litt-weight-title);
+    --font-weight-litt-label: var(--litt-weight-label);
+    --font-litt-field: var(--litt-field-font, var(--litt-font-sans));
+    --spacing-litt-section: var(--litt-section-y);
+    --spacing-litt-gutter: var(--litt-gutter);
+    --spacing-litt-control-sm: var(--litt-control-sm);
+    --spacing-litt-control-md: var(--litt-control-md);
+    --spacing-litt-control-lg: var(--litt-control-lg);
+    --spacing-litt-control-pad-sm: var(--litt-control-pad-sm);
+    --spacing-litt-control-pad-md: var(--litt-control-pad-md);
+    --spacing-litt-control-pad-lg: var(--litt-control-pad-lg);
+    --spacing-litt-button-pad-lg: var(--litt-button-pad-lg);
+    --spacing-litt-control: var(--litt-control-gap);
+    --container-litt-reading: var(--litt-container-reading);
+    --container-litt-content: var(--litt-container-content);
+    --container-litt-wide: var(--litt-container-wide);
+    --radius-litt-control: var(--litt-radius-control);
+    --radius-litt-surface: var(--litt-radius-surface);
+    --radius-litt-pill: var(--litt-radius-pill);
+    --shadow-litt-tooltip: var(--litt-shadow-tooltip);
+    --shadow-litt-float: var(--litt-shadow-float);
+    --shadow-litt-modal: var(--litt-shadow-modal);
+    --shadow-litt-glow: var(--litt-glow);
+    --inset-shadow-litt-highlight: var(--litt-highlight);
+    --ease-litt: var(--litt-ease-out);
+    --ease-litt-responsive: var(--litt-ease-responsive);
+    --ease-litt-expressive: var(--litt-ease-expressive);
+    --font-litt-sans: var(--litt-font-sans);
+    --font-litt-mono: var(--litt-font-mono);
+    --ease-litt-out: var(--litt-ease-out);
+}
+  :root {
+    --litt-font-sans: "Geist", "Geist Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+    --litt-font-mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --litt-weight: 400;
+    --litt-weight-title: 500;
+    --litt-weight-label: 600;
+    --litt-type-display-size: 1.125rem;
+    --litt-type-display-leading: 1.75rem;
+    --litt-type-display-tracking: -0.015em;
+    --litt-type-h1-size: 1.125rem;
+    --litt-type-h1-leading: 1.75rem;
+    --litt-type-h1-tracking: -0.015em;
+    --litt-type-h2-size: 0.875rem;
+    --litt-type-h2-leading: 1.375rem;
+    --litt-type-h2-tracking: -0.006em;
+    --litt-type-h3-size: 0.875rem;
+    --litt-type-h3-leading: 1.375rem;
+    --litt-type-h3-tracking: -0.006em;
+    --litt-type-h4-size: 0.875rem;
+    --litt-type-h4-leading: 1.375rem;
+    --litt-type-h4-tracking: -0.006em;
+    --litt-type-reading-size: 0.875rem;
+    --litt-type-reading-leading: 1.375rem;
+    --litt-type-reading-tracking: -0.006em;
+    --litt-type-body-size: 0.875rem;
+    --litt-type-body-leading: 1.375rem;
+    --litt-type-body-tracking: -0.006em;
+    --litt-type-small-size: 0.8125rem;
+    --litt-type-small-leading: 1.25rem;
+    --litt-type-small-tracking: -0.004em;
+    --litt-type-caption-size: 0.75rem;
+    --litt-type-caption-leading: 1rem;
+    --litt-type-caption-tracking: -0.005em;
+    --litt-measure: 65ch;
+    --litt-space-1: 4px;
+    --litt-space-2: 8px;
+    --litt-space-3: 12px;
+    --litt-space-4: 16px;
+    --litt-space-6: 24px;
+    --litt-space-8: 32px;
+    --litt-space-12: 48px;
+    --litt-space-16: 64px;
+    --litt-space-24: 96px;
+    --litt-space-32: 128px;
+    --litt-space-40: 160px;
+    --litt-section-y: 64px;
+    --litt-gutter: max(16px, env(safe-area-inset-left, 0px), env(safe-area-inset-right, 0px));
+    --litt-grid-gap: 16px;
+    --litt-container-reading: 40rem;
+    --litt-container-content: 67.5rem;
+    --litt-container-wide: 80rem;
+    --litt-header-h: 64px;
+    --litt-radius-control: 4px;
+    --litt-radius-surface: 8px;
+    --litt-radius-pill: 999px;
+    --litt-hairline: 1px;
+    --litt-control-sm: 32px;
+    --litt-control-md: 44px;
+    --litt-control-lg: 56px;
+    --litt-control-pad-sm: 12px;
+    --litt-control-pad-md: 16px;
+    --litt-control-pad-lg: 24px;
+    --litt-button-pad-lg: 32px;
+    --litt-control-text-sm: 0.8125rem;
+    --litt-control-text-md: 0.875rem;
+    --litt-control-text-lg: 1rem;
+    --litt-control-gap: 8px;
+    --litt-control-group-gap: 12px;
+    --litt-dur-instant: 100ms;
+    --litt-ease-out: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    --litt-press-scale: 0.98;
+    --litt-press-depth: 0.5px;
+    --litt-spring-responsive: 200ms 0;
+    --litt-dur-responsive: 425ms;
+    --litt-ease-responsive: linear(0, 0.0609, 0.1306, 0.2509, 0.3322, 0.4472, 0.5167, 0.6085, 0.6615, 0.7293, 0.7846, 0.8154, 0.854, 0.8753, 0.9017, 0.9163, 0.9342, 0.944, 0.956, 0.9626, 0.9707, 0.977, 0.9805, 0.9847, 0.987, 0.9898, 0.9914, 0.9932, 0.9943, 0.9955, 0.9965, 0.997, 0.9977, 0.998, 0.9984, 0.9987, 0.999, 0.9991, 0.9993, 0.9994, 1);
+    --litt-spring-expressive: 350ms 0.12;
+    --litt-dur-expressive: 529ms;
+    --litt-ease-expressive: linear(0, 0.0216, 0.0673, 0.1514, 0.2238, 0.2991, 0.3741, 0.4465, 0.5149, 0.5982, 0.6541, 0.7044, 0.7492, 0.7885, 0.8229, 0.8617, 0.886, 0.9067, 0.9242, 0.939, 0.9549, 0.9644, 0.9723, 0.9787, 0.9839, 0.9881, 0.9923, 0.9947, 0.9966, 0.998, 0.9991, 0.9998, 1.0005, 1.0009, 1.0011, 1.0012, 1.0012, 1.0012, 1.0012, 1.0011, 1);
+    --litt-exit: 0.75;
+    --litt-dur-exit-responsive: 150ms;
+    --litt-dur-exit-expressive: 263ms;
+    --litt-stagger: 40ms;
+    --litt-travel: 16px;
+    --litt-dismiss-distance: 0.25;
+    --litt-dismiss-velocity: 0.4;
+    --litt-glass-blur: 20px;
+    --litt-glass-saturate: 140%;
+    --litt-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.5 0 0 0 0 0.5 0 0 0 0 0.5 0 0 0 1 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+@media (min-width: 40rem) {
+  :root {
+    --litt-section-y: 96px;
+    --litt-gutter: max(24px, env(safe-area-inset-left, 0px), env(safe-area-inset-right, 0px));
+    --litt-grid-gap: 24px;
+    }
+}
+
+@media (min-width: 64rem) {
+  :root {
+    --litt-section-y: 128px;
+    --litt-gutter: max(32px, env(safe-area-inset-left, 0px), env(safe-area-inset-right, 0px));
+    }
+}
+  :root, [data-theme="light"], .light {
+    --litt-canvas: #fcfbfa;
+    --litt-surface-1: #ffffff;
+    --litt-surface-2: #f7f5f3;
+    --litt-surface-3: #efecea;
+    --litt-line: #e8e4e1;
+    --litt-line-strong: #d7d1cc;
+    --litt-line-control: #8c847e;
+    --litt-fg: #110f0d;
+    --litt-fg-muted: #6d6661;
+    --litt-fg-subtle: #6d6661;
+    --litt-fg-disabled: #a49c96;
+    --litt-flat-canvas: #fbfbfb;
+    --litt-flat-surface-1: #ffffff;
+    --litt-flat-surface-2: #f5f5f5;
+    --litt-flat-surface-3: #ededed;
+    --litt-flat-line: #e5e5e5;
+    --litt-flat-line-strong: #d2d2d2;
+    --litt-flat-line-control: #868686;
+    --litt-flat-fg: #0f0f0f;
+    --litt-flat-fg-muted: #676767;
+    --litt-flat-fg-subtle: #676767;
+    --litt-flat-fg-disabled: #9e9e9e;
+    --litt-device-canvas: #d7dade;
+    --litt-device-surface-1: #e8eaed;
+    --litt-device-surface-2: #e0e2e6;
+    --litt-device-surface-3: #cdd0d5;
+    --litt-device-line: #c3c7cc;
+    --litt-device-line-strong: #b0b4bb;
+    --litt-device-line-control: #696e76;
+    --litt-device-fg: #121418;
+    --litt-device-fg-muted: #454a52;
+    --litt-device-fg-subtle: #454a52;
+    --litt-device-fg-disabled: #868b93;
+    --litt-device-tray: #c4c8ce;
+    --litt-device-cut: #f4f5f7;
+    --litt-device-block: #f4f5f7;
+    --litt-device-slot: #c4c8ce;
+    --litt-device-slot-fill: #a9aeb6;
+    --litt-device-cap: #f4f5f7;
+    --litt-device-cap-held: #e6e8eb;
+    --litt-device-field: #1e1f21;
+    --litt-device-field-ink: #f2f2f2;
+    --litt-device-field-ink-subtle: #a2a3a6;
+    --litt-device-field-line: #2b2c2f;
+    --litt-device-accent: #c2410c;
+    --litt-device-accent-hover: #a8380a;
+    --litt-device-accent-fg: #ffffff;
+    --litt-device-accent-tint: #f6e4d8;
+    --litt-device-accent-text: #a8380a;
+    --litt-device-accent-pink: #c0007e;
+    --litt-device-accent-pink-text: #90005d;
+    --litt-device-focus: #c2410c;
+    --litt-device-success: #006e2d;
+    --litt-device-warning: #8f4e00;
+    --litt-device-danger: #b42329;
+    --litt-device-data-blue: #1170b8;
+    --litt-device-data-blue-text: #0a5f9c;
+    --litt-device-data-amber: #987318;
+    --litt-device-data-amber-text: #715c11;
+    --litt-device-data-teal: #008881;
+    --litt-device-data-teal-text: #006a63;
+    --litt-device-data-violet: #8265d9;
+    --litt-device-data-violet-text: #6949ba;
+    --litt-device-data-rose: #a86092;
+    --litt-device-data-rose-text: #774f7b;
+    --litt-device-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.75);
+    --litt-device-tray-shade: inset 0 0 0 1px rgba(0, 0, 0, 0.14), inset 0 1px 2px rgba(0, 0, 0, 0.28);
+    --litt-device-cut-shade: inset 0 1px 2px rgba(0, 0, 0, 0.16);
+    --litt-device-field-shade: inset 0 1px 2px rgba(0, 0, 0, 0.5);
+    --litt-device-block-lift: inset 0 1px 0 rgba(255, 255, 255, 1), 0 0 0 1px rgba(0, 0, 0, 0.14), 0 2px 0 0 rgba(0, 0, 0, 0.24), 0 3px 6px -3px rgba(0, 0, 0, 0.3);
+    --litt-device-block-press: inset 0 1px 2px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(0, 0, 0, 0.16), 0 0 0 0 transparent;
+    --litt-device-key-lift: inset 0 1px 0 rgba(255, 255, 255, 1), inset 0 -1px 0 rgba(0, 0, 0, 0.1), 0 0 0 1px rgba(0, 0, 0, 0.14), 0 2px 0 0 rgba(0, 0, 0, 0.24), 0 3px 6px -3px rgba(0, 0, 0, 0.3);
+    --litt-device-slot-shade: inset 0 1px 2px rgba(0, 0, 0, 0.32), inset 0 0 0 1px rgba(0, 0, 0, 0.12), inset 0 -1px 0 rgba(255, 255, 255, 0.6);
+    --litt-device-slot-fill-shade: inset 0 1px 1.5px rgba(0, 0, 0, 0.22);
+    --litt-device-plate-lift: inset 0 1px 0 rgba(255, 255, 255, 0.8), 0 0 0 1px rgba(0, 0, 0, 0.1), 0 1px 1px rgba(0, 0, 0, 0.1), 0 3px 6px -2px rgba(0, 0, 0, 0.2);
+    --litt-device-cap-lift: inset 0 1px 0 rgba(255, 255, 255, 1), inset 0 -1px 0 rgba(0, 0, 0, 0.08), 0 0 0 0.5px rgba(0, 0, 0, 0.28), 0 1px 1px rgba(0, 0, 0, 0.2), 0 3px 5px -1px rgba(0, 0, 0, 0.26);
+    --litt-device-cap-press: inset 0 1px 0 rgba(255, 255, 255, 0.9), inset 0 -1px 0 rgba(0, 0, 0, 0.06), 0 0 0 0.5px rgba(0, 0, 0, 0.3), 0 0.5px 1px rgba(0, 0, 0, 0.24), 0 1px 2px rgba(0, 0, 0, 0.14);
+    --litt-device-cap-grip: rgba(0, 0, 0, 0.24);
+    --litt-device-engrave: 0 1px 0 rgba(255, 255, 255, 0.6);
+    --litt-device-screen-canvas: #111214;
+    --litt-device-screen-surface-1: #17181a;
+    --litt-device-screen-surface-2: #141517;
+    --litt-device-screen-surface-3: #1d1f22;
+    --litt-device-screen-line: #2a2c30;
+    --litt-device-screen-line-strong: #36393e;
+    --litt-device-screen-line-control: #7d828a;
+    --litt-device-screen-fg: #f2f2f2;
+    --litt-device-screen-fg-muted: #b4b8bf;
+    --litt-device-screen-fg-subtle: #b4b8bf;
+    --litt-device-screen-fg-disabled: #5c6067;
+    --litt-device-screen-tray: #0a0a0b;
+    --litt-device-screen-cut: #222428;
+    --litt-device-screen-block: #2e3034;
+    --litt-device-screen-slot: #0a0a0b;
+    --litt-device-screen-slot-fill: #5a5e66;
+    --litt-device-screen-cap: #44464b;
+    --litt-device-screen-cap-held: #4f5156;
+    --litt-device-screen-cap-grip: rgba(255, 255, 255, 0.18);
+    --litt-device-screen-field: #050506;
+    --litt-device-screen-field-ink: #f2f2f2;
+    --litt-device-screen-field-ink-subtle: #9c9da0;
+    --litt-device-screen-field-line: #7d828a;
+    --litt-device-screen-accent: #ff8a1f;
+    --litt-device-screen-accent-hover: #ff9a3c;
+    --litt-device-screen-accent-text: #ff9a3c;
+    --litt-device-screen-accent-fg: #111214;
+    --litt-device-screen-accent-tint: #2b1a0e;
+    --litt-device-screen-accent-pink: #d3268e;
+    --litt-device-screen-accent-pink-text: #feb9db;
+    --litt-device-screen-focus: #ff8a1f;
+    --litt-device-screen-focus-pink: #e8489f;
+    --litt-device-screen-accent-pink-tint: #2b0d1d;
+    --litt-device-screen-danger-fg: #111214;
+    --litt-device-screen-success: #4bc680;
+    --litt-device-screen-warning: #e19b1b;
+    --litt-device-screen-danger: #ff756f;
+    --litt-device-screen-data-blue: #3496ef;
+    --litt-device-screen-data-blue-text: #69b7ff;
+    --litt-device-screen-data-amber: #be7900;
+    --litt-device-screen-data-amber-text: #ba8d58;
+    --litt-device-screen-data-teal: #09a198;
+    --litt-device-screen-data-teal-text: #42b4ab;
+    --litt-device-screen-data-violet: #8f78df;
+    --litt-device-screen-data-violet-text: #b4a3fd;
+    --litt-device-screen-data-rose: #e76c9c;
+    --litt-device-screen-data-rose-text: #f2879c;
+    --litt-device-screen-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.07);
+    --litt-device-screen-tray-shade: inset 0 0 0 1px rgba(255, 255, 255, 0.05), inset 0 1px 2px rgba(0, 0, 0, 0.7);
+    --litt-device-screen-cut-shade: inset 0 1px 2px rgba(0, 0, 0, 0.6);
+    --litt-device-screen-field-shade: inset 0 1px 2px rgba(0, 0, 0, 0.8);
+    --litt-device-screen-block-lift: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 0 0 1px rgba(0, 0, 0, 0.75), 0 2px 0 0 rgba(0, 0, 0, 0.85), 0 3px 6px -3px rgba(0, 0, 0, 0.6);
+    --litt-device-screen-block-press: inset 0 1px 2px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(0, 0, 0, 0.75), 0 0 0 0 transparent;
+    --litt-device-screen-key-lift: inset 0 1px 0 rgba(255, 255, 255, 0.12), inset 0 -1px 0 rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(0, 0, 0, 0.75), 0 2px 0 0 rgba(0, 0, 0, 0.85), 0 3px 6px -3px rgba(0, 0, 0, 0.6);
+    --litt-device-screen-slot-shade: inset 0 1px 2px rgba(0, 0, 0, 0.7), inset 0 0 0 1px rgba(255, 255, 255, 0.05), inset 0 -1px 0 rgba(255, 255, 255, 0.06);
+    --litt-device-screen-slot-fill-shade: inset 0 1px 1.5px rgba(0, 0, 0, 0.5);
+    --litt-device-screen-plate-lift: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 0 0 1px rgba(0, 0, 0, 0.6), 0 1px 1px rgba(0, 0, 0, 0.4), 0 3px 6px -2px rgba(0, 0, 0, 0.5);
+    --litt-device-screen-cap-lift: inset 0 1px 0 rgba(255, 255, 255, 0.14), inset 0 -1px 0 rgba(0, 0, 0, 0.3), 0 0 0 0.5px rgba(0, 0, 0, 0.8), 0 1px 1px rgba(0, 0, 0, 0.5), 0 3px 5px -1px rgba(0, 0, 0, 0.6);
+    --litt-device-screen-cap-press: inset 0 1px 0 rgba(255, 255, 255, 0.1), inset 0 -1px 0 rgba(0, 0, 0, 0.3), 0 0 0 0.5px rgba(0, 0, 0, 0.8), 0 0.5px 1px rgba(0, 0, 0, 0.5), 0 1px 2px rgba(0, 0, 0, 0.4);
+    --litt-device-screen-engrave: 0 -1px 0 rgba(0, 0, 0, 0.6);
+    --litt-device-screen-glass-bg: rgba(17, 18, 20, 0.88);
+    --litt-device-screen-glass-bg-solid: rgba(17, 18, 20, 0.98);
+    --litt-device-screen-glass-border: rgba(255, 255, 255, 0.08);
+    --litt-accent: #0957fd;
+    --litt-accent-hover: #0e4ada;
+    --litt-accent-fg: #ffffff;
+    --litt-accent-text: #104dfd;
+    --litt-accent-tint: #e7f0ff;
+    --litt-focus: #0957fd;
+    --litt-accent-pink: #c0007e;
+    --litt-accent-pink-hover: #a8006e;
+    --litt-accent-pink-fg: #ffffff;
+    --litt-accent-pink-text: #90005d;
+    --litt-accent-pink-tint: #feeaf2;
+    --litt-focus-pink: #c0007e;
+    --litt-success: #007c3b;
+    --litt-warning: #9c5a00;
+    --litt-danger: #be2e31;
+    --litt-danger-fg: #ffffff;
+    --litt-data-blue: #2d90e9;
+    --litt-data-blue-text: #006ebe;
+    --litt-data-amber: #c47d04;
+    --litt-data-amber-text: #986002;
+    --litt-data-teal: #099d95;
+    --litt-data-teal-text: #027972;
+    --litt-data-violet: #9579ef;
+    --litt-data-violet-text: #7658ca;
+    --litt-data-rose: #e25f93;
+    --litt-data-rose-text: #bb3c72;
+    --litt-tint-strength: 12%;
+    --litt-glass-bg: rgba(255, 255, 255, 0.72);
+    --litt-glass-bg-solid: rgba(255, 255, 255, 0.94);
+    --litt-glass-border: rgba(17, 15, 13, 0.07);
+    --litt-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+    --litt-shadow-tooltip: 0 0 2px rgba(17, 15, 13, 0.08), 0 0 0 1px rgba(17, 15, 13, 0.06);
+    --litt-shadow-float: 0 0 8px rgba(17, 15, 13, 0.08), 0 0 24px rgba(17, 15, 13, 0.06), 0 0 0 1px rgba(17, 15, 13, 0.06);
+    --litt-shadow-modal: 0 0 40px rgba(17, 15, 13, 0.10), 0 0 72px rgba(17, 15, 13, 0.06), 0 0 0 1px rgba(17, 15, 13, 0.06);
+    --litt-light-strength: 12%;
+    --litt-glow-strength: 28%;
+    --litt-grain-opacity: 0.02;
+    --litt-tray: #ece9e6;
+    --litt-tray-shade: inset 0 0 0 1px rgba(17, 15, 13, 0.18), inset 0 1px 2px rgba(17, 15, 13, 0.2);
+    --litt-cut: #ffffff;
+    --litt-cut-shade: inset 0 1px 2px rgba(17, 15, 13, 0.12);
+    --litt-block: #ffffff;
+    --litt-block-lift: 0 0.5px 1px rgba(17, 15, 13, 0.22), 0 0.5px 3px rgba(17, 15, 13, 0.16);
+    --litt-block-press: 0 0.5px 1px rgba(17, 15, 13, 0.22), 0 0 1.5px rgba(17, 15, 13, 0.12);
+    --litt-key-lift: 0 0.5px 1px rgba(17, 15, 13, 0.22), 0 0.5px 3px rgba(17, 15, 13, 0.16), inset 0 -1px 0 rgba(17, 15, 13, 0.12);
+    --litt-slot: #e6e2de;
+    --litt-slot-shade: inset 0 1px 2px rgba(17, 15, 13, 0.28), inset 0 0 0 1px rgba(17, 15, 13, 0.1), inset 0 -1px 0 rgba(255, 255, 255, 0.8);
+    --litt-slot-fill: #cdc7c2;
+    --litt-slot-fill-shade: inset 0 1px 1.5px rgba(17, 15, 13, 0.22);
+    --litt-plate-lift: inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 0 0 1px rgba(17, 15, 13, 0.07), 0 1px 1px rgba(17, 15, 13, 0.08), 0 3px 6px -2px rgba(17, 15, 13, 0.16);
+    --litt-cap: #ffffff;
+    --litt-cap-held: #f4f2f0;
+    --litt-cap-lift: inset 0 1px 0 rgba(255, 255, 255, 1), inset 0 -1px 0 rgba(17, 15, 13, 0.08), 0 0 0 0.5px rgba(17, 15, 13, 0.24), 0 1px 1px rgba(17, 15, 13, 0.2), 0 3px 5px -1px rgba(17, 15, 13, 0.24);
+    --litt-cap-press: inset 0 1px 0 rgba(255, 255, 255, 0.9), inset 0 -1px 0 rgba(17, 15, 13, 0.06), 0 0 0 0.5px rgba(17, 15, 13, 0.28), 0 0.5px 1px rgba(17, 15, 13, 0.24), 0 1px 2px rgba(17, 15, 13, 0.14);
+    --litt-cap-grip: rgba(17, 15, 13, 0.24);
+    --litt-notch: rgba(17, 15, 13, 0.28);
+    --litt-notch-home: rgba(17, 15, 13, 0.6);
+}
+  [data-theme="dark"], .dark {
+    --litt-canvas: #0a0908;
+    --litt-surface-1: #11100f;
+    --litt-surface-2: #191715;
+    --litt-surface-3: #201d1b;
+    --litt-line: #282421;
+    --litt-line-strong: #38332f;
+    --litt-line-control: #6e6762;
+    --litt-fg: #f9f8f7;
+    --litt-fg-muted: #cec4bd;
+    --litt-fg-subtle: #cec4bd;
+    --litt-fg-disabled: #6b645f;
+    --litt-flat-canvas: #090909;
+    --litt-flat-surface-1: #101010;
+    --litt-flat-surface-2: #171717;
+    --litt-flat-surface-3: #1e1e1e;
+    --litt-flat-line: #252525;
+    --litt-flat-line-strong: #343434;
+    --litt-flat-line-control: #686868;
+    --litt-flat-fg: #f8f8f8;
+    --litt-flat-fg-muted: #c6c6c6;
+    --litt-flat-fg-subtle: #c6c6c6;
+    --litt-flat-fg-disabled: #656565;
+    --litt-device-canvas: #1d1f22;
+    --litt-device-surface-1: #26282c;
+    --litt-device-surface-2: #222428;
+    --litt-device-surface-3: #2e3135;
+    --litt-device-line: #383b40;
+    --litt-device-line-strong: #474a50;
+    --litt-device-line-control: #7d828a;
+    --litt-device-fg: #eef0f3;
+    --litt-device-fg-muted: #bcc0c7;
+    --litt-device-fg-subtle: #bcc0c7;
+    --litt-device-fg-disabled: #666a72;
+    --litt-device-tray: #131416;
+    --litt-device-cut: #1a1c1e;
+    --litt-device-block: #3d3f44;
+    --litt-device-slot: #131416;
+    --litt-device-slot-fill: #5a5e66;
+    --litt-device-cap: #4a4c51;
+    --litt-device-cap-held: #55585d;
+    --litt-device-field: #0b0b0c;
+    --litt-device-field-ink: #f2f2f2;
+    --litt-device-field-ink-subtle: #9c9da0;
+    --litt-device-field-line: #7d828a;
+    --litt-device-accent: #ff8a1f;
+    --litt-device-accent-hover: #ff9a3c;
+    --litt-device-accent-fg: #111214;
+    --litt-device-accent-tint: #2b1a0e;
+    --litt-device-accent-text: #ff9a3c;
+    --litt-device-accent-pink: #d3268e;
+    --litt-device-accent-pink-text: #feb9db;
+    --litt-device-focus: #ff8a1f;
+    --litt-device-success: #4bc680;
+    --litt-device-warning: #e19b1b;
+    --litt-device-danger: #ff756f;
+    --litt-device-data-blue: #3496ef;
+    --litt-device-data-blue-text: #69b7ff;
+    --litt-device-data-amber: #be7900;
+    --litt-device-data-amber-text: #c3b8a0;
+    --litt-device-data-teal: #09a198;
+    --litt-device-data-teal-text: #42b4ab;
+    --litt-device-data-violet: #8f78df;
+    --litt-device-data-violet-text: #b4a3fd;
+    --litt-device-data-rose: #e76c9c;
+    --litt-device-data-rose-text: #f2879c;
+    --litt-device-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.07);
+    --litt-device-tray-shade: inset 0 0 0 1px rgba(255, 255, 255, 0.05), inset 0 1px 2px rgba(0, 0, 0, 0.7);
+    --litt-device-cut-shade: inset 0 1px 2px rgba(0, 0, 0, 0.6);
+    --litt-device-field-shade: inset 0 1px 2px rgba(0, 0, 0, 0.8);
+    --litt-device-block-lift: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 0 0 1px rgba(0, 0, 0, 0.75), 0 2px 0 0 rgba(0, 0, 0, 0.85), 0 3px 6px -3px rgba(0, 0, 0, 0.6);
+    --litt-device-block-press: inset 0 1px 2px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(0, 0, 0, 0.75), 0 0 0 0 transparent;
+    --litt-device-key-lift: inset 0 1px 0 rgba(255, 255, 255, 0.12), inset 0 -1px 0 rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(0, 0, 0, 0.75), 0 2px 0 0 rgba(0, 0, 0, 0.85), 0 3px 6px -3px rgba(0, 0, 0, 0.6);
+    --litt-device-slot-shade: inset 0 1px 2px rgba(0, 0, 0, 0.7), inset 0 0 0 1px rgba(255, 255, 255, 0.05), inset 0 -1px 0 rgba(255, 255, 255, 0.06);
+    --litt-device-slot-fill-shade: inset 0 1px 1.5px rgba(0, 0, 0, 0.5);
+    --litt-device-plate-lift: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 0 0 1px rgba(0, 0, 0, 0.6), 0 1px 1px rgba(0, 0, 0, 0.4), 0 3px 6px -2px rgba(0, 0, 0, 0.5);
+    --litt-device-cap-lift: inset 0 1px 0 rgba(255, 255, 255, 0.14), inset 0 -1px 0 rgba(0, 0, 0, 0.3), 0 0 0 0.5px rgba(0, 0, 0, 0.8), 0 1px 1px rgba(0, 0, 0, 0.5), 0 3px 5px -1px rgba(0, 0, 0, 0.6);
+    --litt-device-cap-press: inset 0 1px 0 rgba(255, 255, 255, 0.1), inset 0 -1px 0 rgba(0, 0, 0, 0.3), 0 0 0 0.5px rgba(0, 0, 0, 0.8), 0 0.5px 1px rgba(0, 0, 0, 0.5), 0 1px 2px rgba(0, 0, 0, 0.4);
+    --litt-device-cap-grip: rgba(255, 255, 255, 0.18);
+    --litt-device-engrave: 0 -1px 0 rgba(0, 0, 0, 0.6);
+    --litt-device-screen-canvas: #111214;
+    --litt-device-screen-surface-1: #17181a;
+    --litt-device-screen-surface-2: #141517;
+    --litt-device-screen-surface-3: #1d1f22;
+    --litt-device-screen-line: #2a2c30;
+    --litt-device-screen-line-strong: #36393e;
+    --litt-device-screen-line-control: #7d828a;
+    --litt-device-screen-fg: #f2f2f2;
+    --litt-device-screen-fg-muted: #b4b8bf;
+    --litt-device-screen-fg-subtle: #b4b8bf;
+    --litt-device-screen-fg-disabled: #5c6067;
+    --litt-device-screen-tray: #0a0a0b;
+    --litt-device-screen-cut: #222428;
+    --litt-device-screen-block: #2e3034;
+    --litt-device-screen-slot: #0a0a0b;
+    --litt-device-screen-slot-fill: #5a5e66;
+    --litt-device-screen-cap: #44464b;
+    --litt-device-screen-cap-held: #4f5156;
+    --litt-device-screen-cap-grip: rgba(255, 255, 255, 0.18);
+    --litt-device-screen-field: #050506;
+    --litt-device-screen-field-ink: #f2f2f2;
+    --litt-device-screen-field-ink-subtle: #9c9da0;
+    --litt-device-screen-field-line: #7d828a;
+    --litt-device-screen-accent: #ff8a1f;
+    --litt-device-screen-accent-hover: #ff9a3c;
+    --litt-device-screen-accent-text: #ff9a3c;
+    --litt-device-screen-accent-fg: #111214;
+    --litt-device-screen-accent-tint: #2b1a0e;
+    --litt-device-screen-accent-pink: #d3268e;
+    --litt-device-screen-accent-pink-text: #feb9db;
+    --litt-device-screen-focus: #ff8a1f;
+    --litt-device-screen-focus-pink: #e8489f;
+    --litt-device-screen-accent-pink-tint: #2b0d1d;
+    --litt-device-screen-danger-fg: #111214;
+    --litt-device-screen-success: #4bc680;
+    --litt-device-screen-warning: #e19b1b;
+    --litt-device-screen-danger: #ff756f;
+    --litt-device-screen-data-blue: #3496ef;
+    --litt-device-screen-data-blue-text: #69b7ff;
+    --litt-device-screen-data-amber: #be7900;
+    --litt-device-screen-data-amber-text: #ba8d58;
+    --litt-device-screen-data-teal: #09a198;
+    --litt-device-screen-data-teal-text: #42b4ab;
+    --litt-device-screen-data-violet: #8f78df;
+    --litt-device-screen-data-violet-text: #b4a3fd;
+    --litt-device-screen-data-rose: #e76c9c;
+    --litt-device-screen-data-rose-text: #f2879c;
+    --litt-device-screen-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.07);
+    --litt-device-screen-tray-shade: inset 0 0 0 1px rgba(255, 255, 255, 0.05), inset 0 1px 2px rgba(0, 0, 0, 0.7);
+    --litt-device-screen-cut-shade: inset 0 1px 2px rgba(0, 0, 0, 0.6);
+    --litt-device-screen-field-shade: inset 0 1px 2px rgba(0, 0, 0, 0.8);
+    --litt-device-screen-block-lift: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 0 0 1px rgba(0, 0, 0, 0.75), 0 2px 0 0 rgba(0, 0, 0, 0.85), 0 3px 6px -3px rgba(0, 0, 0, 0.6);
+    --litt-device-screen-block-press: inset 0 1px 2px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(0, 0, 0, 0.75), 0 0 0 0 transparent;
+    --litt-device-screen-key-lift: inset 0 1px 0 rgba(255, 255, 255, 0.12), inset 0 -1px 0 rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(0, 0, 0, 0.75), 0 2px 0 0 rgba(0, 0, 0, 0.85), 0 3px 6px -3px rgba(0, 0, 0, 0.6);
+    --litt-device-screen-slot-shade: inset 0 1px 2px rgba(0, 0, 0, 0.7), inset 0 0 0 1px rgba(255, 255, 255, 0.05), inset 0 -1px 0 rgba(255, 255, 255, 0.06);
+    --litt-device-screen-slot-fill-shade: inset 0 1px 1.5px rgba(0, 0, 0, 0.5);
+    --litt-device-screen-plate-lift: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 0 0 1px rgba(0, 0, 0, 0.6), 0 1px 1px rgba(0, 0, 0, 0.4), 0 3px 6px -2px rgba(0, 0, 0, 0.5);
+    --litt-device-screen-cap-lift: inset 0 1px 0 rgba(255, 255, 255, 0.14), inset 0 -1px 0 rgba(0, 0, 0, 0.3), 0 0 0 0.5px rgba(0, 0, 0, 0.8), 0 1px 1px rgba(0, 0, 0, 0.5), 0 3px 5px -1px rgba(0, 0, 0, 0.6);
+    --litt-device-screen-cap-press: inset 0 1px 0 rgba(255, 255, 255, 0.1), inset 0 -1px 0 rgba(0, 0, 0, 0.3), 0 0 0 0.5px rgba(0, 0, 0, 0.8), 0 0.5px 1px rgba(0, 0, 0, 0.5), 0 1px 2px rgba(0, 0, 0, 0.4);
+    --litt-device-screen-engrave: 0 -1px 0 rgba(0, 0, 0, 0.6);
+    --litt-device-screen-glass-bg: rgba(17, 18, 20, 0.88);
+    --litt-device-screen-glass-bg-solid: rgba(17, 18, 20, 0.98);
+    --litt-device-screen-glass-border: rgba(255, 255, 255, 0.08);
+    --litt-accent: #0957fd;
+    --litt-accent-hover: #1e64fe;
+    --litt-accent-fg: #ffffff;
+    --litt-accent-text: #5e78fe;
+    --litt-accent-tint: #0e1a31;
+    --litt-focus: #5e78fe;
+    --litt-accent-pink: #c0007e;
+    --litt-accent-pink-hover: #cd1c89;
+    --litt-accent-pink-fg: #ffffff;
+    --litt-accent-pink-text: #feb9db;
+    --litt-accent-pink-tint: #2b0d1d;
+    --litt-focus-pink: #feb9db;
+    --litt-success: #4bc680;
+    --litt-warning: #e19b1b;
+    --litt-danger: #ff756f;
+    --litt-danger-fg: #0a0908;
+    --litt-data-blue: #2c90e8;
+    --litt-data-blue-text: #5aa8f4;
+    --litt-data-amber: #c07b03;
+    --litt-data-amber-text: #d79540;
+    --litt-data-teal: #09a198;
+    --litt-data-teal-text: #42b4ab;
+    --litt-data-violet: #8f78df;
+    --litt-data-violet-text: #a896ef;
+    --litt-data-rose: #d55c8c;
+    --litt-data-rose-text: #eb81a7;
+    --litt-tint-strength: 18%;
+    --litt-glass-bg: rgba(17, 16, 15, 0.72);
+    --litt-glass-bg-solid: rgba(17, 16, 15, 0.94);
+    --litt-glass-border: rgba(255, 255, 255, 0.08);
+    --litt-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    --litt-shadow-tooltip: 0 0 2px rgba(0, 0, 0, 0.4), 0 0 0 1px var(--litt-line-strong);
+    --litt-shadow-float: 0 0 8px rgba(0, 0, 0, 0.4), 0 0 24px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(0, 0, 0, 0.5);
+    --litt-shadow-modal: 0 0 40px rgba(0, 0, 0, 0.5), 0 0 72px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(0, 0, 0, 0.5);
+    --litt-light-strength: 22%;
+    --litt-glow-strength: 40%;
+    --litt-grain-opacity: 0.04;
+    --litt-tray: #070606;
+    --litt-tray-shade: inset 0 0 0 1px rgba(255, 255, 255, 0.07), inset 0 1px 2px rgba(0, 0, 0, 0.8);
+    --litt-cut: #0d0c0b;
+    --litt-cut-shade: inset 0 1px 2px rgba(0, 0, 0, 0.8);
+    --litt-block: #2a2725;
+    --litt-block-lift: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 0.5px 1px rgba(0, 0, 0, 0.7), 0 0.5px 3px rgba(0, 0, 0, 0.55);
+    --litt-block-press: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 0.5px 1px rgba(0, 0, 0, 0.7), 0 0 1.5px rgba(0, 0, 0, 0.5);
+    --litt-key-lift: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 0.5px 1px rgba(0, 0, 0, 0.7), 0 0.5px 3px rgba(0, 0, 0, 0.55), inset 0 -1px 0 rgba(0, 0, 0, 0.35);
+    --litt-slot: #0b0a09;
+    --litt-slot-shade: inset 0 1px 2px rgba(0, 0, 0, 0.9), inset 0 0 0 1px rgba(255, 255, 255, 0.05), inset 0 -1px 0 rgba(255, 255, 255, 0.07);
+    --litt-slot-fill: #3a3633;
+    --litt-slot-fill-shade: inset 0 1px 1.5px rgba(0, 0, 0, 0.55);
+    --litt-plate-lift: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 0 0 1px rgba(0, 0, 0, 0.55), 0 1px 1px rgba(0, 0, 0, 0.6), 0 3px 6px -2px rgba(0, 0, 0, 0.7);
+    --litt-cap: #45403c;
+    --litt-cap-held: #3b3734;
+    --litt-cap-lift: inset 0 1px 0 rgba(255, 255, 255, 0.14), 0 0 0 0.5px rgba(0, 0, 0, 0.7), 0 1px 1px rgba(0, 0, 0, 0.7), 0 3px 5px -1px rgba(0, 0, 0, 0.7);
+    --litt-cap-press: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 0 0 0.5px rgba(0, 0, 0, 0.75), 0 0.5px 1px rgba(0, 0, 0, 0.7), 0 1px 2px rgba(0, 0, 0, 0.5);
+    --litt-cap-grip: rgba(0, 0, 0, 0.5);
+    --litt-notch: rgba(255, 255, 255, 0.2);
+    --litt-notch-home: rgba(255, 255, 255, 0.5);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"], .light) {
+    --litt-canvas: #0a0908;
+    --litt-surface-1: #11100f;
+    --litt-surface-2: #191715;
+    --litt-surface-3: #201d1b;
+    --litt-line: #282421;
+    --litt-line-strong: #38332f;
+    --litt-line-control: #6e6762;
+    --litt-fg: #f9f8f7;
+    --litt-fg-muted: #cec4bd;
+    --litt-fg-subtle: #cec4bd;
+    --litt-fg-disabled: #6b645f;
+    --litt-flat-canvas: #090909;
+    --litt-flat-surface-1: #101010;
+    --litt-flat-surface-2: #171717;
+    --litt-flat-surface-3: #1e1e1e;
+    --litt-flat-line: #252525;
+    --litt-flat-line-strong: #343434;
+    --litt-flat-line-control: #686868;
+    --litt-flat-fg: #f8f8f8;
+    --litt-flat-fg-muted: #c6c6c6;
+    --litt-flat-fg-subtle: #c6c6c6;
+    --litt-flat-fg-disabled: #656565;
+    --litt-device-canvas: #1d1f22;
+    --litt-device-surface-1: #26282c;
+    --litt-device-surface-2: #222428;
+    --litt-device-surface-3: #2e3135;
+    --litt-device-line: #383b40;
+    --litt-device-line-strong: #474a50;
+    --litt-device-line-control: #7d828a;
+    --litt-device-fg: #eef0f3;
+    --litt-device-fg-muted: #bcc0c7;
+    --litt-device-fg-subtle: #bcc0c7;
+    --litt-device-fg-disabled: #666a72;
+    --litt-device-tray: #131416;
+    --litt-device-cut: #1a1c1e;
+    --litt-device-block: #3d3f44;
+    --litt-device-slot: #131416;
+    --litt-device-slot-fill: #5a5e66;
+    --litt-device-cap: #4a4c51;
+    --litt-device-cap-held: #55585d;
+    --litt-device-field: #0b0b0c;
+    --litt-device-field-ink: #f2f2f2;
+    --litt-device-field-ink-subtle: #9c9da0;
+    --litt-device-field-line: #7d828a;
+    --litt-device-accent: #ff8a1f;
+    --litt-device-accent-hover: #ff9a3c;
+    --litt-device-accent-fg: #111214;
+    --litt-device-accent-tint: #2b1a0e;
+    --litt-device-accent-text: #ff9a3c;
+    --litt-device-accent-pink: #d3268e;
+    --litt-device-accent-pink-text: #feb9db;
+    --litt-device-focus: #ff8a1f;
+    --litt-device-success: #4bc680;
+    --litt-device-warning: #e19b1b;
+    --litt-device-danger: #ff756f;
+    --litt-device-data-blue: #3496ef;
+    --litt-device-data-blue-text: #69b7ff;
+    --litt-device-data-amber: #be7900;
+    --litt-device-data-amber-text: #c3b8a0;
+    --litt-device-data-teal: #09a198;
+    --litt-device-data-teal-text: #42b4ab;
+    --litt-device-data-violet: #8f78df;
+    --litt-device-data-violet-text: #b4a3fd;
+    --litt-device-data-rose: #e76c9c;
+    --litt-device-data-rose-text: #f2879c;
+    --litt-device-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.07);
+    --litt-device-tray-shade: inset 0 0 0 1px rgba(255, 255, 255, 0.05), inset 0 1px 2px rgba(0, 0, 0, 0.7);
+    --litt-device-cut-shade: inset 0 1px 2px rgba(0, 0, 0, 0.6);
+    --litt-device-field-shade: inset 0 1px 2px rgba(0, 0, 0, 0.8);
+    --litt-device-block-lift: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 0 0 1px rgba(0, 0, 0, 0.75), 0 2px 0 0 rgba(0, 0, 0, 0.85), 0 3px 6px -3px rgba(0, 0, 0, 0.6);
+    --litt-device-block-press: inset 0 1px 2px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(0, 0, 0, 0.75), 0 0 0 0 transparent;
+    --litt-device-key-lift: inset 0 1px 0 rgba(255, 255, 255, 0.12), inset 0 -1px 0 rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(0, 0, 0, 0.75), 0 2px 0 0 rgba(0, 0, 0, 0.85), 0 3px 6px -3px rgba(0, 0, 0, 0.6);
+    --litt-device-slot-shade: inset 0 1px 2px rgba(0, 0, 0, 0.7), inset 0 0 0 1px rgba(255, 255, 255, 0.05), inset 0 -1px 0 rgba(255, 255, 255, 0.06);
+    --litt-device-slot-fill-shade: inset 0 1px 1.5px rgba(0, 0, 0, 0.5);
+    --litt-device-plate-lift: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 0 0 1px rgba(0, 0, 0, 0.6), 0 1px 1px rgba(0, 0, 0, 0.4), 0 3px 6px -2px rgba(0, 0, 0, 0.5);
+    --litt-device-cap-lift: inset 0 1px 0 rgba(255, 255, 255, 0.14), inset 0 -1px 0 rgba(0, 0, 0, 0.3), 0 0 0 0.5px rgba(0, 0, 0, 0.8), 0 1px 1px rgba(0, 0, 0, 0.5), 0 3px 5px -1px rgba(0, 0, 0, 0.6);
+    --litt-device-cap-press: inset 0 1px 0 rgba(255, 255, 255, 0.1), inset 0 -1px 0 rgba(0, 0, 0, 0.3), 0 0 0 0.5px rgba(0, 0, 0, 0.8), 0 0.5px 1px rgba(0, 0, 0, 0.5), 0 1px 2px rgba(0, 0, 0, 0.4);
+    --litt-device-cap-grip: rgba(255, 255, 255, 0.18);
+    --litt-device-engrave: 0 -1px 0 rgba(0, 0, 0, 0.6);
+    --litt-device-screen-canvas: #111214;
+    --litt-device-screen-surface-1: #17181a;
+    --litt-device-screen-surface-2: #141517;
+    --litt-device-screen-surface-3: #1d1f22;
+    --litt-device-screen-line: #2a2c30;
+    --litt-device-screen-line-strong: #36393e;
+    --litt-device-screen-line-control: #7d828a;
+    --litt-device-screen-fg: #f2f2f2;
+    --litt-device-screen-fg-muted: #b4b8bf;
+    --litt-device-screen-fg-subtle: #b4b8bf;
+    --litt-device-screen-fg-disabled: #5c6067;
+    --litt-device-screen-tray: #0a0a0b;
+    --litt-device-screen-cut: #222428;
+    --litt-device-screen-block: #2e3034;
+    --litt-device-screen-slot: #0a0a0b;
+    --litt-device-screen-slot-fill: #5a5e66;
+    --litt-device-screen-cap: #44464b;
+    --litt-device-screen-cap-held: #4f5156;
+    --litt-device-screen-cap-grip: rgba(255, 255, 255, 0.18);
+    --litt-device-screen-field: #050506;
+    --litt-device-screen-field-ink: #f2f2f2;
+    --litt-device-screen-field-ink-subtle: #9c9da0;
+    --litt-device-screen-field-line: #7d828a;
+    --litt-device-screen-accent: #ff8a1f;
+    --litt-device-screen-accent-hover: #ff9a3c;
+    --litt-device-screen-accent-text: #ff9a3c;
+    --litt-device-screen-accent-fg: #111214;
+    --litt-device-screen-accent-tint: #2b1a0e;
+    --litt-device-screen-accent-pink: #d3268e;
+    --litt-device-screen-accent-pink-text: #feb9db;
+    --litt-device-screen-focus: #ff8a1f;
+    --litt-device-screen-focus-pink: #e8489f;
+    --litt-device-screen-accent-pink-tint: #2b0d1d;
+    --litt-device-screen-danger-fg: #111214;
+    --litt-device-screen-success: #4bc680;
+    --litt-device-screen-warning: #e19b1b;
+    --litt-device-screen-danger: #ff756f;
+    --litt-device-screen-data-blue: #3496ef;
+    --litt-device-screen-data-blue-text: #69b7ff;
+    --litt-device-screen-data-amber: #be7900;
+    --litt-device-screen-data-amber-text: #ba8d58;
+    --litt-device-screen-data-teal: #09a198;
+    --litt-device-screen-data-teal-text: #42b4ab;
+    --litt-device-screen-data-violet: #8f78df;
+    --litt-device-screen-data-violet-text: #b4a3fd;
+    --litt-device-screen-data-rose: #e76c9c;
+    --litt-device-screen-data-rose-text: #f2879c;
+    --litt-device-screen-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.07);
+    --litt-device-screen-tray-shade: inset 0 0 0 1px rgba(255, 255, 255, 0.05), inset 0 1px 2px rgba(0, 0, 0, 0.7);
+    --litt-device-screen-cut-shade: inset 0 1px 2px rgba(0, 0, 0, 0.6);
+    --litt-device-screen-field-shade: inset 0 1px 2px rgba(0, 0, 0, 0.8);
+    --litt-device-screen-block-lift: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 0 0 1px rgba(0, 0, 0, 0.75), 0 2px 0 0 rgba(0, 0, 0, 0.85), 0 3px 6px -3px rgba(0, 0, 0, 0.6);
+    --litt-device-screen-block-press: inset 0 1px 2px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(0, 0, 0, 0.75), 0 0 0 0 transparent;
+    --litt-device-screen-key-lift: inset 0 1px 0 rgba(255, 255, 255, 0.12), inset 0 -1px 0 rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(0, 0, 0, 0.75), 0 2px 0 0 rgba(0, 0, 0, 0.85), 0 3px 6px -3px rgba(0, 0, 0, 0.6);
+    --litt-device-screen-slot-shade: inset 0 1px 2px rgba(0, 0, 0, 0.7), inset 0 0 0 1px rgba(255, 255, 255, 0.05), inset 0 -1px 0 rgba(255, 255, 255, 0.06);
+    --litt-device-screen-slot-fill-shade: inset 0 1px 1.5px rgba(0, 0, 0, 0.5);
+    --litt-device-screen-plate-lift: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 0 0 1px rgba(0, 0, 0, 0.6), 0 1px 1px rgba(0, 0, 0, 0.4), 0 3px 6px -2px rgba(0, 0, 0, 0.5);
+    --litt-device-screen-cap-lift: inset 0 1px 0 rgba(255, 255, 255, 0.14), inset 0 -1px 0 rgba(0, 0, 0, 0.3), 0 0 0 0.5px rgba(0, 0, 0, 0.8), 0 1px 1px rgba(0, 0, 0, 0.5), 0 3px 5px -1px rgba(0, 0, 0, 0.6);
+    --litt-device-screen-cap-press: inset 0 1px 0 rgba(255, 255, 255, 0.1), inset 0 -1px 0 rgba(0, 0, 0, 0.3), 0 0 0 0.5px rgba(0, 0, 0, 0.8), 0 0.5px 1px rgba(0, 0, 0, 0.5), 0 1px 2px rgba(0, 0, 0, 0.4);
+    --litt-device-screen-engrave: 0 -1px 0 rgba(0, 0, 0, 0.6);
+    --litt-device-screen-glass-bg: rgba(17, 18, 20, 0.88);
+    --litt-device-screen-glass-bg-solid: rgba(17, 18, 20, 0.98);
+    --litt-device-screen-glass-border: rgba(255, 255, 255, 0.08);
+    --litt-accent: #0957fd;
+    --litt-accent-hover: #1e64fe;
+    --litt-accent-fg: #ffffff;
+    --litt-accent-text: #5e78fe;
+    --litt-accent-tint: #0e1a31;
+    --litt-focus: #5e78fe;
+    --litt-accent-pink: #c0007e;
+    --litt-accent-pink-hover: #cd1c89;
+    --litt-accent-pink-fg: #ffffff;
+    --litt-accent-pink-text: #feb9db;
+    --litt-accent-pink-tint: #2b0d1d;
+    --litt-focus-pink: #feb9db;
+    --litt-success: #4bc680;
+    --litt-warning: #e19b1b;
+    --litt-danger: #ff756f;
+    --litt-danger-fg: #0a0908;
+    --litt-data-blue: #2c90e8;
+    --litt-data-blue-text: #5aa8f4;
+    --litt-data-amber: #c07b03;
+    --litt-data-amber-text: #d79540;
+    --litt-data-teal: #09a198;
+    --litt-data-teal-text: #42b4ab;
+    --litt-data-violet: #8f78df;
+    --litt-data-violet-text: #a896ef;
+    --litt-data-rose: #d55c8c;
+    --litt-data-rose-text: #eb81a7;
+    --litt-tint-strength: 18%;
+    --litt-glass-bg: rgba(17, 16, 15, 0.72);
+    --litt-glass-bg-solid: rgba(17, 16, 15, 0.94);
+    --litt-glass-border: rgba(255, 255, 255, 0.08);
+    --litt-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    --litt-shadow-tooltip: 0 0 2px rgba(0, 0, 0, 0.4), 0 0 0 1px var(--litt-line-strong);
+    --litt-shadow-float: 0 0 8px rgba(0, 0, 0, 0.4), 0 0 24px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(0, 0, 0, 0.5);
+    --litt-shadow-modal: 0 0 40px rgba(0, 0, 0, 0.5), 0 0 72px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(0, 0, 0, 0.5);
+    --litt-light-strength: 22%;
+    --litt-glow-strength: 40%;
+    --litt-grain-opacity: 0.04;
+    --litt-tray: #070606;
+    --litt-tray-shade: inset 0 0 0 1px rgba(255, 255, 255, 0.07), inset 0 1px 2px rgba(0, 0, 0, 0.8);
+    --litt-cut: #0d0c0b;
+    --litt-cut-shade: inset 0 1px 2px rgba(0, 0, 0, 0.8);
+    --litt-block: #2a2725;
+    --litt-block-lift: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 0.5px 1px rgba(0, 0, 0, 0.7), 0 0.5px 3px rgba(0, 0, 0, 0.55);
+    --litt-block-press: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 0.5px 1px rgba(0, 0, 0, 0.7), 0 0 1.5px rgba(0, 0, 0, 0.5);
+    --litt-key-lift: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 0.5px 1px rgba(0, 0, 0, 0.7), 0 0.5px 3px rgba(0, 0, 0, 0.55), inset 0 -1px 0 rgba(0, 0, 0, 0.35);
+    --litt-slot: #0b0a09;
+    --litt-slot-shade: inset 0 1px 2px rgba(0, 0, 0, 0.9), inset 0 0 0 1px rgba(255, 255, 255, 0.05), inset 0 -1px 0 rgba(255, 255, 255, 0.07);
+    --litt-slot-fill: #3a3633;
+    --litt-slot-fill-shade: inset 0 1px 1.5px rgba(0, 0, 0, 0.55);
+    --litt-plate-lift: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 0 0 1px rgba(0, 0, 0, 0.55), 0 1px 1px rgba(0, 0, 0, 0.6), 0 3px 6px -2px rgba(0, 0, 0, 0.7);
+    --litt-cap: #45403c;
+    --litt-cap-held: #3b3734;
+    --litt-cap-lift: inset 0 1px 0 rgba(255, 255, 255, 0.14), 0 0 0 0.5px rgba(0, 0, 0, 0.7), 0 1px 1px rgba(0, 0, 0, 0.7), 0 3px 5px -1px rgba(0, 0, 0, 0.7);
+    --litt-cap-press: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 0 0 0.5px rgba(0, 0, 0, 0.75), 0 0.5px 1px rgba(0, 0, 0, 0.7), 0 1px 2px rgba(0, 0, 0, 0.5);
+    --litt-cap-grip: rgba(0, 0, 0, 0.5);
+    --litt-notch: rgba(255, 255, 255, 0.2);
+    --litt-notch-home: rgba(255, 255, 255, 0.5);
+    }
+}
+  :root, [data-theme], .dark, .light {
+    --litt-light: radial-gradient(120% 70% at 50% -10%, color-mix(in oklab, var(--litt-accent) var(--litt-light-strength), transparent) 0%, transparent 65%);
+    --litt-glow: 0 0 0 1px color-mix(in oklab, var(--litt-accent) 55%, transparent), 0 0 24px color-mix(in oklab, var(--litt-accent) var(--litt-glow-strength), transparent);
+    --litt-focus-ring: 0 0 0 2px var(--litt-canvas), 0 0 0 4px var(--litt-focus);
+    --litt-block-hover: color-mix(in oklab, var(--litt-block), var(--litt-fg) 4%);
+    --litt-data-blue-tint: color-mix(in oklab, var(--litt-data-blue) var(--litt-tint-strength), var(--litt-surface-1));
+    --litt-data-amber-tint: color-mix(in oklab, var(--litt-data-amber) var(--litt-tint-strength), var(--litt-surface-1));
+    --litt-data-teal-tint: color-mix(in oklab, var(--litt-data-teal) var(--litt-tint-strength), var(--litt-surface-1));
+    --litt-data-violet-tint: color-mix(in oklab, var(--litt-data-violet) var(--litt-tint-strength), var(--litt-surface-1));
+    --litt-data-rose-tint: color-mix(in oklab, var(--litt-data-rose) var(--litt-tint-strength), var(--litt-surface-1));
+    --litt-field: var(--litt-cut);
+    --litt-field-ink: var(--litt-fg);
+    --litt-field-ink-subtle: var(--litt-fg-subtle);
+    --litt-field-line: var(--litt-line-control);
+    --litt-field-shade: var(--litt-cut-shade);
+    --litt-label-case: none;
+    --litt-label-tracking: var(--litt-type-caption-tracking);
+    --litt-engrave: 0 0 0 transparent;
+}
+  :root[data-accent="pink"], [data-accent="pink"] {
+    --litt-accent: var(--litt-accent-pink);
+    --litt-accent-fg: var(--litt-accent-pink-fg);
+    --litt-accent-hover: var(--litt-accent-pink-hover);
+    --litt-accent-text: var(--litt-accent-pink-text);
+    --litt-accent-tint: var(--litt-accent-pink-tint);
+    --litt-focus: var(--litt-focus-pink);
+    --litt-light: radial-gradient(120% 70% at 50% -10%, color-mix(in oklab, var(--litt-accent-pink) var(--litt-light-strength), transparent) 0%, transparent 65%);
+    --litt-glow: 0 0 0 1px color-mix(in oklab, var(--litt-accent-pink) 55%, transparent), 0 0 24px color-mix(in oklab, var(--litt-accent-pink) var(--litt-glow-strength), transparent);
+    --litt-focus-ring: 0 0 0 2px var(--litt-canvas), 0 0 0 4px var(--litt-focus-pink);
+}
+  :root[data-accent="mono"], [data-accent="mono"] {
+    --litt-accent: var(--litt-fg);
+    --litt-accent-hover: color-mix(in oklab, var(--litt-fg), var(--litt-canvas) 18%);
+    --litt-accent-fg: var(--litt-canvas);
+    --litt-accent-text: var(--litt-fg);
+    --litt-accent-tint: color-mix(in oklab, var(--litt-fg) 7%, var(--litt-canvas));
+    --litt-focus: var(--litt-fg);
+    --litt-light: none;
+    --litt-glow: var(--litt-block-lift);
+    --litt-focus-ring: 0 0 0 2px var(--litt-canvas), 0 0 0 4px var(--litt-fg);
+}
+  :root[data-material="flat"], [data-material="flat"] {
+    --litt-canvas: var(--litt-flat-canvas);
+    --litt-surface-1: var(--litt-flat-surface-1);
+    --litt-surface-2: var(--litt-flat-surface-2);
+    --litt-surface-3: var(--litt-flat-surface-3);
+    --litt-line: var(--litt-flat-line);
+    --litt-line-strong: var(--litt-flat-line-strong);
+    --litt-line-control: var(--litt-flat-line-control);
+    --litt-fg: var(--litt-flat-fg);
+    --litt-fg-muted: var(--litt-flat-fg-muted);
+    --litt-fg-subtle: var(--litt-flat-fg-subtle);
+    --litt-fg-disabled: var(--litt-flat-fg-disabled);
+    --litt-highlight: inset 0 0 0 0 transparent;
+    --litt-tray: transparent;
+    --litt-tray-shade: inset 0 0 0 1px var(--litt-line-strong);
+    --litt-cut: var(--litt-surface-1);
+    --litt-cut-shade: inset 0 0 0 0 transparent;
+    --litt-block: var(--litt-surface-3);
+    --litt-block-lift: 0 0 0 0 transparent;
+    --litt-block-press: 0 0 0 0 transparent;
+    --litt-key-lift: 0 0 0 0 transparent;
+    --litt-slot: var(--litt-surface-3);
+    --litt-slot-shade: inset 0 0 0 0 transparent;
+    --litt-slot-fill: color-mix(in oklab, var(--litt-surface-3), var(--litt-fg) 14%);
+    --litt-slot-fill-shade: inset 0 0 0 0 transparent;
+    --litt-plate-lift: 0 0 0 0 transparent;
+    --litt-cap: color-mix(in oklab, var(--litt-surface-3), var(--litt-fg) 45%);
+    --litt-cap-held: color-mix(in oklab, var(--litt-surface-3), var(--litt-fg) 55%);
+    --litt-cap-lift: 0 0 0 0 transparent;
+    --litt-cap-press: 0 0 0 0 transparent;
+    --litt-cap-grip: var(--litt-surface-3);
+    --litt-press-depth: 0px;
+    --litt-block-hover: color-mix(in oklab, var(--litt-block), var(--litt-fg) 2.5%);
+    --litt-focus-ring: 0 0 0 2px var(--litt-canvas), 0 0 0 4px var(--litt-focus);
+    --litt-data-blue-tint: color-mix(in oklab, var(--litt-data-blue) var(--litt-tint-strength), var(--litt-surface-1));
+    --litt-data-amber-tint: color-mix(in oklab, var(--litt-data-amber) var(--litt-tint-strength), var(--litt-surface-1));
+    --litt-data-teal-tint: color-mix(in oklab, var(--litt-data-teal) var(--litt-tint-strength), var(--litt-surface-1));
+    --litt-data-violet-tint: color-mix(in oklab, var(--litt-data-violet) var(--litt-tint-strength), var(--litt-surface-1));
+    --litt-data-rose-tint: color-mix(in oklab, var(--litt-data-rose) var(--litt-tint-strength), var(--litt-surface-1));
+}
+  :root[data-material="device"], [data-material="device"] {
+    --litt-canvas: var(--litt-device-canvas);
+    --litt-surface-1: var(--litt-device-surface-1);
+    --litt-surface-2: var(--litt-device-surface-2);
+    --litt-surface-3: var(--litt-device-surface-3);
+    --litt-line: var(--litt-device-line);
+    --litt-line-strong: var(--litt-device-line-strong);
+    --litt-line-control: var(--litt-device-line-control);
+    --litt-fg: var(--litt-device-fg);
+    --litt-fg-muted: var(--litt-device-fg-muted);
+    --litt-fg-subtle: var(--litt-device-fg-subtle);
+    --litt-fg-disabled: var(--litt-device-fg-disabled);
+    --litt-accent: var(--litt-device-accent);
+    --litt-accent-hover: var(--litt-device-accent-hover);
+    --litt-accent-fg: var(--litt-device-accent-fg);
+    --litt-accent-tint: var(--litt-device-accent-tint);
+    --litt-accent-text: var(--litt-device-accent-text);
+    --litt-accent-pink: var(--litt-device-accent-pink);
+    --litt-accent-pink-text: var(--litt-device-accent-pink-text);
+    --litt-focus: var(--litt-device-focus);
+    --litt-focus-pink: var(--litt-device-accent-pink);
+    --litt-success: var(--litt-device-success);
+    --litt-warning: var(--litt-device-warning);
+    --litt-danger: var(--litt-device-danger);
+    --litt-data-blue: var(--litt-device-data-blue);
+    --litt-data-blue-text: var(--litt-device-data-blue-text);
+    --litt-data-amber: var(--litt-device-data-amber);
+    --litt-data-amber-text: var(--litt-device-data-amber-text);
+    --litt-data-teal: var(--litt-device-data-teal);
+    --litt-data-teal-text: var(--litt-device-data-teal-text);
+    --litt-data-violet: var(--litt-device-data-violet);
+    --litt-data-violet-text: var(--litt-device-data-violet-text);
+    --litt-data-rose: var(--litt-device-data-rose);
+    --litt-data-rose-text: var(--litt-device-data-rose-text);
+    --litt-highlight: var(--litt-device-highlight);
+    --litt-tray: var(--litt-device-tray);
+    --litt-tray-shade: var(--litt-device-tray-shade);
+    --litt-cut: var(--litt-device-cut);
+    --litt-cut-shade: var(--litt-device-cut-shade);
+    --litt-block: var(--litt-device-block);
+    --litt-block-lift: var(--litt-device-block-lift);
+    --litt-block-press: var(--litt-device-block-press);
+    --litt-key-lift: var(--litt-device-key-lift);
+    --litt-slot: var(--litt-device-slot);
+    --litt-slot-shade: var(--litt-device-slot-shade);
+    --litt-slot-fill: var(--litt-device-slot-fill);
+    --litt-slot-fill-shade: var(--litt-device-slot-fill-shade);
+    --litt-plate-lift: var(--litt-device-plate-lift);
+    --litt-cap: var(--litt-device-cap);
+    --litt-cap-held: var(--litt-device-cap-held);
+    --litt-cap-lift: var(--litt-device-cap-lift);
+    --litt-cap-press: var(--litt-device-cap-press);
+    --litt-cap-grip: var(--litt-device-cap-grip);
+    --litt-press-depth: 2px;
+    --litt-block-hover: color-mix(in oklab, var(--litt-block), var(--litt-fg) 4%);
+    --litt-field: var(--litt-device-field);
+    --litt-field-ink: var(--litt-device-field-ink);
+    --litt-field-ink-subtle: var(--litt-device-field-ink-subtle);
+    --litt-field-line: var(--litt-device-field-line);
+    --litt-field-shade: var(--litt-device-field-shade);
+    --litt-field-font: var(--litt-font-mono);
+    --litt-font-sans: var(--litt-font-mono);
+    --litt-label-case: uppercase;
+    --litt-label-tracking: 0.08em;
+    --litt-engrave: var(--litt-device-engrave);
+    --litt-focus-ring: 0 0 0 2px var(--litt-canvas), 0 0 0 4px var(--litt-focus);
+    --litt-data-blue-tint: color-mix(in oklab, var(--litt-data-blue) var(--litt-tint-strength), var(--litt-surface-1));
+    --litt-data-amber-tint: color-mix(in oklab, var(--litt-data-amber) var(--litt-tint-strength), var(--litt-surface-1));
+    --litt-data-teal-tint: color-mix(in oklab, var(--litt-data-teal) var(--litt-tint-strength), var(--litt-surface-1));
+    --litt-data-violet-tint: color-mix(in oklab, var(--litt-data-violet) var(--litt-tint-strength), var(--litt-surface-1));
+    --litt-data-rose-tint: color-mix(in oklab, var(--litt-data-rose) var(--litt-tint-strength), var(--litt-surface-1));
+}
+  :root[data-material="device"][data-accent="pink"], [data-material="device"][data-accent="pink"] {
+    --litt-accent: var(--litt-accent-pink);
+    --litt-accent-fg: var(--litt-accent-pink-fg);
+    --litt-accent-hover: var(--litt-accent-pink-hover);
+    --litt-accent-text: var(--litt-accent-pink-text);
+    --litt-accent-tint: var(--litt-accent-pink-tint);
+    --litt-focus: var(--litt-focus-pink);
+    --litt-light: radial-gradient(120% 70% at 50% -10%, color-mix(in oklab, var(--litt-accent-pink) var(--litt-light-strength), transparent) 0%, transparent 65%);
+    --litt-glow: 0 0 0 1px color-mix(in oklab, var(--litt-accent-pink) 55%, transparent), 0 0 24px color-mix(in oklab, var(--litt-accent-pink) var(--litt-glow-strength), transparent);
+    --litt-focus-ring: 0 0 0 2px var(--litt-canvas), 0 0 0 4px var(--litt-focus-pink);
+}
+  :root[data-material="device"][data-accent="mono"], [data-material="device"][data-accent="mono"] {
+    --litt-accent: var(--litt-fg);
+    --litt-accent-hover: color-mix(in oklab, var(--litt-fg), var(--litt-canvas) 18%);
+    --litt-accent-fg: var(--litt-canvas);
+    --litt-accent-text: var(--litt-fg);
+    --litt-accent-tint: color-mix(in oklab, var(--litt-fg) 7%, var(--litt-canvas));
+    --litt-focus: var(--litt-fg);
+    --litt-light: none;
+    --litt-glow: var(--litt-block-lift);
+    --litt-focus-ring: 0 0 0 2px var(--litt-canvas), 0 0 0 4px var(--litt-fg);
+}
+  [data-material="device"] :is(.litt-raised, .litt-glass) {
+    --litt-canvas: var(--litt-device-screen-canvas);
+    --litt-surface-1: var(--litt-device-screen-surface-1);
+    --litt-surface-2: var(--litt-device-screen-surface-2);
+    --litt-surface-3: var(--litt-device-screen-surface-3);
+    --litt-line: var(--litt-device-screen-line);
+    --litt-line-strong: var(--litt-device-screen-line-strong);
+    --litt-line-control: var(--litt-device-screen-line-control);
+    --litt-fg: var(--litt-device-screen-fg);
+    --litt-fg-muted: var(--litt-device-screen-fg-muted);
+    --litt-fg-subtle: var(--litt-device-screen-fg-subtle);
+    --litt-fg-disabled: var(--litt-device-screen-fg-disabled);
+    --litt-tray: var(--litt-device-screen-tray);
+    --litt-cut: var(--litt-device-screen-cut);
+    --litt-block: var(--litt-device-screen-block);
+    --litt-slot: var(--litt-device-screen-slot);
+    --litt-slot-fill: var(--litt-device-screen-slot-fill);
+    --litt-cap: var(--litt-device-screen-cap);
+    --litt-cap-held: var(--litt-device-screen-cap-held);
+    --litt-cap-grip: var(--litt-device-screen-cap-grip);
+    --litt-field: var(--litt-device-screen-field);
+    --litt-field-ink: var(--litt-device-screen-field-ink);
+    --litt-field-ink-subtle: var(--litt-device-screen-field-ink-subtle);
+    --litt-field-line: var(--litt-device-screen-field-line);
+    --litt-accent: var(--litt-device-screen-accent);
+    --litt-accent-hover: var(--litt-device-screen-accent-hover);
+    --litt-accent-text: var(--litt-device-screen-accent-text);
+    --litt-accent-fg: var(--litt-device-screen-accent-fg);
+    --litt-accent-tint: var(--litt-device-screen-accent-tint);
+    --litt-accent-pink: var(--litt-device-screen-accent-pink);
+    --litt-accent-pink-text: var(--litt-device-screen-accent-pink-text);
+    --litt-focus: var(--litt-device-screen-focus);
+    --litt-focus-pink: var(--litt-device-screen-focus-pink);
+    --litt-accent-pink-tint: var(--litt-device-screen-accent-pink-tint);
+    --litt-danger-fg: var(--litt-device-screen-danger-fg);
+    --litt-success: var(--litt-device-screen-success);
+    --litt-warning: var(--litt-device-screen-warning);
+    --litt-danger: var(--litt-device-screen-danger);
+    --litt-data-blue: var(--litt-device-screen-data-blue);
+    --litt-data-blue-text: var(--litt-device-screen-data-blue-text);
+    --litt-data-amber: var(--litt-device-screen-data-amber);
+    --litt-data-amber-text: var(--litt-device-screen-data-amber-text);
+    --litt-data-teal: var(--litt-device-screen-data-teal);
+    --litt-data-teal-text: var(--litt-device-screen-data-teal-text);
+    --litt-data-violet: var(--litt-device-screen-data-violet);
+    --litt-data-violet-text: var(--litt-device-screen-data-violet-text);
+    --litt-data-rose: var(--litt-device-screen-data-rose);
+    --litt-data-rose-text: var(--litt-device-screen-data-rose-text);
+    --litt-highlight: var(--litt-device-screen-highlight);
+    --litt-tray-shade: var(--litt-device-screen-tray-shade);
+    --litt-cut-shade: var(--litt-device-screen-cut-shade);
+    --litt-field-shade: var(--litt-device-screen-field-shade);
+    --litt-block-lift: var(--litt-device-screen-block-lift);
+    --litt-block-press: var(--litt-device-screen-block-press);
+    --litt-key-lift: var(--litt-device-screen-key-lift);
+    --litt-slot-shade: var(--litt-device-screen-slot-shade);
+    --litt-slot-fill-shade: var(--litt-device-screen-slot-fill-shade);
+    --litt-plate-lift: var(--litt-device-screen-plate-lift);
+    --litt-cap-lift: var(--litt-device-screen-cap-lift);
+    --litt-cap-press: var(--litt-device-screen-cap-press);
+    --litt-engrave: var(--litt-device-screen-engrave);
+    --litt-glass-bg: var(--litt-device-screen-glass-bg);
+    --litt-glass-bg-solid: var(--litt-device-screen-glass-bg-solid);
+    --litt-glass-border: var(--litt-device-screen-glass-border);
+    --litt-block-hover: color-mix(in oklab, var(--litt-block), var(--litt-fg) 4%);
+    --litt-focus-ring: 0 0 0 2px var(--litt-canvas), 0 0 0 4px var(--litt-focus);
+    --litt-light: radial-gradient(120% 70% at 50% -10%, color-mix(in oklab, var(--litt-accent) var(--litt-light-strength), transparent) 0%, transparent 65%);
+    --litt-glow: 0 0 0 1px color-mix(in oklab, var(--litt-accent) 55%, transparent), 0 0 24px color-mix(in oklab, var(--litt-accent) var(--litt-glow-strength), transparent);
+    --litt-data-blue-tint: color-mix(in oklab, var(--litt-data-blue) var(--litt-tint-strength), var(--litt-surface-1));
+    --litt-data-amber-tint: color-mix(in oklab, var(--litt-data-amber) var(--litt-tint-strength), var(--litt-surface-1));
+    --litt-data-teal-tint: color-mix(in oklab, var(--litt-data-teal) var(--litt-tint-strength), var(--litt-surface-1));
+    --litt-data-violet-tint: color-mix(in oklab, var(--litt-data-violet) var(--litt-tint-strength), var(--litt-surface-1));
+    --litt-data-rose-tint: color-mix(in oklab, var(--litt-data-rose) var(--litt-tint-strength), var(--litt-surface-1));
+}
+  :is([data-material="device"][data-accent="pink"], [data-material="device"] [data-accent="pink"], [data-accent="pink"] [data-material="device"]) :is(.litt-raised, .litt-glass) {
+    --litt-accent: var(--litt-accent-pink);
+    --litt-accent-fg: var(--litt-accent-pink-fg);
+    --litt-accent-hover: var(--litt-accent-pink-hover);
+    --litt-accent-text: var(--litt-accent-pink-text);
+    --litt-accent-tint: var(--litt-accent-pink-tint);
+    --litt-focus: var(--litt-focus-pink);
+    --litt-light: radial-gradient(120% 70% at 50% -10%, color-mix(in oklab, var(--litt-accent-pink) var(--litt-light-strength), transparent) 0%, transparent 65%);
+    --litt-glow: 0 0 0 1px color-mix(in oklab, var(--litt-accent-pink) 55%, transparent), 0 0 24px color-mix(in oklab, var(--litt-accent-pink) var(--litt-glow-strength), transparent);
+    --litt-focus-ring: 0 0 0 2px var(--litt-canvas), 0 0 0 4px var(--litt-focus-pink);
+}
+  :is([data-material="device"][data-accent="mono"], [data-material="device"] [data-accent="mono"], [data-accent="mono"] [data-material="device"]) :is(.litt-raised, .litt-glass) {
+    --litt-accent: var(--litt-fg);
+    --litt-accent-hover: color-mix(in oklab, var(--litt-fg), var(--litt-canvas) 18%);
+    --litt-accent-fg: var(--litt-canvas);
+    --litt-accent-text: var(--litt-fg);
+    --litt-accent-tint: color-mix(in oklab, var(--litt-fg) 7%, var(--litt-canvas));
+    --litt-focus: var(--litt-fg);
+    --litt-light: none;
+    --litt-glow: var(--litt-block-lift);
+    --litt-focus-ring: 0 0 0 2px var(--litt-canvas), 0 0 0 4px var(--litt-fg);
+}
+
+@supports not (color: color-mix(in oklab, red, blue)) {
+  :root, [data-theme], .dark, .light {
+    --litt-light: none;
+    --litt-glow: 0 0 0 1px var(--litt-accent);
+    --litt-block-hover: var(--litt-surface-2);
+    --litt-data-blue-tint: var(--litt-surface-2);
+    --litt-data-amber-tint: var(--litt-surface-2);
+    --litt-data-teal-tint: var(--litt-surface-2);
+    --litt-data-violet-tint: var(--litt-surface-2);
+    --litt-data-rose-tint: var(--litt-surface-2);
+    }
+  :root[data-accent="pink"], [data-accent="pink"] {
+    --litt-light: none;
+    --litt-glow: 0 0 0 1px var(--litt-accent-pink);
+    }
+  :root[data-material="device"], [data-material="device"] {
+    --litt-block-hover: var(--litt-surface-2);
+    --litt-data-blue-tint: var(--litt-surface-2);
+    --litt-data-amber-tint: var(--litt-surface-2);
+    --litt-data-teal-tint: var(--litt-surface-2);
+    --litt-data-violet-tint: var(--litt-surface-2);
+    --litt-data-rose-tint: var(--litt-surface-2);
+    }
+  :root[data-material="flat"], [data-material="flat"] {
+    --litt-slot-fill: var(--litt-line-strong);
+    --litt-block-hover: var(--litt-surface-2);
+    --litt-cap: var(--litt-line-control);
+    --litt-cap-held: var(--litt-fg-muted);
+    --litt-data-blue-tint: var(--litt-surface-2);
+    --litt-data-amber-tint: var(--litt-surface-2);
+    --litt-data-teal-tint: var(--litt-surface-2);
+    --litt-data-violet-tint: var(--litt-surface-2);
+    --litt-data-rose-tint: var(--litt-surface-2);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root, :root[data-material="device"], [data-material="device"] {
+    --litt-dur-instant: 0ms;
+    --litt-dur-responsive: 0ms;
+    --litt-dur-expressive: 0ms;
+    --litt-dur-exit-responsive: 0ms;
+    --litt-dur-exit-expressive: 0ms;
+    --litt-stagger: 0ms;
+    --litt-travel: 0px;
+    --litt-press-scale: 1;
+    --litt-press-depth: 0px;
+    }
+}
+
+@media (prefers-contrast: more) {
+  :root, :root:not([data-theme="light"], .light), [data-theme], .dark, .light, :root[data-material="flat"], [data-material="flat"], :root[data-material="device"], [data-material="device"] {
+    --litt-fg-muted: var(--litt-fg);
+    --litt-fg-subtle: var(--litt-fg);
+    --litt-line: var(--litt-line-control);
+    --litt-line-strong: var(--litt-line-control);
+    --litt-glass-bg: var(--litt-glass-bg-solid);
+    }
+}
+
+@layer components {
+  .litt-glass {
+    position: relative;
+    isolation: isolate;
+    border-radius: var(--litt-radius-surface);
+    }
+  .litt-glass::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: inherit;
+    background: var(--litt-glass-bg);
+    -webkit-backdrop-filter: blur(var(--litt-glass-blur)) saturate(var(--litt-glass-saturate));
+    backdrop-filter: blur(var(--litt-glass-blur)) saturate(var(--litt-glass-saturate));
+    box-shadow: inset 0 0 0 1px var(--litt-glass-border), var(--litt-highlight), var(--litt-glass-shadow, var(--litt-shadow-float));
+    pointer-events: none;
+    }
+  .litt-raised {
+    background: var(--litt-surface-1);
+    border-radius: var(--litt-radius-surface);
+    box-shadow: inset 0 0 0 1px var(--litt-line), var(--litt-highlight);
+    }
+  .litt-trim {
+    line-height: 1;
+    text-box: trim-both cap alphabetic;
+    }
+  .litt-legend {
+    text-transform: var(--litt-label-case);
+    letter-spacing: var(--litt-label-tracking);
+    text-shadow: var(--litt-engrave);
+    }
+  .litt-lit {
+    background-image: var(--litt-light);
+    background-repeat: no-repeat;
+    }
+  .litt-grain {
+    position: relative;
+    }
+  .litt-grain::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background-image: var(--litt-grain);
+    opacity: var(--litt-grain-opacity);
+    pointer-events: none;
+    }
+  .litt-grain-fade::after {
+    -webkit-mask-image: linear-gradient(to bottom, black 30%, transparent 95%);
+    mask-image: linear-gradient(to bottom, black 30%, transparent 95%);
+    }
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .litt-glass::before {
+    background: var(--litt-glass-bg-solid);
+    }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .litt-glass::before {
+    background: var(--litt-surface-1);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    }
+}
+
+/* vpcdiff type: litt's font tokens point at the vpcdiff families. The landing page
+   (html.site) reads in Google Sans; the viewer in Source Sans 3 with Google Sans headings. */
+:root {
+  --litt-font-sans: "Source Sans 3", ui-sans-serif, system-ui, sans-serif;
+  --litt-font-mono: "Google Sans Code", ui-monospace, "SF Mono", Menlo, monospace;
+  --vd-font-display: "Google Sans", ui-sans-serif, system-ui, sans-serif;
+}
+html.site {
+  --litt-font-sans: "Google Sans", ui-sans-serif, system-ui, sans-serif;
+}
+@utility font-display {
+  font-family: var(--vd-font-display);
+}
+
+/* Signal Cyan, the vpcdiff accent (DESIGN.md, section 3). It replaces litt's Blue 4 in
+   both themes; contrast is measured in DESIGN.md. */
+:root,
+[data-theme="light"],
+html[data-theme="light"][data-material] {
+  --litt-accent: #0e7490;
+  --litt-accent-hover: #155e75;
+  --litt-accent-fg: #ffffff;
+  --litt-accent-text: #0e7490;
+  --litt-accent-tint: #e6f4f7;
+  --litt-focus: #0e7490;
+}
+[data-theme="dark"],
+html[data-theme="dark"][data-material] {
+  --litt-accent: #22d3ee;
+  --litt-accent-hover: #67e8f9;
+  --litt-accent-fg: #0a0908;
+  --litt-accent-text: #22d3ee;
+  --litt-accent-tint: #082f38;
+  --litt-focus: #22d3ee;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --litt-accent: #22d3ee;
+    --litt-accent-hover: #67e8f9;
+    --litt-accent-fg: #0a0908;
+    --litt-accent-text: #22d3ee;
+    --litt-accent-tint: #082f38;
+    --litt-focus: #22d3ee;
+  }
+}
+
+/* Shape: litt's controls 4px rounder than its default (DESIGN.md, section 5). */
+:root {
+  --litt-radius-control: 8px;
+  /* Harbor: the deep ink used for the landing nav capsule and inverted bands. */
+  --vd-harbor: #0b2027;
+  --vd-harbor-2: #12303a;
+  --vd-harbor-line: color-mix(in oklab, white 12%, transparent);
+}
+
+/* vpcdiff base: the page is litt's canvas. See DESIGN.md. */
+@layer base {
+  html, body { background: var(--litt-canvas); color: var(--litt-fg); font-family: var(--litt-font-sans); -webkit-font-smoothing: antialiased; }
+  h1, h2, h3 { text-wrap: balance; }
+  p { text-wrap: pretty; }
+}

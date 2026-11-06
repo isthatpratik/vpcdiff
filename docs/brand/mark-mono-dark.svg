@@ -1,8 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
   <title>vpcdiff</title>
-  <path d="M8.68 10.57 L15.14 22.42" stroke="#f5f4f2" stroke-width="2.8" stroke-linecap="round"/>
-  <path d="M23.32 10.57 L16.86 22.42" stroke="#f5f4f2" stroke-width="2.8" stroke-linecap="round"/>
-  <circle cx="7.0" cy="7.5" r="2.5" stroke="#f5f4f2" stroke-width="2"/>
-  <circle cx="25.0" cy="7.5" r="2.5" stroke="#f5f4f2" stroke-width="2"/>
-  <circle cx="16.0" cy="24.0" r="3.6" fill="#f5f4f2"/>
+  <path d="M8.81 17.50 L4.4 25.4 L27.6 25.4 L16 4.6 L12.52 10.84" stroke="#f9f8f7" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="10.66" cy="14.17" r="2.7" fill="#f9f8f7"/>
 </svg>

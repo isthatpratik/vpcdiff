@@ -39,4 +39,9 @@ describe("lanesOf", () => {
     expect(sg).toMatchObject({ state: "partial", resource: "aws_security_group.app", rule: "aws_security_group_rule.admin ingress tcp 22 from 198.51.100.0/24" });
     expect(lanes.after.cells[0]?.rule).toBe("198.51.100.0/24");
   });
+
+  it("opens a path with outage risk on the replaced hop", () => {
+    const lanes = lanesOf(pathOf("sg-replaced", "internet->aws_instance.web:tcp:443"));
+    expect(COLUMNS[lanes.focus]?.key).toBe("security-group");
+  });
 });
