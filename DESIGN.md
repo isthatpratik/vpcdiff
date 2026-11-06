@@ -249,6 +249,10 @@ Fonts load from Google Fonts (see section 10 for what that means for privacy).
   says "Partly undecided" with the reason. The PR Markdown escapes every name and
   rule (no links or @-mentions from a plan), and the plan summary ends with the
   vpcdiff version and the plan's SHA-256, computed in the tab.
+- **Path list layout:** one summary block (the plan verdict with "Copy all for PR"
+  beside it, the counts as small filter chips with zeros dimmed, the scope line), one
+  row with the Changes / All toggle and a filter field, then the list. The list ends
+  with "N of M paths shown" and what All adds, then the notes. No bottom bar.
 - **Plan verdict:** the top of the path list says what to do with the pull request:
   "Fix before merge", "Check by hand", "Review before merge", or "No new exposure"
   (never "safe"). The counters under it are filters: choose one to list only those

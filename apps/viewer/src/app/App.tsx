@@ -397,65 +397,83 @@ function Workspace({ name, result, sha256: hash }: { name: string; result: Resul
   const only = counters.find((c) => c.key === filter);
 
   return (
-    <div className="grid h-full min-h-0 grid-cols-1 overflow-auto md:grid-cols-[340px_minmax(0,1fr)] md:overflow-hidden">
-      <aside className="grid min-h-0 grid-rows-[auto_auto_auto_auto_minmax(0,1fr)_auto] border-b border-litt-line md:border-r md:border-b-0" aria-label="Paths">
-        <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 border-b border-litt-line px-4 py-3">
-          <span aria-hidden="true" className={`size-2 rounded-full ${TONE_BAR[pv.tone]}`} />
-          <p className="grid min-w-0">
-            <span className={`text-litt-small font-medium ${TONE_TEXT[pv.tone]}`}>{pv.title}</span>
-            <span className="text-litt-caption text-litt-fg-muted">{pv.detail}</span>
+    <div className="grid h-full min-h-0 grid-cols-1 overflow-auto md:grid-cols-[360px_minmax(0,1fr)] md:overflow-hidden">
+      <aside className="flex min-h-0 flex-col border-b border-litt-line md:border-r md:border-b-0" aria-label="Paths">
+        {/* Summary: the plan verdict and the copy action, then the counts as filter chips. */}
+        <div className="grid gap-3 border-b border-litt-line p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div className="grid min-w-0 gap-0.5">
+              <p className={`flex items-center gap-2 text-litt-small font-medium ${TONE_TEXT[pv.tone]}`}>
+                <span aria-hidden="true" className={`size-2 shrink-0 rounded-full ${TONE_BAR[pv.tone]}`} />
+                {pv.title}
+              </p>
+              <p className="pl-4 text-litt-caption text-litt-fg-muted">{pv.detail}</p>
+            </div>
+            <CopyButton variant="text" label="Copy all for PR" what="the plan summary for the pull request" text={() => planMarkdown(name, result, { version: ENGINE_VERSION, ...(hash ? { sha256: hash } : {}) })} />
+          </div>
+          <div role="group" aria-label="Counts. Choose one to show only those paths." className="flex flex-wrap gap-1.5">
+            {counters.map((c) => {
+              const on = filter === c.key;
+              return (
+                <button
+                  key={c.key}
+                  type="button"
+                  disabled={!c.value}
+                  aria-pressed={on}
+                  onClick={() => setFilter(on ? "changes" : c.key)}
+                  title={c.help}
+                  className={`inline-flex h-7 items-center gap-1.5 rounded-[6px] px-2 text-litt-caption transition-[background-color,box-shadow,scale] duration-150 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-litt-fg enabled:hover:bg-litt-surface-2 enabled:active:scale-[0.97] disabled:cursor-default ${on ? "bg-litt-surface-2 shadow-[inset_0_0_0_1px_var(--litt-fg-subtle)]" : "shadow-[inset_0_0_0_1px_var(--litt-line)]"}`}
+                >
+                  <span className={`font-medium tabular-nums ${c.value ? c.tone : "text-litt-fg-subtle"}`}>{c.value}</span>
+                  <span className={c.value ? "text-litt-fg-muted" : "text-litt-fg-subtle"}>{c.label}</span>
+                </button>
+              );
+            })}
+          </div>
+          <p className="flex flex-wrap items-center gap-x-1.5 text-litt-caption text-litt-fg-subtle">
+            <span>Checks {SCOPE} only.</span>
+            {result.notes.length > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  setNotesOpen("notes");
+                  window.setTimeout(() => notesRef.current?.scrollIntoView({ block: "nearest" }), 0);
+                }}
+                className="text-litt-warning underline decoration-dotted underline-offset-4 hover:decoration-solid focus-visible:outline-2 focus-visible:outline-litt-focus"
+              >
+                {result.notes.length} {result.notes.length === 1 ? "resource" : "resources"} not modeled
+              </button>
+            )}
           </p>
         </div>
-        <div role="group" aria-label="Counts. Choose one to show only those paths." className="grid grid-cols-5 gap-px border-b border-litt-line bg-litt-line">
-          {counters.map((c) => (
-            <button
-              key={c.key}
-              type="button"
-              disabled={!c.value}
-              aria-pressed={filter === c.key}
-              onClick={() => setFilter(filter === c.key ? "changes" : c.key)}
-              title={c.help}
-              className={`grid content-start gap-1.5 bg-litt-canvas px-2 py-3 text-left sm:px-3 sm:py-4 transition-colors duration-150 enabled:hover:bg-litt-surface-1 focus-visible:z-10 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-litt-fg disabled:cursor-default ${filter === c.key ? "bg-litt-surface-2" : ""}`}
-            >
-              <span className={`font-display text-2xl leading-none font-normal tabular-nums ${c.value ? c.tone : "text-litt-fg-subtle"}`}>{c.value}</span>
-              <span className="text-litt-caption leading-tight text-litt-fg-subtle">{c.label}</span>
-            </button>
-          ))}
-        </div>
-        <p className="flex flex-wrap items-center gap-x-1.5 border-b border-litt-line px-4 py-2.5 text-litt-caption text-litt-fg-subtle">
-          <span>Checks {SCOPE} only.</span>
-          {result.notes.length > 0 && (
-            <button
-              type="button"
-              onClick={() => {
-                setNotesOpen("notes");
-                window.setTimeout(() => notesRef.current?.scrollIntoView({ block: "nearest" }), 0);
-              }}
-              className="text-litt-warning underline decoration-dotted underline-offset-4 hover:decoration-solid focus-visible:outline-2 focus-visible:outline-litt-focus"
-            >
-              {result.notes.length} {result.notes.length === 1 ? "resource" : "resources"} not modeled
-            </button>
-          )}
-        </p>
-        <div className="grid gap-2.5 border-b border-litt-line p-4">
+        {/* Controls: which paths, and a filter, on one row. */}
+        <div className="grid gap-2 border-b border-litt-line px-4 py-3">
           <p id="filter-help" className="sr-only">
             Changes lists only paths the plan opens, closes, or puts at risk. All paths lists every path from the internet the engine checked.
           </p>
-          <Tooltip content="Changes: only paths the plan opens, closes, or puts at risk. All paths: every path from the internet the engine checked.">
-            <div>
-              <Segmented<Filter>
-                legend="Show"
-                size="sm"
-                block
-                value={filter === "all" ? "all" : "changes"}
-                onValueChange={setFilter}
-                options={[
-                  { value: "changes", label: "Changes" },
-                  { value: "all", label: `All paths · ${result.paths.length}` },
-                ]}
-              />
-            </div>
-          </Tooltip>
+          <div className="flex items-center gap-2">
+            <Tooltip content="Changes: only paths the plan opens, closes, or puts at risk. All paths: every path from the internet the engine checked.">
+              <div className="shrink-0">
+                <Segmented<Filter>
+                  legend="Show"
+                  size="sm"
+                  value={filter === "all" ? "all" : "changes"}
+                  onValueChange={setFilter}
+                  options={[
+                    { value: "changes", label: "Changes" },
+                    { value: "all", label: `All · ${result.paths.length}` },
+                  ]}
+                />
+              </div>
+            </Tooltip>
+            {result.paths.length > 0 && (
+              <label className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-[6px] border border-litt-line-strong px-2.5 focus-within:border-litt-fg-subtle focus-within:outline-2 focus-within:outline-offset-1 focus-within:outline-litt-fg">
+                <SearchIcon aria-hidden="true" className="size-4 shrink-0 text-litt-fg-subtle" />
+                <span className="sr-only">Filter paths by resource, port, or CIDR</span>
+                <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Filter" className="h-full min-w-0 flex-1 bg-transparent text-litt-small text-litt-fg outline-none placeholder:text-litt-fg-subtle" />
+              </label>
+            )}
+          </div>
           {only && (
             <p className="flex items-center justify-between gap-2 text-litt-caption text-litt-fg-muted">
               <span>
@@ -466,56 +484,53 @@ function Workspace({ name, result, sha256: hash }: { name: string; result: Resul
               </button>
             </p>
           )}
-          {result.paths.length > 0 && (
-            <label className="flex items-center gap-2 rounded-[6px] border border-litt-line-strong px-2.5 focus-within:border-litt-fg-subtle focus-within:outline-2 focus-within:outline-offset-1 focus-within:outline-litt-fg">
-              <SearchIcon aria-hidden="true" className="size-4 text-litt-fg-subtle" />
-              <span className="sr-only">Filter paths</span>
-              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Filter by resource, port, or CIDR" className="h-8 min-w-0 flex-1 bg-transparent text-litt-small text-litt-fg outline-none placeholder:text-litt-fg-subtle" />
-            </label>
-          )}
         </div>
-        <div className="min-h-0 overflow-auto">
+        {/* The list, then what it leaves out, then what is not modeled. */}
+        <div className="min-h-0 flex-1 overflow-auto">
           {visible.length ? (
-            <ul ref={list} aria-label="Paths" onKeyDown={onKey} className="divide-y divide-litt-line border-b border-litt-line">
-              {visible.map((p) => (
-                <li key={p.id}>
-                  <PathRow path={p} current={p.id === selectedId} onSelect={() => setSelectedId(p.id)} />
-                </li>
-              ))}
-            </ul>
+            <>
+              <ul ref={list} aria-label="Paths" onKeyDown={onKey} className="divide-y divide-litt-line border-b border-litt-line">
+                {visible.map((p) => (
+                  <li key={p.id}>
+                    <PathRow path={p} current={p.id === selectedId} onSelect={() => setSelectedId(p.id)} />
+                  </li>
+                ))}
+              </ul>
+              <p className="px-4 py-3 text-litt-caption leading-relaxed text-litt-fg-subtle">
+                {visible.length} of {result.paths.length} {result.paths.length === 1 ? "path" : "paths"} shown.
+                {filter !== "all" && unchanged > 0 && ` All also lists the ${unchanged} that ${unchanged === 1 ? "does" : "do"} not change.`}
+              </p>
+            </>
           ) : (
-            <div className="grid gap-2 p-5">
+            <div className="grid gap-2 p-4">
               <p className="text-litt-small font-medium text-litt-fg">{query ? "No path matches" : "No changes from the internet"}</p>
               <p className="text-litt-small leading-relaxed text-litt-fg-muted">
                 {query
                   ? "Try a resource name, a port such as 5432, or a CIDR."
                   : result.paths.length
-                    ? `This plan does not change any path from the internet. All paths shows the ${unchanged} the engine checked.`
+                    ? `This plan does not change any path from the internet. All shows the ${unchanged} the engine checked.`
                     : "No security group in this plan opens a port to a public address, so there is no path from the internet to check."}
                 {!query && result.notes.length > 0 && ` ${result.notes.length} ${result.notes.length === 1 ? "resource is" : "resources are"} not modeled yet, so check ${result.notes.length === 1 ? "it" : "them"} by hand.`}
               </p>
             </div>
           )}
-        </div>
-        <div className="grid gap-1 border-t border-litt-line px-4 py-3">
-          <CopyButton variant="text" className="justify-self-start" label="Copy all for PR" what="the plan summary for the pull request" text={() => planMarkdown(name, result, { version: ENGINE_VERSION, ...(hash ? { sha256: hash } : {}) })} />
           {result.notes.length > 0 && (
-            <div ref={notesRef}>
-            <Accordion type="single" collapsible headingLevel={2} value={notesOpen} onValueChange={setNotesOpen}>
-              <AccordionItem value="notes">
-                <AccordionTrigger>Not modeled yet · {result.notes.length}</AccordionTrigger>
-                <AccordionContent>
-                  <ul className="grid gap-2.5 pb-3">
-                    {result.notes.map((n) => (
-                      <li key={n.resource} className="grid gap-0.5">
-                        <span className="font-litt-mono text-litt-caption text-litt-fg">{n.resource}</span>
-                        <span className="text-litt-caption leading-relaxed text-litt-fg-muted">{n.message}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </AccordionContent>
-              </AccordionItem>
-            </Accordion>
+            <div ref={notesRef} className="border-t border-litt-line px-4">
+              <Accordion type="single" collapsible headingLevel={2} value={notesOpen} onValueChange={setNotesOpen}>
+                <AccordionItem value="notes">
+                  <AccordionTrigger>Not modeled yet · {result.notes.length}</AccordionTrigger>
+                  <AccordionContent>
+                    <ul className="grid gap-2.5 pb-3">
+                      {result.notes.map((n) => (
+                        <li key={n.resource} className="grid gap-0.5">
+                          <span className="font-litt-mono text-litt-caption text-litt-fg">{n.resource}</span>
+                          <span className="text-litt-caption leading-relaxed text-litt-fg-muted">{n.message}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </AccordionContent>
+                </AccordionItem>
+              </Accordion>
             </div>
           )}
         </div>
