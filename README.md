@@ -12,7 +12,38 @@ reachability graph before and after the change, and shows the difference:
 Every result comes with a hop-by-hop explanation: which route, NACL rule, and
 security group rule allowed or blocked the traffic.
 
-> **Status:** early design. Nothing is usable yet. See [`docs/design`](docs/design) and [`docs/adr`](docs/adr).
+> **Status:** v0.1 in progress. The engine and CLI evaluate internet-to-instance
+> reachability (see the [support matrix](#support-matrix)). Design notes are in
+> [`docs/design`](docs/design), [`docs/adr`](docs/adr), and [`docs/semantics`](docs/semantics).
+
+## Quick start (CLI)
+
+```sh
+pnpm install && pnpm build
+terraform -chdir=infra plan -out=tfplan
+terraform -chdir=infra show -json tfplan > plan.json
+node packages/cli/dist/vpcdiff.mjs plan.json
+```
+
+Example output for [`fixtures/sg-5432-opened`](fixtures/sg-5432-opened):
+
+```text
+vpcdiff: 1 added, 0 removed, 0 changed, 0 unknown, 0 unchanged
+
+ADDED     internet -> aws_instance.db  tcp/5432
+  before: blocked at security-group: no ingress rule of aws_security_group.db allows tcp/5432 from the internet
+  after:  allowed from internet
+    public-ip        allow   aws_instance.db associate_public_ip_address = true
+    internet-gateway allow   aws_internet_gateway.main is attached to aws_vpc.main
+    nacl-inbound     allow   default NACL of aws_vpc.main ingress rule 100: allow all traffic (AWS default)
+    security-group   allow   aws_security_group.db ingress tcp 5432 from 0.0.0.0/0
+    nacl-outbound    allow   default NACL of aws_vpc.main egress rule 100: allow all traffic (AWS default)
+    route            allow   aws_route_table.public route 0.0.0.0/0 -> aws_internet_gateway.main
+```
+
+Options: `--format text|json|markdown`, `--all` (also unchanged paths),
+`--fail-on added|changed|unknown|never` (default `added`). Exit codes: `0` no failing
+paths, `1` failing paths, `2` usage or input error.
 
 ## Interfaces
 

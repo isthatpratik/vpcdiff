@@ -4,12 +4,19 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "typecheck": "tsc -p tsconfig.json"
+    "typecheck": "tsc -p tsconfig.json",
+    "build": "esbuild src/bin.ts --bundle --platform=node --target=node24 --format=esm --outfile=dist/vpcdiff.mjs --legal-comments=none"
   },
   "dependencies": {
     "@vpcdiff/engine": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^24.19.2"
-  }
+  },
+  "bin": {
+    "vpcdiff": "./dist/vpcdiff.mjs"
+  },
+  "files": [
+    "dist"
+  ]
 }
