@@ -5,7 +5,6 @@ import { TooltipProvider } from "@/components/litt/tooltip";
 import { TextLoop } from "@/components/sora-ui/texts/text-loop";
 import aws from "../logos/aws-icon-mono.svg?url";
 import actions from "../logos/github-actions-icon-mono.svg?url";
-import github from "../logos/github-icon-mono.svg?url";
 import nodejs from "../logos/nodejs-icon-mono.svg?url";
 import terraform from "../logos/terraform-icon-mono.svg?url";
 import { Mark, REPO, Wordmark } from "../shared/brand.tsx";
@@ -146,16 +145,15 @@ const LOGOS: { name: string; src: string; wordmark?: boolean }[] = [
   // The AWS logo is its own wordmark ("aws" over the smile), so it shows without a label.
   { name: "AWS", src: aws, wordmark: true },
   { name: "GitHub Actions", src: actions },
-  { name: "GitHub", src: github },
   { name: "Node.js", src: nodejs },
 ];
 
 /** Logos drawn in the ink color through a CSS mask, so they follow the theme. */
 function Logos() {
   return (
-    <ul className="grid grid-cols-2 gap-px bg-litt-line sm:grid-cols-5" aria-label="Works with Terraform, AWS, GitHub Actions, GitHub, and Node.js">
-      {LOGOS.map((l, i) => (
-        <li key={l.name} className={`flex h-24 items-center justify-center gap-3 bg-litt-canvas ${i === LOGOS.length - 1 ? "col-span-2 sm:col-span-1" : ""}`}>
+    <ul className="grid grid-cols-2 gap-px bg-litt-line sm:grid-cols-4" aria-label="Works with Terraform, AWS, GitHub Actions, and Node.js">
+      {LOGOS.map((l) => (
+        <li key={l.name} className="flex h-24 items-center justify-center gap-3 bg-litt-canvas">
           <span aria-hidden="true" className={`bg-litt-fg-subtle ${l.wordmark ? "h-7 w-12" : "h-6 w-8"}`} style={{ mask: `url("${l.src}") center / contain no-repeat`, WebkitMask: `url("${l.src}") center / contain no-repeat` }} />
           <span className={l.wordmark ? "sr-only" : "text-litt-small text-litt-fg-subtle"}>{l.name}</span>
         </li>
