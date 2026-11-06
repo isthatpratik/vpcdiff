@@ -1399,3 +1399,9 @@ html[data-theme="dark"][data-material] {
   75% { transform: translateX(var(--lane)); opacity: 1; }
   85%, 100% { transform: translateX(var(--lane)); opacity: 0; }
 }
+
+/* Viewer (src/app/App.tsx): the path detail settles in when a path is chosen. */
+@keyframes detail-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}

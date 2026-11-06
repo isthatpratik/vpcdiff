@@ -218,6 +218,18 @@ Fonts load from Google Fonts (see section 10 for what that means for privacy).
   (with a Terraform snippet when there is a standard fix), and "Copy for PR" as
   Markdown. Then the path strip with a legend, and the hop table (ADR 0008): hops that
   differ are open and marked; hops that are the same fold behind one toggle.
+- **No side bars.** A colored bar down one edge of a card or row is gone everywhere (it
+  read as a generic accent, and B4 of the design rules forbids one-sided borders). The
+  selected path is an inset rounded surface one step lighter; a changed hop is a soft
+  tinted row with a "Changed" chip (amber with "Replaced delete-first" for outage risk).
+- **Radius scale:** panels and cards 12 px, list rows and the drop zone's icon 8 px,
+  buttons, fields, and code 6 px, chips 4 px.
+- **One evidence panel:** the path strip and the hop table share one rounded panel
+  (strip, then a "Hops" sub-header, then the rows), so the detail reads as two objects:
+  the verdict, then the evidence. A chosen path's detail settles in (6 px rise and fade,
+  260 ms, off under reduced motion), caused by the choice.
+- **Empty detail:** with no path to show, the right side explains why instead of
+  staying blank.
 - **Controls:** buttons and fields use the landing page's 6 px radius (litt's control
   radius is set to 6 px), lie flat with no glow, and scale to 0.97 on press. Secondary
   buttons are outlines. Tags and chips are 4 px; panels and cells stay square. Color

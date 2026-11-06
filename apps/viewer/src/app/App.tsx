@@ -36,7 +36,7 @@ async function sha256(text: string): Promise<string | undefined> {
 type Filter = "changes" | "all" | "added" | "removed" | "changed" | "risk" | "unknown";
 
 const EASE = "ease-[cubic-bezier(0.23,1,0.32,1)]";
-const LABEL = "font-litt-mono text-[11px] tracking-[0.12em] text-litt-fg-subtle uppercase";
+const LABEL = "font-litt-mono text-xs tracking-[0.12em] text-litt-fg-subtle uppercase";
 
 export function App() {
   const [state, setState] = useState<State>({ kind: "empty" });
@@ -72,15 +72,24 @@ export function App() {
     [open],
   );
 
-  // On load, reopen what the URL or this tab remembers.
+  // On load, and when the address changes (a pasted link, the back button), reopen what
+  // the URL or this tab remembers. The viewer's own replaceState does not fire hashchange.
   useEffect(() => {
-    const place = readPlace();
-    if (place.kind === "example") openExample(place.id, place.path);
-    if (place.kind === "file") {
-      const kept = keptFile();
-      if (kept) void open(kept.name, Promise.resolve(kept.text), { file: true }, place.path);
-      else clearPlace();
-    }
+    const restore = () => {
+      const place = readPlace();
+      if (place.kind === "example") openExample(place.id, place.path);
+      else if (place.kind === "file") {
+        const kept = keptFile();
+        if (kept) void open(kept.name, Promise.resolve(kept.text), { file: true }, place.path);
+        else {
+          clearPlace();
+          setState({ kind: "empty" });
+        }
+      } else setState({ kind: "empty" });
+    };
+    if (readPlace().kind !== "none") restore();
+    window.addEventListener("hashchange", restore);
+    return () => window.removeEventListener("hashchange", restore);
   }, [open, openExample]);
 
   // A plan can be dropped anywhere on the page, at any time.
@@ -244,14 +253,14 @@ function Start({ error, onFile, onExample }: { error?: string | undefined; onFil
 
           <div className="relative grid gap-4">
             <div
-              className={`relative grid min-h-[220px] place-items-center overflow-hidden border border-dashed px-6 py-10 sm:min-h-[300px] sm:py-12 text-center transition-colors duration-200 ${over ? "border-litt-fg bg-litt-surface-2" : error ? "border-litt-danger/60 bg-litt-surface-1" : "border-litt-line-strong bg-litt-surface-1"}`}
+              className={`relative grid min-h-[220px] place-items-center overflow-hidden rounded-xl border border-dashed px-6 py-10 sm:min-h-[300px] sm:py-12 text-center transition-colors duration-200 ${over ? "border-litt-fg bg-litt-surface-2" : error ? "border-litt-danger/60 bg-litt-surface-1" : "border-litt-line-strong bg-litt-surface-1"}`}
               onDragEnter={() => setOver(true)}
               onDragLeave={() => setOver(false)}
               onDrop={() => setOver(false)}
             >
               <div aria-hidden="true" className="absolute inset-0 [background-image:radial-gradient(color-mix(in_oklab,var(--litt-fg)_22%,transparent)_1px,transparent_1.5px)] [background-size:16px_16px] [mask-image:radial-gradient(ellipse_at_center,black,transparent_70%)]" />
               <div className="relative grid justify-items-center gap-5">
-                <span className="grid size-12 place-items-center border border-litt-line-strong bg-litt-canvas text-litt-fg">
+                <span className="grid size-12 place-items-center rounded-lg border border-litt-line-strong bg-litt-canvas text-litt-fg">
                   <FileIcon aria-hidden="true" />
                 </span>
                 <div className="grid gap-1.5">
@@ -301,13 +310,13 @@ function Start({ error, onFile, onExample }: { error?: string | undefined; onFil
           <h2 id="examples" className={LABEL}>
             Or open an example plan
           </h2>
-          <ul className="grid gap-px border border-litt-line bg-litt-line sm:grid-cols-2 lg:grid-cols-4">
+          <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             {EXAMPLES.map((ex) => (
-              <li key={ex.id} className="bg-litt-canvas">
+              <li key={ex.id} className="rounded-xl border border-litt-line bg-litt-canvas transition-colors duration-200 hover:border-litt-line-strong">
                 <button
                   type="button"
                   onClick={() => onExample(ex.id)}
-                  className={`group grid h-full w-full content-between gap-8 p-5 text-left transition-[background-color,scale] duration-300 ${EASE} hover:bg-litt-surface-1 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-litt-focus active:scale-[0.99] active:bg-litt-surface-2 motion-reduce:active:scale-100`}
+                  className={`group grid h-full w-full content-start gap-8 rounded-xl p-5 text-left transition-[background-color,scale] duration-300 ${EASE} hover:bg-litt-surface-1 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-litt-focus active:scale-[0.99] active:bg-litt-surface-2 motion-reduce:active:scale-100`}
                 >
                   <span className={`justify-self-start rounded-[4px] border px-2 py-0.5 text-litt-caption ${EXAMPLE_TONE[ex.id] ?? "border-litt-line text-litt-fg-muted"}`}>{EXAMPLE_TAG[ex.id]}</span>
                   <span className="grid gap-1.5">
@@ -522,7 +531,7 @@ function Workspace({ name, result, sha256: hash, initialPath }: { name: string; 
         <div className="min-h-0 flex-1 overflow-auto">
           {visible.length ? (
             <>
-              <ul ref={list} aria-label="Paths" onKeyDown={onKey} className="divide-y divide-litt-line border-b border-litt-line">
+              <ul ref={list} aria-label="Paths" onKeyDown={onKey} className="grid gap-0.5 p-2">
                 {visible.map((p) => (
                   <li key={p.id}>
                     <PathRow path={p} current={p.id === selectedId} onSelect={() => setSelectedId(p.id)} />
@@ -568,7 +577,26 @@ function Workspace({ name, result, sha256: hash, initialPath }: { name: string; 
           )}
         </div>
       </aside>
-      {selected ? <PathDetail key={selected.id} path={selected} /> : <section id="path-detail" aria-label="Path detail" />}
+      {selected ? (
+        <PathDetail key={selected.id} path={selected} />
+      ) : (
+        <section id="path-detail" aria-labelledby="detail-title" className="grid min-h-0 place-items-center overflow-auto p-8">
+          <div className="grid max-w-[420px] justify-items-center gap-3 text-center">
+            <span aria-hidden="true" className="grid size-12 place-items-center rounded-lg border border-litt-line-strong text-litt-fg-subtle">
+              <ShieldIcon className="size-5" />
+            </span>
+            <h2 id="detail-title" tabIndex={-1} className="text-litt-small font-medium text-litt-fg outline-none">
+              {result.paths.length ? "Choose a path" : "No path from the internet to check"}
+            </h2>
+            <p className="text-litt-small leading-relaxed text-litt-fg-muted">
+              {result.paths.length
+                ? "Pick a path on the left to see its verdict, the deciding rule, and every hop."
+                : "No security group in this plan opens a port to a public address. vpcdiff checks paths only where a port is open to the internet."}
+            </p>
+            <p className="text-litt-caption text-litt-fg-subtle">Checks {SCOPE} only.</p>
+          </div>
+        </section>
+      )}
     </div>
   );
 }
@@ -584,9 +612,8 @@ function PathRow({ path, current, onSelect }: { path: Path; current: boolean; on
       aria-controls="path-detail"
       tabIndex={current ? 0 : -1}
       onClick={onSelect}
-      className={`relative grid w-full gap-1.5 px-5 py-3.5 text-left transition-colors duration-200 hover:bg-litt-surface-1 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-litt-focus ${current ? "bg-litt-surface-1" : ""}`}
+      className={`grid w-full gap-1 rounded-lg px-3 py-2.5 text-left transition-colors duration-150 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-litt-focus ${current ? "bg-litt-surface-2" : "hover:bg-litt-surface-1"}`}
     >
-      <span aria-hidden="true" className={`absolute top-0 bottom-0 left-0 w-0.5 transition-opacity duration-200 ${TONE_BAR[v.tone]} ${current ? "opacity-100" : "opacity-0"}`} />
       <span className="flex min-w-0 items-center gap-2.5">
         <TargetIcon type={path.toType} className="size-4" />
         <span className="truncate font-litt-mono text-litt-small text-litt-fg">{path.to}</span>
@@ -595,7 +622,7 @@ function PathRow({ path, current, onSelect }: { path: Path; current: boolean; on
           {path.change === "unchanged" ? (path.outageRisk?.length ? "Outage risk" : "No change") : CHANGE_WORD[path.change]}
         </span>
       </span>
-      <span className="flex flex-wrap items-center gap-x-2 pl-[26px] text-litt-caption text-litt-fg-subtle">
+      <span className="flex flex-wrap items-center gap-x-2 pl-[26px] text-litt-caption text-litt-fg-muted">
         <span className="font-litt-mono">{portLabel(path)}</span>
         {src.length > 0 && <span className="font-litt-mono">from {src.includes("internet") ? "0.0.0.0/0" : src.join(", ")}</span>}
       </span>
@@ -753,8 +780,7 @@ function SideDetail({ title, cell }: { title: string; cell: Cell }) {
 function VerdictPanel({ path }: { path: Path }) {
   const v = verdictOf(path);
   return (
-    <section aria-label="Verdict" className="relative grid gap-4 border border-litt-line bg-litt-surface-1 p-4 pl-5">
-      <span aria-hidden="true" className={`absolute top-0 bottom-0 left-0 w-0.5 ${TONE_BAR[v.tone]}`} />
+    <section aria-label="Verdict" className="grid gap-4 rounded-xl border border-litt-line bg-litt-surface-1 p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="grid gap-1.5">
           <p className="font-display text-xl font-normal tracking-[-0.01em] text-litt-fg">{v.title}</p>
@@ -785,7 +811,7 @@ function VerdictPanel({ path }: { path: Path }) {
           <p className="max-w-[72ch] text-litt-small leading-relaxed text-litt-fg">{v.action}</p>
           {v.snippet && (
             <div className="flex items-start gap-2 justify-self-start">
-              <pre className="rounded-[6px] border border-litt-line bg-litt-canvas px-3 py-2 font-litt-mono text-litt-caption text-litt-fg">{v.snippet}</pre>
+              <pre className="rounded-md border border-litt-line bg-litt-canvas px-3 py-2 font-litt-mono text-litt-caption text-litt-fg">{v.snippet}</pre>
               <CopyButton text={v.snippet} what="the fix" />
             </div>
           )}
@@ -836,7 +862,7 @@ function PathDetail({ path }: { path: Path }) {
 
   return (
     <section id="path-detail" className="min-h-0 min-w-0 overflow-auto" aria-labelledby="detail-title">
-      <div className="mx-auto grid max-w-[1040px] gap-8 px-5 py-8 sm:px-10 sm:py-10 [&>*]:min-w-0">
+      <div className="mx-auto grid max-w-[1040px] animate-[detail-in_260ms_cubic-bezier(0.22,1,0.36,1)] gap-6 px-5 py-8 motion-reduce:animate-none sm:px-10 sm:py-10 [&>*]:min-w-0">
         <header className="grid gap-3">
           <p className="flex items-center gap-2 text-litt-caption text-litt-fg-subtle">
             <TargetIcon type={path.toType} className="size-4" />
@@ -857,13 +883,13 @@ function PathDetail({ path }: { path: Path }) {
 
         <VerdictPanel path={path} />
 
-        <div className="min-w-0 border border-litt-line p-5">
-          <PathStrip before={lanes.before.cells} after={lanes.after.cells} differs={differs} risk={risk} selected={selected} onSelect={select} type={path.toType} />
-        </div>
-
-        <section className="grid gap-3" aria-labelledby="hops-title">
-          <div className="flex flex-wrap items-baseline justify-between gap-3">
-            <h3 id="hops-title" className="font-display text-lg font-normal text-litt-fg">
+        {/* One evidence panel: the strip at a glance, then the hops in full. */}
+        <section className="min-w-0 overflow-hidden rounded-xl border border-litt-line" aria-labelledby="hops-title">
+          <div className="p-5">
+            <PathStrip before={lanes.before.cells} after={lanes.after.cells} differs={differs} risk={risk} selected={selected} onSelect={select} type={path.toType} />
+          </div>
+          <div className="flex flex-wrap items-baseline justify-between gap-3 border-t border-litt-line bg-litt-surface-1 px-5 py-3">
+            <h3 id="hops-title" className="text-litt-small font-medium text-litt-fg">
               Hops
             </h3>
             <p className="text-litt-caption text-litt-fg-subtle">
@@ -878,8 +904,8 @@ function PathDetail({ path }: { path: Path }) {
                     : "No hop differs"}
             </p>
           </div>
-          <ol className="divide-y divide-litt-line border border-litt-line">
-            <li aria-hidden="true" className="hidden grid-cols-[200px_minmax(0,1fr)_minmax(0,1fr)_32px] gap-4 bg-litt-surface-1 px-4 py-2 text-litt-caption text-litt-fg-subtle sm:grid">
+          <ol className="divide-y divide-litt-line border-t border-litt-line">
+            <li aria-hidden="true" className="hidden grid-cols-[200px_minmax(0,1fr)_minmax(0,1fr)_32px] gap-4 px-5 py-2 text-litt-caption text-litt-fg-subtle sm:grid">
               <span>Hop</span>
               <span>Before</span>
               <span>After</span>
@@ -899,9 +925,8 @@ function PathDetail({ path }: { path: Path }) {
                   ref={(el) => {
                     rows.current[i] = el;
                   }}
-                  className={`relative transition-colors duration-200 ${i === selected ? "bg-litt-surface-1" : ""}`}
+                  className={`relative transition-colors duration-200 ${i === risk ? "bg-litt-warning/[0.06]" : row ? "bg-litt-fg/[0.03]" : ""}`}
                 >
-                  {(row || i === risk) && <span aria-hidden="true" className={`absolute top-0 bottom-0 left-0 w-0.5 ${i === risk ? "bg-litt-warning" : "bg-litt-fg-muted"}`} />}
                   {/* The whole row opens and closes on click. The arrow button stays the keyboard and
                       screen reader control, so the row itself is not a second tab stop. */}
                   <div
@@ -911,12 +936,15 @@ function PathDetail({ path }: { path: Path }) {
                       setSelected(i);
                       toggle(i);
                     }}
-                    className={`grid cursor-pointer grid-cols-[minmax(0,1fr)_32px] items-center gap-4 px-4 transition-colors duration-150 hover:bg-litt-surface-1 sm:grid-cols-[200px_minmax(0,1fr)_minmax(0,1fr)_32px] ${row ? "py-3.5" : "py-2.5"}`}
+                    className={`grid cursor-pointer grid-cols-[minmax(0,1fr)_32px] items-center gap-4 px-5 transition-colors duration-150 hover:bg-litt-fg/[0.03] sm:grid-cols-[200px_minmax(0,1fr)_minmax(0,1fr)_32px] ${row ? "py-3.5" : "py-2.5"}`}
                   >
                     <span className="grid min-w-0 gap-1">
                       <HopName col={c} type={path.toType} className="text-litt-small text-litt-fg" />
-                      {row && <span className="pl-6 text-litt-caption text-litt-fg-muted">Differs</span>}
-                      {i === risk && <span className="pl-6 text-litt-caption text-litt-warning">Replaced delete-first</span>}
+                      {(row || i === risk) && (
+                        <span className="ml-6 justify-self-start">
+                          <span className={`rounded-[4px] border px-1.5 py-px text-litt-caption ${i === risk ? "border-litt-warning/40 text-litt-warning" : "border-litt-line-strong text-litt-fg-muted"}`}>{i === risk ? "Replaced delete-first" : "Changed"}</span>
+                        </span>
+                      )}
                       <span className="mt-1 flex flex-wrap items-center gap-2 pl-6 sm:hidden">
                         {only ? (
                           <DecisionTag state={only.state} />
@@ -974,7 +1002,7 @@ function PathDetail({ path }: { path: Path }) {
                   {/* Closed rows are inert, so keyboard focus never lands on a hidden link. */}
                   <div id={`hop-rule-${i}`} inert={!isOpen} className={`grid transition-[grid-template-rows] duration-300 ${EASE} motion-reduce:transition-none ${isOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}>
                     <div className="min-h-0 overflow-hidden">
-                      <div className="grid gap-5 border-t border-dashed border-litt-line px-4 py-4 sm:grid-cols-[200px_minmax(0,1fr)_minmax(0,1fr)_32px] sm:gap-4">
+                      <div className="grid gap-5 border-t border-dashed border-litt-line px-5 py-4 sm:grid-cols-[200px_minmax(0,1fr)_minmax(0,1fr)_32px] sm:gap-4">
                         <span className="hidden text-litt-caption leading-relaxed text-litt-fg-subtle sm:block">{HOP_HELP[c.key]}</span>
                         {only ? (
                           <span className="sm:col-span-2">
@@ -994,7 +1022,7 @@ function PathDetail({ path }: { path: Path }) {
             })}
             {changedCount > 0 && sameRows.length > 0 && (
               <li>
-                <button type="button" aria-expanded={showSame} onClick={() => setShowSame((v) => !v)} className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-litt-caption text-litt-fg-muted transition-colors duration-200 hover:bg-litt-surface-1 hover:text-litt-fg focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-litt-focus">
+                <button type="button" aria-expanded={showSame} onClick={() => setShowSame((v) => !v)} className="flex w-full items-center gap-2 px-5 py-2.5 text-left text-litt-caption text-litt-fg-muted transition-colors duration-200 hover:bg-litt-surface-1 hover:text-litt-fg focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-litt-focus">
                   {showSame ? <MinusIcon aria-hidden="true" className="size-3.5" /> : <PlusIcon aria-hidden="true" className="size-3.5" />}
                   {showSame ? "Hide the hops that are the same" : `Show ${sameRows.length} hops that are the same before and after`}
                 </button>
