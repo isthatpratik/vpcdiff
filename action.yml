@@ -2,8 +2,8 @@ name: vpcdiff
 description: "Show how a Terraform plan changes AWS network reachability from the internet, with the deciding rule at each hop."
 author: Pratik Desai
 branding:
-  icon: shield
-  color: blue
+  icon: triangle
+  color: gray-dark
 inputs:
   plan:
     description: "Path to the plan as JSON (`terraform show -json tfplan > plan.json`)."

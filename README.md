@@ -43,7 +43,7 @@ AWS account or credentials, and the viewer never sends your plan anywhere.
   <img alt="The vpcdiff viewer on a plan that opens PostgreSQL to the internet: the plan verdict, the path, the security group rule that decided it, what to do, and the hops before and after" src="docs/assets/viewer.png" width="100%">
 </p>
 
-> **Status:** [v0.1.0](https://github.com/isthatpratik/vpcdiff/releases/tag/v0.1.0) is
+> **Status:** [v0.1.1](https://github.com/isthatpratik/vpcdiff/releases/tag/v0.1.1) is
 > released. It checks IPv4 paths from the internet to instances, databases, and load
 > balancers (see the [support matrix](#support-matrix)); paths inside the VPC are next on
 > the [roadmap](#roadmap). Design notes are in [`docs/design`](docs/design),
@@ -53,7 +53,7 @@ AWS account or credentials, and the viewer never sends your plan anywhere.
 
 ```yaml
 - run: terraform show -json tfplan > plan.json
-- uses: isthatpratik/vpcdiff@v0.1.0
+- uses: isthatpratik/vpcdiff@v0.1.1
   with:
     plan: plan.json
     # fail-on: added   # added | changed | unknown | never
