@@ -156,7 +156,7 @@ export function Footer() {
             </div>
             <div className="self-end md:justify-self-end">
               <Cta href={APP} primary>
-                Launch app
+                Try it free
               </Cta>
             </div>
           </div>
