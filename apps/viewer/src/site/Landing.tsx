@@ -225,7 +225,7 @@ function Nav() {
             </span>
             <span className="ml-2">
               <Cta href={APP} primary size="sm">
-                Check your plan
+                Try it
               </Cta>
             </span>
           </div>
@@ -273,7 +273,7 @@ function Hero() {
           <div className="grid justify-items-start gap-4 lg:justify-items-end">
             <div className="flex flex-wrap gap-3">
               <Cta href={APP} primary>
-                Check your plan
+                Scan a plan
               </Cta>
               <Cta href={REPO} external>
                 View on GitHub
@@ -426,7 +426,7 @@ export function Landing() {
             <p className="max-w-[520px] text-lg text-litt-fg-muted">Open a plan in the viewer, or add the check to your pull requests. Free, open source, and offline.</p>
             <div className="flex flex-wrap justify-center gap-3">
               <Cta href={APP} primary>
-                Check your plan
+                Get started
               </Cta>
               <Cta href={REPO} external>
                 View on GitHub
