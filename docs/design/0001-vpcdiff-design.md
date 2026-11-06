@@ -146,9 +146,12 @@ plan.json
    port range that one of its security groups (or, for a Network Load Balancer without
    groups, its listeners) opens to a public address on either side of the plan.
 3. **Transient outage during replace.** A path that is allowed before and after the plan
-   gets `outageRisk`: the resources on it (endpoint, subnet, VPC, internet gateway,
-   security groups, NACL, route table) that the plan replaces with
-   `["delete", "create"]`. With `create_before_destroy` (`["create", "delete"]`) there is
+   gets `outageRisk`: the resources on it that the plan replaces with
+   `["delete", "create"]`. "On it" means the endpoint, subnet, VPC, internet gateway,
+   security groups, NACL, and route table, and every resource that shaped them: rule
+   resources, routes, associations, the gateway attachment, Elastic IPs, load balancer
+   listeners, and the DB subnet group. Managed defaults (`aws_default_*`) are skipped,
+   because Terraform never deletes the real object. With `create_before_destroy` (`["create", "delete"]`) there is
    no gap, so those are not listed. The CLI, the Action, and the viewer show these paths
    even when reachability does not change.
 4. **Graph layout.** Fixed: one row per hop, before and after as two columns

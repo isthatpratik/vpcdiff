@@ -83,18 +83,24 @@ function evaluateAll(list: Endpoint[] | undefined, p: Protocol, ports: Range): O
 function deleteFirst(list: Endpoint[] | undefined, snap: Snapshot): string[] {
   const out = new Set<string>();
   for (const e of list ?? []) {
-    const onPath = [e.address];
+    // The objects on the path and every resource that shaped them (rule resources,
+    // associations, attachments, Elastic IPs, listeners, DB subnet groups).
+    const onPath = [e.address, ...(e.via ?? [])];
     if (e.subnet.ok) onPath.push(e.subnet.value);
     if (e.vpc.ok) {
-      onPath.push(e.vpc.value.address);
+      onPath.push(e.vpc.value.address, ...(e.vpc.value.via ?? []));
       if (e.vpc.value.igw.ok && e.vpc.value.igw.value) onPath.push(e.vpc.value.igw.value);
     }
-    if (e.securityGroups.ok) onPath.push(...e.securityGroups.value.map((g) => g.address));
-    if (e.nacl.ok) onPath.push(e.nacl.value.resource);
-    if (e.routeTable.ok) onPath.push(e.routeTable.value.resource);
+    if (e.securityGroups.ok) for (const g of e.securityGroups.value) onPath.push(g.address, ...(g.via ?? []));
+    if (e.nacl.ok) onPath.push(e.nacl.value.resource, ...(e.nacl.value.via ?? []));
+    if (e.routeTable.ok) onPath.push(e.routeTable.value.resource, ...(e.routeTable.value.via ?? []));
     for (const a of onPath) {
-      const actions = snap.resources.get(a)?.actions ?? [];
-      if (actions[0] === "delete" && actions.includes("create")) out.add(a);
+      const r = snap.resources.get(a);
+      // Managed defaults (aws_default_*) adopt objects that "can be managed but not
+      // destroyed", so replacing them never deletes the real object.
+      // https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/default_route_table
+      if (!r || r.type.startsWith("aws_default_")) continue;
+      if (r.actions[0] === "delete" && r.actions.includes("create")) out.add(a);
     }
   }
   return [...out].toSorted(cmp);
