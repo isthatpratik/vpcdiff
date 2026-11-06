@@ -310,16 +310,19 @@ function configRefs(plan) {
     if (!isObj(mod)) return;
     for (const r of Array.isArray(mod.resources) ? mod.resources : []) {
       if (!isObj(r) || r.mode !== "managed") continue;
-      const info = { refs: {}, configured: /* @__PURE__ */ new Set(), otherRefs: /* @__PURE__ */ new Set() };
+      const info = { refs: {}, fullRefs: {}, configured: /* @__PURE__ */ new Set(), otherRefs: /* @__PURE__ */ new Set() };
       for (const [attr, expr] of Object.entries(isObj(r.expressions) ? r.expressions : {})) {
         info.configured.add(attr);
         const found = /* @__PURE__ */ new Set();
+        const full = /* @__PURE__ */ new Set();
         collect(expr, (ref) => {
           const m = /^(aws_\w+\.[\w-]+(?:\[[^\]]+\])?)$/.exec(ref);
           if (m) found.add(prefix + m[1]);
-          else if (!RESOURCE_REF.test(ref)) info.otherRefs.add(attr);
+          if (RESOURCE_REF.test(ref)) full.add(prefix + ref);
+          else info.otherRefs.add(attr);
         });
         if (found.size) info.refs[attr] = [...found].sort(cmp);
+        if (full.size) info.fullRefs[attr] = [...full].sort(cmp);
       }
       out.set(prefix + String(r.address), info);
     }
@@ -354,14 +357,14 @@ function parsePlan(input2) {
     const type = String(rc.type);
     const actions = Array.isArray(rc.change.actions) ? rc.change.actions.map(String) : [];
     const base = stripKeys(address);
-    const info = refs.get(base) ?? { refs: {}, configured: /* @__PURE__ */ new Set(), otherRefs: /* @__PURE__ */ new Set() };
+    const info = refs.get(base) ?? { refs: {}, fullRefs: {}, configured: /* @__PURE__ */ new Set(), otherRefs: /* @__PURE__ */ new Set() };
     const sides = [
       [before, rc.change.before, false],
       [after, rc.change.after, rc.change.after_unknown ?? false]
     ];
     for (const [snap, values, unknown2] of sides) {
       if (!isObj(values)) continue;
-      snap.resources.set(address, { address, type, values, unknown: unknown2, refs: info.refs, configured: info.configured, otherRefs: info.otherRefs, actions });
+      snap.resources.set(address, { address, type, values, unknown: unknown2, refs: info.refs, fullRefs: info.fullRefs, configured: info.configured, otherRefs: info.otherRefs, actions });
       if (typeof values.id === "string") snap.byId.set(values.id, address);
       const list = snap.instancesOf.get(base) ?? [];
       list.push(address);
@@ -421,8 +424,14 @@ function localize(from, ref) {
   const prefix = ADDRESS.exec(from)?.[1] ?? "";
   return prefix + (ADDRESS.exec(ref)?.[2] ?? ref);
 }
+function instanceOf(snap, t) {
+  if (snap.resources.has(t)) return t;
+  const instances = [...snap.resources.keys()].filter((a) => a.startsWith(t) && stripKeys(a.slice(t.length)) === "");
+  return instances.length === 1 ? instances[0] : void 0;
+}
 function fromConfig(snap, r, attr, targetType) {
-  const targets = (r.refs[attr] ?? []).filter((a) => stripKeys(a).split(".").at(-2) === targetType);
+  const types = Array.isArray(targetType) ? targetType : [targetType];
+  const targets = (r.refs[attr] ?? []).filter((a) => types.includes(stripKeys(a).split(".").at(-2) ?? ""));
   if (!targets.length) return [{ kind: "unknown", reason: `${r.address}: ${attr} is unknown until apply and has no resource reference` }];
   return targets.map((ref) => {
     const t = localize(r.address, ref);
@@ -442,18 +451,20 @@ function resolveRef(snap, r, attr, targetType) {
 // ../engine/src/model.ts
 var known = (value) => ({ ok: true, value });
 var unknown = (reason) => ({ ok: false, reason });
-var UNMODELED_SG = ["aws_security_group_rule", "aws_vpc_security_group_ingress_rule", "aws_vpc_security_group_egress_rule"];
-var UNMODELED_ROUTES = ["aws_route", "aws_vpn_gateway_route_propagation"];
-var UNMODELED_MAIN_ROUTES = ["aws_main_route_table_association", "aws_default_route_table"];
-var UNMODELED_NACL = ["aws_network_acl_rule"];
-var UNMODELED_SUBNET = ["aws_network_acl_association"];
-var UNMODELED_IGW = ["aws_internet_gateway_attachment"];
-var UNMODELED_INSTANCE = ["aws_eip", "aws_eip_association", "aws_network_interface_sg_attachment", "aws_network_interface_attachment"];
-var UNMODELED = /* @__PURE__ */ new Set([...UNMODELED_SG, ...UNMODELED_ROUTES, ...UNMODELED_MAIN_ROUTES, ...UNMODELED_NACL, ...UNMODELED_SUBNET, ...UNMODELED_IGW, ...UNMODELED_INSTANCE]);
+var UNMODELED_ROUTES = ["aws_vpn_gateway_route_propagation"];
+var UNMODELED_INSTANCE = ["aws_network_interface_sg_attachment", "aws_network_interface_attachment"];
+var UNMODELED = /* @__PURE__ */ new Set([...UNMODELED_ROUTES, ...UNMODELED_INSTANCE]);
+var VPC_DEFAULTS = [
+  ["default_route_table_id", "default-rt"],
+  ["main_route_table_id", "main-rt"],
+  ["default_network_acl_id", "default-nacl"],
+  ["default_security_group_id", "default-sg"]
+];
 var typeOf = (address) => address.replace(/\[[^\]]*\]/g, "").split(".").at(-2) ?? "";
 var str = (v) => typeof v === "string" && v !== "" ? v : void 0;
 var num = (v) => typeof v === "number" ? v : typeof v === "string" && /^-?\d+$/.test(v) ? Number(v) : void 0;
 var arr = (v) => Array.isArray(v) ? v : [];
+var isNull = (r, attr) => isUnknown(r, [attr]) ? !r.configured.has(attr) : r.values[attr] === null || r.values[attr] === void 0 || r.values[attr] === "";
 function normalizeProtocol(p) {
   const s = String(p).toLowerCase();
   if (s === "-1" || s === "all") return "all";
@@ -469,18 +480,41 @@ function portSet(protocol, from, to) {
   return fromRanges([[Math.max(0, lo), Math.min(65535, hi)]]);
 }
 var describePorts = (protocol, from, to) => protocol === "all" ? "all traffic" : `${protocol} ${from === to ? String(from) : `${String(from)}-${String(to)}`}`;
+var localRoutes = (vpc, table, cidrs) => cidrs.map((range) => ({ cidr: [range], prefix: 32 - Math.log2(range[1] - range[0] + 1), target: { kind: "local" }, text: `${table} local route` }));
+var Index = class {
+  byKey = /* @__PURE__ */ new Map();
+  /** Set when a rule's target cannot be resolved: every target of this kind is then unknown. */
+  unresolved;
+  add(key, item) {
+    if (!key.ok) this.unresolved ??= key.reason;
+    else if (key.value !== null) this.byKey.set(key.value, [...this.byKey.get(key.value) ?? [], item]);
+  }
+  get(key) {
+    if (this.unresolved) return unknown(this.unresolved);
+    const out = [];
+    for (const item of this.byKey.get(key) ?? []) {
+      if (!item.ok) return unknown(item.reason);
+      out.push(item.value);
+    }
+    return known(out);
+  }
+};
 var ModelBuilder = class {
   constructor(snap) {
     this.snap = snap;
+    this.indexRuleResources();
     for (const r of snap.resources.values()) {
       if (!UNMODELED.has(r.type)) continue;
       const targets = /* @__PURE__ */ new Set();
-      for (const list of Object.values(r.refs)) {
-        for (const t of list) for (const inst of snap.resources.has(t) ? [t] : snap.instancesOf.get(t) ?? []) targets.add(inst);
-      }
+      for (const list of Object.values(r.refs)) for (const t of list) for (const a of [instanceOf(snap, localize(r.address, t))]) if (a) targets.add(a);
       for (const v of Object.values(r.values)) {
         const t = typeof v === "string" ? snap.byId.get(v) : void 0;
         if (t) targets.add(t);
+      }
+      for (const attr of /* @__PURE__ */ new Set([...Object.keys(r.fullRefs), ...Object.keys(r.values).filter((k) => k.endsWith("_id"))])) {
+        const key = this.target(r, attr, false);
+        if (!key.ok) this.touchesAnything.push(r);
+        else if (key.value !== null) targets.add(key.value);
       }
       for (const t of targets) this.touchedBy.set(t, [...this.touchedBy.get(t) ?? [], r]);
     }
@@ -488,10 +522,25 @@ var ModelBuilder = class {
   snap;
   /** Target address to the unmodeled resources that point at it. */
   touchedBy = /* @__PURE__ */ new Map();
+  sgRules = new Index();
+  routes = new Index();
+  naclRules = new Index();
+  /** Subnet address to the NACL keys associated with it by aws_network_acl_association. */
+  naclAssoc = new Index();
+  /** VPC address to the route table set as main by aws_main_route_table_association. */
+  mainAssoc = new Index();
+  /** Instance address to the Elastic IPs associated with it. */
+  eips = new Index();
+  /** VPC address to internet gateways attached by aws_internet_gateway_attachment. */
+  igwAttach = new Index();
+  /** Unmodeled resources whose target cannot be resolved: they may change anything of their kind. */
+  touchesAnything = [];
   /** Reason why `address` is unknown because an unmodeled resource of `types` changes it. */
   touched(address, types) {
     const r = (this.touchedBy.get(address) ?? []).find((x) => types.includes(x.type));
-    return r ? `${r.address} (${r.type}) changes ${address}, and ${r.type} is not modeled yet` : void 0;
+    if (r) return `${r.address} (${r.type}) changes ${address}, and ${r.type} is not modeled yet`;
+    const any = this.touchesAnything.find((x) => types.includes(x.type));
+    return any ? `${any.address} (${any.type}) may change ${address}, and ${any.type} is not modeled yet` : void 0;
   }
   get(address) {
     return this.snap.resources.get(address);
@@ -505,14 +554,203 @@ var ModelBuilder = class {
     if (ref.kind === "external") return unknown(`${r.address}: ${attr} = ${ref.id} is not managed in this plan`);
     return unknown(ref.reason);
   }
-  refsTo(r, attr, type) {
-    const out = [];
-    for (const ref of resolveRefs(this.snap, r, attr, type)) {
-      if (ref.kind === "unknown") return unknown(ref.reason);
-      if (ref.kind === "external") return unknown(`${r.address}: ${attr} contains ${ref.id}, which is not managed in this plan`);
-      out.push(ref.address);
+  /** Like refTo, but a known ID outside the plan is `null` (it cannot point at a modeled object). */
+  optionalRefTo(r, attr, type) {
+    if (isNull(r, attr)) return known(null);
+    const ref = resolveRef(this.snap, r, attr, type);
+    if (ref.kind === "resource") return known(ref.address);
+    if (ref.kind === "external") return known(null);
+    return unknown(ref.reason);
+  }
+  /**
+   * The target key of an attribute that holds the ID of a security group, route table,
+   * or NACL. Handles VPC default objects (`aws_vpc.x.default_route_table_id`), managed
+   * defaults, and plain resources. A known ID outside the plan is `null`.
+   */
+  target(r, attr, normalize = true) {
+    const norm = (key) => normalize ? this.normalizeKey(key) : known(key);
+    if (isNull(r, attr)) return known(null);
+    const v = r.values[attr];
+    if (!isUnknown(r, [attr]) && typeof v === "string") {
+      const address2 = this.snap.byId.get(v);
+      if (address2) return this.canonical(address2);
+      for (const vpc of this.ofType("aws_vpc")) for (const [a, kind] of VPC_DEFAULTS) if (vpc.values[a] === v) return norm(`${kind}:${vpc.address}`);
+      return known(null);
     }
-    return known(out);
+    if (r.otherRefs.has(attr)) return unknown(`${r.address}: ${attr} uses values that are unknown until apply`);
+    const bases = /* @__PURE__ */ new Map();
+    for (const ref of r.fullRefs[attr] ?? []) {
+      const m = /^(.*?aws_\w+\.[\w-]+(?:\[[^\]]+\])?)(?:\.(\w+))?$/.exec(localize(r.address, ref));
+      if (!m) continue;
+      const base2 = m[1];
+      if (m[2] || !bases.has(base2)) bases.set(base2, m[2] ?? bases.get(base2));
+    }
+    if (bases.size !== 1) return unknown(`${r.address}: ${attr} is unknown until apply and cannot be matched to one resource`);
+    const [base, part] = [...bases.entries()][0];
+    const address = instanceOf(this.snap, base);
+    if (!address) return unknown(`${r.address}: ${attr} refers to ${base}, which is not one resource on the ${this.snap.side} side`);
+    if (typeOf(address) === "aws_vpc") {
+      const kind = VPC_DEFAULTS.find(([a]) => a === part)?.[1];
+      return kind ? norm(`${kind}:${address}`) : unknown(`${r.address}: ${attr} refers to ${address}.${part ?? "id"}`);
+    }
+    return this.canonical(address);
+  }
+  /** `main-rt:vpc` is the default route table unless an association replaces the main table. */
+  normalizeKey(key) {
+    if (!key.startsWith("main-rt:")) return known(key);
+    const vpc = key.slice("main-rt:".length);
+    const set = this.mainAssoc.byKey.get(vpc);
+    if (this.mainAssoc.unresolved || set?.length) return unknown(`${key}: rules that target the main route table of a VPC with aws_main_route_table_association are not modeled`);
+    return known(`default-rt:${vpc}`);
+  }
+  /** Managed default resources share the key of the default object they adopt. */
+  canonical(address) {
+    const r = this.get(address);
+    if (!r) return known(address);
+    if (r.type === "aws_default_route_table") return this.adopted(r, "default_route_table_id", "default-rt");
+    if (r.type === "aws_default_network_acl") return this.adopted(r, "default_network_acl_id", "default-nacl");
+    if (r.type === "aws_default_security_group") {
+      const vpc = this.refTo(r, "vpc_id", "aws_vpc");
+      return vpc.ok ? known(`default-sg:${vpc.value}`) : unknown(vpc.reason);
+    }
+    return known(address);
+  }
+  adopted(r, attr, kind) {
+    const v = r.values[attr];
+    if (!isUnknown(r, [attr]) && typeof v === "string") {
+      for (const vpc of this.ofType("aws_vpc")) if (VPC_DEFAULTS.some(([a]) => vpc.values[a] === v)) return known(`${kind}:${vpc.address}`);
+      return unknown(`${r.address}: ${attr} = ${v} is not the default of a VPC in this plan`);
+    }
+    const refs = r.otherRefs.has(attr) ? [] : fromConfig(this.snap, r, attr, "aws_vpc");
+    const ref = refs.length === 1 ? refs[0] : void 0;
+    return ref?.kind === "resource" ? known(`${kind}:${ref.address}`) : unknown(`${r.address}: cannot tell which VPC's default it manages`);
+  }
+  managedDefault(key, type) {
+    let found;
+    for (const d of this.ofType(type)) {
+      const k = this.canonical(d.address);
+      if (!k.ok) return unknown(k.reason);
+      if (k.value !== key) continue;
+      if (found) return unknown(`${key} is managed by both ${found.address} and ${d.address}`);
+      found = d;
+    }
+    return known(found);
+  }
+  indexRuleResources() {
+    const all = [...this.snap.resources.values()];
+    const ordered = [...all.filter((r) => r.type === "aws_main_route_table_association"), ...all.filter((r) => r.type !== "aws_main_route_table_association")];
+    for (const r of ordered) {
+      switch (r.type) {
+        case "aws_security_group_rule": {
+          if (!isUnknown(r, ["type"]) && r.values.type === "egress") break;
+          const item = isUnknown(r, ["type"]) ? unknown(`${r.address}: type is unknown until apply`) : this.sgRuleOf(r, r.values.protocol, r.values.from_port, r.values.to_port, arr(r.values.cidr_blocks).map(String), arr(r.values.prefix_list_ids).length > 0, ["protocol", "from_port", "to_port", "cidr_blocks", "prefix_list_ids"]);
+          this.addSgRule(r, item);
+          break;
+        }
+        case "aws_vpc_security_group_ingress_rule": {
+          const cidr = str(r.values.cidr_ipv4);
+          this.addSgRule(r, this.sgRuleOf(r, r.values.ip_protocol, r.values.from_port, r.values.to_port, cidr ? [cidr] : [], !!str(r.values.prefix_list_id), ["ip_protocol", "from_port", "to_port", "cidr_ipv4", "prefix_list_id"]));
+          break;
+        }
+        case "aws_route": {
+          this.routes.add(this.target(r, "route_table_id"), this.routeOf(r));
+          break;
+        }
+        case "aws_network_acl_rule": {
+          this.naclRules.add(this.target(r, "network_acl_id"), this.naclRuleOf(r));
+          break;
+        }
+        case "aws_network_acl_association": {
+          const subnet = this.optionalRefTo(r, "subnet_id", "aws_subnet");
+          const acl = this.target(r, "network_acl_id");
+          this.naclAssoc.add(subnet, acl.ok && acl.value !== null ? known(acl.value) : unknown(acl.ok ? `${r.address}: network_acl_id is outside this plan` : acl.reason));
+          break;
+        }
+        case "aws_main_route_table_association": {
+          const vpc = this.optionalRefTo(r, "vpc_id", "aws_vpc");
+          const t = this.optionalRefTo(r, "route_table_id", ["aws_route_table", "aws_default_route_table"]);
+          const table = t.ok && t.value ? this.canonical(t.value) : unknown(t.ok ? `${r.address}: route_table_id is outside this plan` : t.reason);
+          this.mainAssoc.add(vpc, table);
+          break;
+        }
+        case "aws_eip": {
+          if (isNull(r, "instance") && !isNull(r, "network_interface")) this.eips.add(unknown(`${r.address} is associated with a network interface, which is not modeled yet`), known(r.address));
+          else this.eips.add(this.optionalRefTo(r, "instance", "aws_instance"), known(r.address));
+          break;
+        }
+        case "aws_eip_association": {
+          if (isNull(r, "instance_id") && !isNull(r, "network_interface_id")) this.eips.add(unknown(`${r.address} is associated with a network interface, which is not modeled yet`), known(r.address));
+          else this.eips.add(this.optionalRefTo(r, "instance_id", "aws_instance"), known(r.address));
+          break;
+        }
+        case "aws_internet_gateway_attachment": {
+          const igw = this.refTo(r, "internet_gateway_id", "aws_internet_gateway");
+          this.igwAttach.add(this.optionalRefTo(r, "vpc_id", "aws_vpc"), igw);
+          break;
+        }
+      }
+    }
+  }
+  addSgRule(r, item) {
+    const key = this.target(r, "security_group_id");
+    if (item.ok && item.value === null) return;
+    this.sgRules.add(key, item);
+  }
+  sgRuleOf(r, protocolValue, from, to, cidrs, prefixList, fields) {
+    if (fields.some((f) => hasUnknown(r, [f]))) return unknown(`${r.address} has values that are unknown until apply`);
+    if (prefixList) return unknown(`${r.address} uses a prefix list, which is not modeled yet`);
+    if (!cidrs.length) return known(null);
+    const protocol = normalizeProtocol(protocolValue);
+    if (protocol === "other") return known(null);
+    const ports = portSet(protocol, from, to);
+    const sets = cidrs.map((c) => cidrToSet(c));
+    if (!ports || sets.some((s) => !s)) return unknown(`${r.address} has a value the engine cannot read`);
+    return known({ protocol, ports, sources: fromRanges(sets.flat()), text: `${r.address} ingress ${describePorts(protocol, from, to)} from ${cidrs.join(", ")}` });
+  }
+  naclRuleOf(r) {
+    if (["egress", "rule_number", "protocol", "rule_action", "cidr_block", "from_port", "to_port"].some((f) => hasUnknown(r, [f]))) return unknown(`${r.address} has values that are unknown until apply`);
+    const egress = r.values.egress === true;
+    const key = egress ? "egress" : "ingress";
+    const cidr = str(r.values.cidr_block);
+    if (!cidr) return known({ egress, rule: { ruleNo: num(r.values.rule_number) ?? 0, allow: false, protocol: "other", ports: [], cidr: [], text: `${r.address} (IPv6)` } });
+    const protocol = normalizeProtocol(r.values.protocol);
+    if (protocol === "other") return known({ egress, rule: { ruleNo: num(r.values.rule_number) ?? 0, allow: false, protocol, ports: [], cidr: [], text: `${r.address} (${String(r.values.protocol)})` } });
+    const ports = portSet(protocol, r.values.from_port, r.values.to_port);
+    const set = cidrToSet(cidr);
+    const ruleNo = num(r.values.rule_number);
+    if (!ports || !set || ruleNo === void 0) return unknown(`${r.address} has a value the engine cannot read`);
+    const allow = String(r.values.rule_action).toLowerCase() === "allow";
+    return known({ egress, rule: { ruleNo, allow, protocol, ports, cidr: set, text: `${r.address} ${key} rule ${ruleNo}: ${allow ? "allow" : "deny"} ${describePorts(protocol, r.values.from_port, r.values.to_port)} ${egress ? "to" : "from"} ${cidr}` } });
+  }
+  gatewayTarget(r, gw, text) {
+    if (!gw.ok) return { kind: "unknown", reason: gw.reason };
+    if (gw.value === null) return { kind: "unknown", reason: `${text}: gateway is not in this plan` };
+    return typeOf(gw.value) === "aws_internet_gateway" ? { kind: "igw", address: gw.value } : { kind: "other", text: typeOf(gw.value).replace(/^aws_/, "").replaceAll("_", " ") };
+  }
+  routeOf(r) {
+    if (hasUnknown(r, ["destination_cidr_block"])) return unknown(`${r.address}: destination is unknown until apply`);
+    const cidr = str(r.values.destination_cidr_block);
+    if (!cidr) {
+      if (str(r.values.destination_prefix_list_id) || isUnknown(r, ["destination_prefix_list_id"])) return unknown(`${r.address} uses a prefix list, which is not modeled yet`);
+      return known({ cidr: [], prefix: 0, target: { kind: "local" }, text: `${r.address} (IPv6)` });
+    }
+    const set = cidrToSet(cidr);
+    const prefix = cidrPrefixLength(cidr);
+    if (!set || prefix === void 0) return unknown(`${r.address}: destination ${cidr} cannot be read`);
+    let target;
+    if (r.values.gateway_id === "local") target = { kind: "local" };
+    else if (!isNull(r, "gateway_id")) {
+      const gw = r.values.gateway_id;
+      if (!isUnknown(r, ["gateway_id"]) && typeof gw === "string") {
+        const a = this.snap.byId.get(gw);
+        target = a ? this.gatewayTarget(r, known(a), r.address) : { kind: "unknown", reason: `${r.address}: gateway ${gw} is not in this plan` };
+      } else target = this.gatewayTarget(r, this.refTo(r, "gateway_id", ["aws_internet_gateway", "aws_vpn_gateway"]), r.address);
+    } else {
+      const other = ["nat_gateway_id", "network_interface_id", "transit_gateway_id", "vpc_peering_connection_id", "vpc_endpoint_id", "egress_only_gateway_id", "carrier_gateway_id", "local_gateway_id", "core_network_arn"].find((k) => !isNull(r, k));
+      target = other ? { kind: "other", text: other.replace(/_id$|_arn$/, "").replaceAll("_", " ") } : { kind: "unknown", reason: `${r.address} has no target the engine can read` };
+    }
+    const to = target.kind === "igw" ? target.address : target.kind === "other" ? target.text : target.kind;
+    return known({ cidr: set, prefix, target, text: `${r.address} ${cidr} -> ${to}` });
   }
   vpc(address) {
     const r = this.get(address);
@@ -524,28 +762,47 @@ var ModelBuilder = class {
       return !v.ok || v.value === address;
     });
     const cidrs = isUnknown(r, ["cidr_block"]) || !set ? unknown(`${address}: cidr_block is unknown`) : extra.length ? unknown(`${address} has secondary CIDR blocks, which are not modeled yet`) : known(set);
-    const igws = [];
+    const igws = /* @__PURE__ */ new Set();
     for (const g of this.ofType("aws_internet_gateway")) {
-      if (g.values.vpc_id === null && !isUnknown(g, ["vpc_id"])) continue;
-      const v = this.refTo(g, "vpc_id", "aws_vpc");
-      if (!v.ok) return { ok: true, value: { address, cidrs, igw: unknown(v.reason) } };
-      if (v.value === address) igws.push(g.address);
+      const v = this.optionalRefTo(g, "vpc_id", "aws_vpc");
+      if (!v.ok) return known({ address, cidrs, igw: unknown(v.reason) });
+      if (v.value === address) igws.add(g.address);
     }
-    const touchedIgw = [address, ...igws].map((g) => this.touched(g, UNMODELED_IGW)).find(Boolean);
-    const igw = touchedIgw ? unknown(touchedIgw) : igws.length > 1 ? unknown(`${address} has ${igws.length} internet gateways in the plan`) : known(igws[0]);
+    const attached = this.igwAttach.get(address);
+    if (!attached.ok) return known({ address, cidrs, igw: unknown(attached.reason) });
+    attached.value.forEach((g) => igws.add(g));
+    const igw = igws.size > 1 ? unknown(`${address} has ${igws.size} internet gateways in the plan`) : known([...igws][0]);
     return known({ address, cidrs, igw });
   }
-  securityGroup(address) {
-    const r = this.get(address);
-    if (!r) return { address, ingress: unknown(`${address} is not in this plan`) };
-    const touched = this.touched(address, UNMODELED_SG);
-    if (touched) return { address, ingress: unknown(touched) };
-    if (isUnknown(r, ["ingress"])) return { address, ingress: unknown(`${address}: ingress is unknown until apply`) };
+  /** A security group by key, with inline rules and rule resources merged. */
+  securityGroup(key) {
+    const extra = this.sgRules.get(key);
+    if (key.startsWith("default-sg:")) {
+      const vpc = key.slice("default-sg:".length);
+      const managed = this.managedDefault(key, "aws_default_security_group");
+      if (!managed.ok) return { address: `default security group of ${vpc}`, ingress: unknown(managed.reason) };
+      if (!managed.value) {
+        return { address: `default security group of ${vpc}`, ingress: extra };
+      }
+      return this.inlineSg(managed.value, extra);
+    }
+    const r = this.get(key);
+    if (!r) return { address: key, ingress: unknown(`${key} is not in this plan`) };
+    return this.inlineSg(r, extra);
+  }
+  inlineSg(r, extra) {
+    const address = r.address;
+    if (!extra.ok) return { address, ingress: extra };
+    if (isUnknown(r, ["ingress"])) {
+      if (!r.configured.has("ingress")) return { address, ingress: extra };
+      return { address, ingress: unknown(`${address}: ingress is unknown until apply`) };
+    }
     const rules = [];
     for (const [i, raw] of arr(r.values.ingress).entries()) {
       if (!isObj(raw)) continue;
       if (hasUnknown(r, ["ingress", i])) return { address, ingress: unknown(`${address}: ingress rule ${i} has values that are unknown until apply`) };
       const protocol = normalizeProtocol(raw.protocol);
+      if (protocol === "other") continue;
       const ports = portSet(protocol, raw.from_port, raw.to_port);
       const cidrs = arr(raw.cidr_blocks).map(String);
       if (arr(raw.prefix_list_ids).length) return { address, ingress: unknown(`${address}: ingress rule ${i} uses a prefix list, which is not modeled yet`) };
@@ -554,16 +811,17 @@ var ModelBuilder = class {
       if (!cidrs.length) continue;
       rules.push({ protocol, ports, sources: fromRanges(sets.flat()), text: `${address} ingress ${describePorts(protocol, raw.from_port, raw.to_port)} from ${cidrs.join(", ")}` });
     }
-    return { address, ingress: known(rules) };
+    return { address, ingress: known([...rules, ...extra.value]) };
   }
-  naclRules(r, key) {
-    if (isUnknown(r, [key])) return unknown(`${r.address}: ${key} is unknown until apply`);
+  inlineNaclRules(r, key) {
+    if (isUnknown(r, [key])) return r.configured.has(key) ? unknown(`${r.address}: ${key} is unknown until apply`) : known([]);
     const rules = [];
     for (const [i, raw] of arr(r.values[key]).entries()) {
       if (!isObj(raw)) continue;
       if (hasUnknown(r, [key, i])) return unknown(`${r.address}: ${key} rule ${i} has values that are unknown until apply`);
       if (str(raw.ipv6_cidr_block)) continue;
       const protocol = normalizeProtocol(raw.protocol);
+      if (protocol === "other") continue;
       const ports = portSet(protocol, raw.from_port, raw.to_port);
       const cidr = str(raw.cidr_block);
       const set = cidr ? cidrToSet(cidr) : void 0;
@@ -572,47 +830,60 @@ var ModelBuilder = class {
       const allow = String(raw.action).toLowerCase() === "allow";
       rules.push({ ruleNo, allow, protocol, ports, cidr: set, text: `${r.address} ${key} rule ${ruleNo}: ${allow ? "allow" : "deny"} ${describePorts(protocol, raw.from_port, raw.to_port)} ${key === "ingress" ? "from" : "to"} ${cidr}` });
     }
-    return known(rules.toSorted((a, b) => a.ruleNo - b.ruleNo));
+    return known(rules);
   }
-  nacl(r) {
-    const touched = this.touched(r.address, UNMODELED_NACL);
-    if (touched) return { resource: r.address, ingress: unknown(touched), egress: unknown(touched) };
-    return { resource: r.address, ingress: this.naclRules(r, "ingress"), egress: this.naclRules(r, "egress") };
+  /** A NACL by key: inline rules (or the AWS default) merged with aws_network_acl_rule resources. */
+  nacl(key) {
+    let resource = key;
+    let base;
+    if (key.startsWith("default-nacl:")) {
+      const vpc = key.slice("default-nacl:".length);
+      const managed = this.managedDefault(key, "aws_default_network_acl");
+      resource = managed.ok && managed.value ? managed.value.address : `default NACL of ${vpc}`;
+      if (!managed.ok) return { resource, ingress: unknown(managed.reason), egress: unknown(managed.reason) };
+      if (managed.value) base = { ingress: this.inlineNaclRules(managed.value, "ingress"), egress: this.inlineNaclRules(managed.value, "egress") };
+      else {
+        const all = (dir) => [{ ruleNo: 100, allow: true, protocol: "all", ports: ALL_PORTS, cidr: ALL_IPV4, text: `default NACL of ${vpc} ${dir} rule 100: allow all traffic (AWS default)` }];
+        base = { ingress: known(all("ingress")), egress: known(all("egress")) };
+      }
+    } else {
+      const r = this.get(key);
+      if (!r) return { resource, ingress: unknown(`${key} is not in this plan`), egress: unknown(`${key} is not in this plan`) };
+      base = { ingress: this.inlineNaclRules(r, "ingress"), egress: this.inlineNaclRules(r, "egress") };
+    }
+    const extra = this.naclRules.get(key);
+    const merge = (dir, egress) => {
+      if (!dir.ok) return dir;
+      if (!extra.ok) return extra;
+      const rules = [...dir.value, ...extra.value.filter((x) => x.egress === egress && x.rule.protocol !== "other").map((x) => x.rule)];
+      const numbers = rules.map((x) => x.ruleNo);
+      if (new Set(numbers).size !== numbers.length) return unknown(`${resource} has two ${egress ? "egress" : "ingress"} rules with the same number`);
+      return known(rules.toSorted((a, b) => a.ruleNo - b.ruleNo));
+    };
+    return { resource, ingress: merge(base.ingress, false), egress: merge(base.egress, true) };
   }
   /**
    * The NACL of a subnet: an explicit association, else the VPC's default NACL.
    * https://docs.aws.amazon.com/vpc/latest/userguide/vpc-network-acls.html
    */
   subnetNacl(subnet, vpc) {
-    const touched = this.touched(subnet, UNMODELED_SUBNET);
-    if (touched) return unknown(touched);
-    const claims = [];
+    const claims = /* @__PURE__ */ new Set();
     for (const type of ["aws_network_acl", "aws_default_network_acl"]) {
       for (const a of this.ofType(type)) {
-        const subs = this.refsTo(a, "subnet_ids", "aws_subnet");
-        if (!subs.ok) return unknown(subs.reason);
-        if (subs.value.includes(subnet)) claims.push(a);
+        if (isNull(a, "subnet_ids")) continue;
+        const subs = resolveRefs(this.snap, a, "subnet_ids", "aws_subnet");
+        if (subs.some((s) => s.kind === "unknown")) return unknown(`${a.address}: subnet_ids is unknown until apply`);
+        if (!subs.some((s) => s.kind === "resource" && s.address === subnet)) continue;
+        const key = this.canonical(a.address);
+        if (!key.ok) return unknown(key.reason);
+        claims.add(key.value);
       }
     }
-    if (claims.length > 1) return unknown(`${subnet} is listed in ${claims.length} network ACLs`);
-    if (claims[0]) return known(this.nacl(claims[0]));
-    let managedDefault;
-    for (const d of this.ofType("aws_default_network_acl")) {
-      const id = str(d.values.default_network_acl_id);
-      let match;
-      if (id && !isUnknown(d, ["default_network_acl_id"])) match = id === this.get(vpc)?.values.default_network_acl_id;
-      else {
-        const refs = d.otherRefs.has("default_network_acl_id") ? [] : fromConfig(this.snap, d, "default_network_acl_id", "aws_vpc");
-        const ref = refs.length === 1 ? refs[0] : void 0;
-        if (ref?.kind !== "resource") return unknown(`${d.address}: cannot tell which VPC's default NACL it manages`);
-        match = ref.address === vpc;
-      }
-      if (match && managedDefault) return unknown(`${vpc} has more than one aws_default_network_acl`);
-      if (match) managedDefault = d;
-    }
-    if (managedDefault) return known(this.nacl(managedDefault));
-    const all = (key) => [{ ruleNo: 100, allow: true, protocol: "all", ports: ALL_PORTS, cidr: ALL_IPV4, text: `default NACL of ${vpc} ${key} rule 100: allow all traffic (AWS default)` }];
-    return known({ resource: `default NACL of ${vpc}`, ingress: known(all("ingress")), egress: known(all("egress")) });
+    const assoc = this.naclAssoc.get(subnet);
+    if (!assoc.ok) return unknown(assoc.reason);
+    assoc.value.forEach((k) => claims.add(k));
+    if (claims.size > 1) return unknown(`${subnet} is associated with ${claims.size} network ACLs`);
+    return known(this.nacl([...claims][0] ?? `default-nacl:${vpc}`));
   }
   routeTarget(r, raw, path, unknownGateways, knownGateways) {
     const gwUnknown = isUnknown(r, [...path, "gateway_id"]);
@@ -621,8 +892,8 @@ var ModelBuilder = class {
     if (gw || gwUnknown) {
       if (!gwUnknown && gw) {
         const a = this.snap.byId.get(gw);
-        if (a && this.get(a)?.type === "aws_internet_gateway") return { kind: "igw", address: a };
-        return { kind: "unknown", reason: `${r.address}: gateway_id ${gw} is not an internet gateway in this plan` };
+        if (a) return this.gatewayTarget(r, known(a), r.address);
+        return { kind: "unknown", reason: `${r.address}: gateway_id ${gw} is not in this plan` };
       }
       if (unknownGateways !== 1 || knownGateways > 0 || r.otherRefs.has(String(path[0]))) {
         return { kind: "unknown", reason: `${r.address}: gateway_id of a route is unknown until apply and cannot be matched to one resource` };
@@ -637,59 +908,77 @@ var ModelBuilder = class {
     }
     return { kind: "unknown", reason: `${r.address}: route has no target the engine can read` };
   }
-  routeTable(r, vpc) {
-    const touched = this.touched(r.address, UNMODELED_ROUTES);
-    if (touched) return { resource: r.address, routes: unknown(touched) };
-    if (isUnknown(r, ["route"])) return { resource: r.address, routes: unknown(`${r.address}: route is unknown until apply`) };
-    if (!vpc.cidrs.ok) return { resource: r.address, routes: unknown(vpc.cidrs.reason) };
+  inlineRoutes(r) {
     const vgws = r.values.propagating_vgws;
     if (Array.isArray(vgws) && vgws.length || isUnknown(r, ["propagating_vgws"]) && r.configured.has("propagating_vgws")) {
-      return { resource: r.address, routes: unknown(`${r.address}: route propagation from a virtual private gateway is not modeled yet`) };
+      return unknown(`${r.address}: route propagation from a virtual private gateway is not modeled yet`);
     }
+    if (isUnknown(r, ["route"])) return r.configured.has("route") ? unknown(`${r.address}: route is unknown until apply`) : known([]);
     const blocks = arr(r.values.route);
     const unknownGateways = blocks.filter((_, i) => isUnknown(r, ["route", i, "gateway_id"])).length;
     const knownGateways = blocks.filter((b, i) => isObj(b) && !isUnknown(r, ["route", i, "gateway_id"]) && str(b.gateway_id) && b.gateway_id !== "local").length;
-    const routes = vpc.cidrs.value.map((range) => ({ cidr: [range], prefix: 32 - Math.log2(range[1] - range[0] + 1), target: { kind: "local" }, text: `${r.address} local route` }));
-    for (const [i, raw] of arr(r.values.route).entries()) {
+    const routes = [];
+    for (const [i, raw] of blocks.entries()) {
       if (!isObj(raw)) continue;
-      if (isUnknown(r, ["route", i, "cidr_block"])) return { resource: r.address, routes: unknown(`${r.address}: route ${i} destination is unknown until apply`) };
+      if (isUnknown(r, ["route", i, "cidr_block"])) return unknown(`${r.address}: route ${i} destination is unknown until apply`);
       const cidr = str(raw.cidr_block);
       if (!cidr) {
-        if (str(raw.destination_prefix_list_id)) return { resource: r.address, routes: unknown(`${r.address}: route ${i} uses a prefix list, which is not modeled yet`) };
+        if (str(raw.destination_prefix_list_id)) return unknown(`${r.address}: route ${i} uses a prefix list, which is not modeled yet`);
         continue;
       }
       const set = cidrToSet(cidr);
       const prefix = cidrPrefixLength(cidr);
-      if (!set || prefix === void 0) return { resource: r.address, routes: unknown(`${r.address}: route ${i} has destination ${cidr}, which the engine cannot read`) };
+      if (!set || prefix === void 0) return unknown(`${r.address}: route ${i} has destination ${cidr}, which the engine cannot read`);
       const target = this.routeTarget(r, raw, ["route", i], unknownGateways, knownGateways);
       const to = target.kind === "igw" ? target.address : target.kind === "other" ? target.text : target.kind;
       routes.push({ cidr: set, prefix, target, text: `${r.address} route ${cidr} -> ${to}` });
     }
-    return { resource: r.address, routes: known(routes) };
+    return known(routes);
+  }
+  /** A route table by key: local routes, inline routes, and aws_route resources. */
+  routeTable(key, vpc, isMain) {
+    let resource = key;
+    let base = known([]);
+    if (key.startsWith("default-rt:")) {
+      const managed = this.managedDefault(key, "aws_default_route_table");
+      resource = managed.ok && managed.value ? managed.value.address : `${isMain ? "main" : "default"} route table of ${vpc.address}`;
+      if (!managed.ok) return { resource, routes: unknown(managed.reason) };
+      if (managed.value) base = this.inlineRoutes(managed.value);
+    } else {
+      const r = this.get(key);
+      if (!r) return { resource, routes: unknown(`${key} is not in this plan`) };
+      base = this.inlineRoutes(r);
+    }
+    const touched = this.touched(key, UNMODELED_ROUTES) ?? (isMain ? this.touched(`main-rt:${vpc.address}`, UNMODELED_ROUTES) : void 0);
+    if (touched) return { resource, routes: unknown(touched) };
+    if (!base.ok) return { resource, routes: base };
+    const extra = this.routes.get(key);
+    if (!extra.ok) return { resource, routes: extra };
+    if (!vpc.cidrs.ok) return { resource, routes: unknown(vpc.cidrs.reason) };
+    return { resource, routes: known([...localRoutes(vpc, resource, vpc.cidrs.value), ...base.value, ...extra.value.filter((x) => x.cidr.length)]) };
   }
   /**
    * The route table of a subnet: an explicit association, else the VPC's main route table.
    * https://docs.aws.amazon.com/vpc/latest/userguide/RouteTables.html
    */
   subnetRouteTable(subnet, vpc) {
-    const assoc = [];
+    const assoc = /* @__PURE__ */ new Set();
     for (const a of this.ofType("aws_route_table_association")) {
-      if (a.values.subnet_id === null && !isUnknown(a, ["subnet_id"])) continue;
-      const s = this.refTo(a, "subnet_id", "aws_subnet");
+      const s = this.optionalRefTo(a, "subnet_id", "aws_subnet");
       if (!s.ok) return unknown(s.reason);
       if (s.value !== subnet) continue;
-      const t = this.refTo(a, "route_table_id", "aws_route_table");
+      const t = this.target(a, "route_table_id");
       if (!t.ok) return unknown(t.reason);
-      assoc.push(t.value);
+      if (t.value === null) return unknown(`${a.address}: route table is not in this plan`);
+      assoc.add(t.value);
     }
-    if (assoc.length > 1) return unknown(`${subnet} has ${assoc.length} route table associations`);
-    const table = assoc[0] ? this.get(assoc[0]) : void 0;
-    if (table) return known(this.routeTable(table, vpc));
-    const touched = this.touched(vpc.address, UNMODELED_MAIN_ROUTES);
-    if (touched) return unknown(touched);
-    if (!vpc.cidrs.ok) return unknown(vpc.cidrs.reason);
-    const routes = vpc.cidrs.value.map((range) => ({ cidr: [range], prefix: 32 - Math.log2(range[1] - range[0] + 1), target: { kind: "local" }, text: `main route table of ${vpc.address} local route` }));
-    return known({ resource: `main route table of ${vpc.address}`, routes: known(routes) });
+    if (assoc.size > 1) return unknown(`${subnet} has ${assoc.size} route table associations`);
+    const explicit = [...assoc][0];
+    if (explicit) return known(this.routeTable(explicit, vpc, false));
+    const main = this.mainAssoc.get(vpc.address);
+    if (!main.ok) return unknown(main.reason);
+    if (main.value.length > 1) return unknown(`${vpc.address} has ${main.value.length} main route table associations`);
+    return known(this.routeTable(main.value[0] ?? `default-rt:${vpc.address}`, vpc, true));
   }
   /** EC2 instances as endpoints. */
   endpoints() {
@@ -708,8 +997,10 @@ var ModelBuilder = class {
     const vpc = this.vpc(vpcRef.value);
     if (!vpc.ok) return fail(vpc.reason);
     let publicIp;
+    const eips = this.eips.get(r.address);
     const assoc = r.values.associate_public_ip_address;
-    if (isUnknown(r, ["associate_public_ip_address"]) && r.configured.has("associate_public_ip_address")) {
+    if (eips.ok && eips.value.length) publicIp = known(`${eips.value.toSorted(cmp).join(", ")} is associated with ${r.address}`);
+    else if (isUnknown(r, ["associate_public_ip_address"]) && r.configured.has("associate_public_ip_address")) {
       publicIp = unknown(`${r.address}: associate_public_ip_address is set to a value that is unknown until apply`);
     } else if (!isUnknown(r, ["associate_public_ip_address"]) && typeof assoc === "boolean") {
       publicIp = known(assoc ? `${r.address} associate_public_ip_address = true` : void 0);
@@ -718,11 +1009,28 @@ var ModelBuilder = class {
     } else {
       publicIp = unknown(`${r.address}: whether it gets a public IPv4 address is unknown until apply`);
     }
-    const sgIds = this.refsTo(r, "vpc_security_group_ids", "aws_security_group");
+    if (!eips.ok && !(publicIp.ok && publicIp.value)) publicIp = unknown(eips.reason);
     let securityGroups;
-    if (!sgIds.ok) securityGroups = unknown(sgIds.reason);
-    else if (!sgIds.value.length) securityGroups = unknown(`${r.address} uses the default security group of ${vpcRef.value}, which is not modeled yet`);
-    else securityGroups = known(sgIds.value.map((a) => this.securityGroup(a)));
+    const keys = [];
+    let sgReason;
+    if (isNull(r, "vpc_security_group_ids") || Array.isArray(r.values.vpc_security_group_ids) && !r.values.vpc_security_group_ids.length && !isUnknown(r, ["vpc_security_group_ids"])) {
+      keys.push(`default-sg:${vpcRef.value}`);
+    } else {
+      for (const ref of resolveRefs(this.snap, r, "vpc_security_group_ids", ["aws_security_group", "aws_default_security_group"])) {
+        if (ref.kind === "unknown") sgReason ??= ref.reason;
+        else if (ref.kind === "external") {
+          const vpcDefault = this.get(vpcRef.value)?.values.default_security_group_id === ref.id;
+          if (vpcDefault) keys.push(`default-sg:${vpcRef.value}`);
+          else sgReason ??= `${r.address}: security group ${ref.id} is not managed in this plan`;
+        } else {
+          const k = this.canonical(ref.address);
+          if (k.ok) keys.push(k.value);
+          else sgReason ??= k.reason;
+        }
+      }
+    }
+    if (sgReason) securityGroups = unknown(sgReason);
+    else securityGroups = known([...new Set(keys)].toSorted(cmp).map((k) => this.securityGroup(k)));
     return {
       address: r.address,
       type: r.type,
@@ -741,7 +1049,29 @@ var RESULT_FORMAT = "0.1";
 
 // ../engine/src/index.ts
 var PROTOCOLS = ["tcp", "udp"];
-var MODELED = /* @__PURE__ */ new Set(["aws_vpc", "aws_subnet", "aws_internet_gateway", "aws_route_table", "aws_route_table_association", "aws_security_group", "aws_network_acl", "aws_default_network_acl", "aws_instance"]);
+var MODELED = /* @__PURE__ */ new Set([
+  "aws_vpc",
+  "aws_subnet",
+  "aws_internet_gateway",
+  "aws_internet_gateway_attachment",
+  "aws_route_table",
+  "aws_route",
+  "aws_route_table_association",
+  "aws_main_route_table_association",
+  "aws_default_route_table",
+  "aws_security_group",
+  "aws_security_group_rule",
+  "aws_vpc_security_group_ingress_rule",
+  "aws_vpc_security_group_egress_rule",
+  "aws_default_security_group",
+  "aws_network_acl",
+  "aws_network_acl_rule",
+  "aws_network_acl_association",
+  "aws_default_network_acl",
+  "aws_eip",
+  "aws_eip_association",
+  "aws_instance"
+]);
 var NETWORK_TYPE = /^aws_(vpc\w*|vpn_gateway\w*|subnet|route\w*|internet_gateway\w*|nat_gateway|egress_only_internet_gateway|network_acl\w*|default_\w+|security_group\w*|vpc_security_group_\w+|eip\w*|network_interface\w*|lb|alb|elb|db_instance|rds_cluster\w*|ecs_service|ec2_transit_gateway\w*|vpc_peering_connection\w*|vpc_endpoint\w*|instance)$/;
 function changeOf(before, after) {
   const b = before.verdict;
