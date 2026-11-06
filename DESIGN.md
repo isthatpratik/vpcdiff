@@ -317,9 +317,9 @@ Status in components:
 | `added` | New exposure | danger |
 | `removed` | Closed | success |
 | `changed` | Sources changed | warning |
-| `unknown` | Unknown | subtle ink |
+| `unknown` | Unknown | warning (amber, never the grey of a zero) |
 | `unchanged` | No change | subtle ink, quieter |
-| outage risk | Outage risk during apply | warning |
+| outage risk | Outage risk (title: Outage risk during the apply) | warning |
 
 ## 10. Privacy is part of the design
 
@@ -334,3 +334,20 @@ files from Google (`fonts.googleapis.com`, `fonts.gstatic.com`). Those requests 
 plan content. The policy allows exactly those two origins for styles and fonts and
 nothing else. There are no analytics, no cookies, and no other third party requests; the
 footer says so.
+
+## 11. Search and AI search
+
+- **Landing:** title, description, canonical, Open Graph and Twitter tags, `og.png`, and
+  JSON-LD: a `SoftwareApplication` (with a feature list and Node.js 24+) and a
+  `FAQPage` whose answers match the FAQ on the page word for word. A static summary in
+  `#root` is shown only without JavaScript.
+- **Viewer:** its own description, canonical, and a `WebApplication` JSON-LD entry that
+  points back to the site.
+- **Files at the site root:** `robots.txt`, `sitemap.xml` (with `lastmod`), `llms.txt`
+  (the short version, with links), and `llms-full.txt` (everything in one file: how a
+  path is decided, how to read a result, the Action and CLI reference, the viewer, the
+  support matrix, the roadmap, and the FAQ). Update `llms-full.txt` when the README's
+  support matrix or roadmap changes.
+- **Not added:** `ai-catalog.json`. Its specification is new and unsettled; add it when
+  it is stable.
+

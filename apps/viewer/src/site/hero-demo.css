@@ -318,6 +318,11 @@
 .hero-demo .ss-window__tab {
   width: 210px;
   font-size: 11.5px;
+  /* Inactive tabs stay readable: about 6:1 on the bar, not the kit's faint gray. */
+  color: color-mix(in oklab, var(--litt-fg) 62%, transparent);
+}
+.hero-demo .ss-window__tab[data-active] {
+  color: var(--litt-fg);
 }
 .hero-demo .ss-window__favicon {
   display: none;

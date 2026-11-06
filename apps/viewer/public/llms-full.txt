@@ -1,0 +1,144 @@
+# vpcdiff: full text
+
+> vpcdiff reads a Terraform plan (`terraform show -json`) and computes which AWS resources the internet can reach before and after the plan, hop by hop. It reports paths that are opened, closed, changed, or unknown, and flags outage risk when a resource on an open path is replaced by deleting it first. It runs as a GitHub Action, a CLI, and an offline web viewer, all on one pure TypeScript engine. Free, open source (MIT), and offline: it needs no AWS account or credentials.
+
+This file is the long version of [llms.txt](https://isthatpratik.github.io/vpcdiff/llms.txt), for language models and readers who want the whole picture in one place.
+
+## The problem
+
+A pull request that changes a security group, a network ACL, or a route shows which lines changed. It does not show what the change opens. Whether `aws_instance.db` becomes reachable on tcp/5432 depends on its public IP, the internet gateway, the subnet's route table, both directions of the network ACL, and every security group on the resource, before and after the plan. Rule-by-rule linters (Checkov, tfsec, Trivy) judge each rule alone. AWS Reachability Analyzer checks a live account, one path at a time, after you deploy. vpcdiff follows the whole path, on the plan, before you apply, for every endpoint at once.
+
+## How it decides a path
+
+For each endpoint (an `aws_instance`, an `aws_db_instance`, or an internet-facing `aws_lb`) and for every TCP or UDP port that one of its security groups opens to a public address, the engine checks these hops in the order traffic meets them, on both sides of the plan:
+
+1. **Public IP**: the endpoint needs a public IPv4 address or an Elastic IP. ([endpoints](https://github.com/isthatpratik/vpcdiff/blob/main/docs/semantics/endpoints.md))
+2. **Internet gateway**: attached to the VPC, and the subnet's route table sends 0.0.0.0/0 to it. ([gateways](https://github.com/isthatpratik/vpcdiff/blob/main/docs/semantics/gateways.md))
+3. **Network ACL inbound**: rules in number order; the first match decides. ([network ACLs](https://github.com/isthatpratik/vpcdiff/blob/main/docs/semantics/network-acls.md))
+4. **Security groups**: every rule of every group on the resource, joined; a port is open if any rule allows it from the source. ([security groups](https://github.com/isthatpratik/vpcdiff/blob/main/docs/semantics/security-groups.md))
+5. **Target**: the endpoint itself.
+6. **Network ACL outbound**: the reply must leave on an ephemeral port (1024 to 65535).
+7. **Return route**: the reply needs a route back to the internet gateway; the longest prefix match wins. ([route tables](https://github.com/isthatpratik/vpcdiff/blob/main/docs/semantics/route-tables.md))
+
+Sources are all public IPv4 addresses, minus IANA special ranges and the VPC CIDR. When a hop cannot be decided (a value known only after apply, a resource the engine does not model, a load balancer whose subnets disagree), the path is `unknown` with the reason. The engine never guesses. When a path is reachable but some sources could not be decided, the result says "Partly undecided" and lists them.
+
+The engine is pure: the same plan gives the same output, byte for byte. Every AWS rule in the code cites its AWS documentation. How the plan JSON is read: [terraform-plan-json](https://github.com/isthatpratik/vpcdiff/blob/main/docs/semantics/terraform-plan-json.md).
+
+## How to read a result
+
+- **Plan verdict**, one line for the whole plan, most serious first:
+  - "Fix before merge": a path opens to the internet.
+  - "Check by hand": vpcdiff could not decide a path.
+  - "Review before merge": an outage risk, or a path whose sources change.
+  - "No new exposure": nothing new opens. vpcdiff never says "safe"; it checks IPv4 paths from the internet only.
+- **Path changes**: opened (new exposure), closed, changed sources, unknown, or outage risk. Each path reads before → after: "Blocked → Reachable", "New resource → Reachable", "Reachable → Removed", "Stays reachable", "Stays blocked".
+- **Hop states**: Allows, Allows some sources, Denies, Unknown, Not checked (an earlier hop already blocked the traffic), Not in plan (the resource is created or destroyed by the plan).
+- **Outage risk**: a security group or route on an open path is replaced delete-first, so traffic can drop during the apply. The fix is `lifecycle { create_before_destroy = true }`; for a security group with a fixed `name`, use `name_prefix`, because AWS does not allow two groups with the same name in a VPC.
+- **Wording**: "the network lets any public IPv4 address reach X on tcp/5432". vpcdiff checks the network path, not a host firewall or whether a service listens on the port.
+
+## Make the plan
+
+```sh
+terraform plan -out=tfplan
+terraform show -json tfplan > plan.json
+```
+
+## GitHub Action
+
+```yaml
+permissions:
+  contents: read
+  pull-requests: write   # for the comment
+jobs:
+  reachability:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+      - run: |
+          terraform -chdir=infra init -input=false
+          terraform -chdir=infra plan -input=false -out=tfplan
+          terraform -chdir=infra show -json tfplan > "$RUNNER_TEMP/plan.json"
+      - uses: isthatpratik/vpcdiff@main
+        with:
+          plan: ${{ runner.temp }}/plan.json
+          # fail-on: added     # added | changed | unknown | never
+          # comment: "true"
+```
+
+Inputs: `plan` (required), `fail-on` (default `added`), `comment` (default `true`: create or update one comment on the pull request), `all` (default `false`: also list unchanged paths), `github-token`. Outputs: `added`, `removed`, `changed`, `unknown`, `unchanged`. The report also goes to the job summary.
+
+## CLI
+
+```sh
+node packages/cli/dist/vpcdiff.mjs plan.json
+node packages/cli/dist/vpcdiff.mjs            # guided mode, in a terminal
+```
+
+- With no arguments in a terminal, the CLI lists plan JSON files and binary plans (`tfplan`, `*.tfplan`) in the folder, converts a binary plan with `terraform show -json`, or runs `terraform plan` after you confirm (it uses your cloud credentials; nothing is applied). Then it shows the report and offers next steps: every path, one path in full, or a Markdown summary for the pull request.
+- In a terminal, text output is a readable report in color, with the plan verdict first. In pipes and CI it is stable plain text. `NO_COLOR=1` turns color off.
+- Options: `--format text|json|markdown`, `--all`, `--fail-on added|changed|unknown|never` (default `added`).
+- Exit codes: 0 no failing paths, 1 failing paths, 2 usage or input error.
+- Terraform runs through `execFile` with an argument array, never a shell.
+
+## Web viewer
+
+[Open the viewer](https://isthatpratik.github.io/vpcdiff/app/). Drop `plan.json`, or open one of four example plans. The plan is analyzed in a Web Worker in the tab; the page's Content Security Policy is `connect-src 'none'`, so it cannot send the plan anywhere.
+
+- The path list starts with the plan verdict and counters (opened, closed, changed, outage risk, unknown); each counter filters the list. Paths are sorted most serious first.
+- Each path shows the verdict in one sentence, the hop and rule that decide it, what to do, a Terraform snippet when there is a standard fix, a before/after strip of the hops, and a table of the hops with the AWS documentation for each.
+- "Copy for PR" copies one path as Markdown; "Copy all for PR" copies the plan, with each path in a details block and a footer with the vpcdiff version and the plan's SHA-256. Names and rules are escaped, so a pasted plan cannot add links or @-mentions.
+
+## Support matrix
+
+| Resource | Status |
+|---|---|
+| `aws_vpc` (primary IPv4 CIDR), `aws_subnet` | supported |
+| `aws_internet_gateway`, `aws_internet_gateway_attachment` | supported |
+| `aws_route_table` (inline routes), `aws_route`, `aws_route_table_association` | supported |
+| Main route table: `aws_default_route_table`, `aws_main_route_table_association`, unmanaged default | supported |
+| `aws_security_group` (inline), `aws_security_group_rule`, `aws_vpc_security_group_ingress_rule` | supported (IPv4 CIDR sources) |
+| `aws_default_security_group`, unmanaged default security group | supported |
+| `aws_network_acl` (inline), `aws_network_acl_rule`, `aws_network_acl_association`, `aws_default_network_acl`, unmanaged default NACL | supported |
+| `aws_instance` (endpoint), `aws_eip`, `aws_eip_association` | supported |
+| `aws_vpc_security_group_egress_rule` | read; does not affect inbound paths (security groups are stateful) |
+| `aws_db_instance` (endpoint; `publicly_accessible`, `aws_db_subnet_group`) | supported |
+| `aws_lb` (endpoint; internet-facing ALB and NLB, `aws_lb_listener` for NLBs without groups) | supported |
+| Aurora, ECS services, Classic and Gateway Load Balancers | noted |
+| Prefix lists, VPN route propagation, network interface attachments, secondary VPC CIDRs | unknown |
+| NAT gateway, VPC peering, Transit Gateway, VPC endpoints, IPv6 | not yet; unknown or noted |
+
+## Roadmap
+
+In order. Each item lands with a spec, unit tests, fixture tests with written proofs, a
+security review, and an updated support matrix.
+
+1. [Paths inside the VPC](https://github.com/isthatpratik/vpcdiff/issues/32): security
+   group references, so "load balancer to service" or "web to database" changes show up.
+2. [More AWS networking](https://github.com/isthatpratik/vpcdiff/issues/33): NAT gateways,
+   VPC peering, Transit Gateway, VPC endpoints, IPv6, and prefix lists.
+3. [OpenTofu support](https://github.com/isthatpratik/vpcdiff/issues/34): the same plan
+   format, checked against OpenTofu plans in CI.
+4. [More endpoints](https://github.com/isthatpratik/vpcdiff/issues/35): Aurora, ECS
+   services, and Classic Load Balancers.
+5. [Azure and Google Cloud](https://github.com/isthatpratik/vpcdiff/issues/36), after v1,
+   with an ADR first.
+
+## Questions
+- **Does vpcdiff need AWS credentials or an AWS account?** No. It reads the JSON that terraform show produces. Terraform needs credentials to make the plan; vpcdiff does not.
+- **Does my plan leave my machine?** No. The CLI and the GitHub Action run where you run them. The viewer analyzes the file in your browser tab, and its Content Security Policy blocks every data request. The Action writes a comment to your own pull request only when you turn that on.
+- **What does unknown mean?** The engine could not decide that hop: a value Terraform learns only at apply time, a resource it does not model yet, or a load balancer whose subnets give different answers. The reason is always shown. Unknown is a result, never a guess.
+- **How is this different from Checkov, tfsec, or Trivy?** Those tools judge each rule on its own. vpcdiff follows the whole path: an open security group behind a network ACL that denies the port is not an exposure, and a narrow rule can still open a path when a route changes.
+- **How is it different from AWS Reachability Analyzer?** Reachability Analyzer checks a live account, one path at a time, after you deploy. vpcdiff works on the plan, before you apply, for every endpoint at once. Each test fixture includes the steps to check it against Reachability Analyzer; those paid checks have not been run yet.
+- **Does it check traffic between my own services?** Not yet. Today it checks paths from the internet to instances, databases, and load balancers. Paths inside the VPC are next on the roadmap.
+- **Can it block a pull request?** Yes. The GitHub Action fails the check when the plan adds a path from the internet (you choose the level with fail-on), writes the report to the job summary, and keeps one comment on the pull request up to date.
+- **What does it cost?** Nothing. vpcdiff is free and open source under the MIT license.
+
+## Links
+
+- [Site](https://isthatpratik.github.io/vpcdiff/)
+- [Viewer](https://isthatpratik.github.io/vpcdiff/app/)
+- [Source on GitHub](https://github.com/isthatpratik/vpcdiff)
+- [Design doc](https://github.com/isthatpratik/vpcdiff/blob/main/docs/design/0001-vpcdiff-design.md)
+- [Architecture decisions](https://github.com/isthatpratik/vpcdiff/tree/main/docs/adr)
+- [Semantics](https://github.com/isthatpratik/vpcdiff/tree/main/docs/semantics): the AWS rules each hop follows, with documentation links.

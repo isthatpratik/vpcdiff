@@ -9,9 +9,15 @@
 - When a hop cannot be decided (for example a value known only after apply), the result is `unknown` with the reason. It never guesses.
 
 ## How to use it
-- GitHub Action: `uses: isthatpratik/vpcdiff@main` with `plan: plan.json` and `fail-on: added`.
-- CLI: `node packages/cli/dist/vpcdiff.mjs plan.json`.
-- Web viewer: [vpcdiff viewer](https://isthatpratik.github.io/vpcdiff/app/) (the plan is analyzed in the browser tab; a Content Security Policy blocks every network request).
+- Make the plan: `terraform plan -out=tfplan`, then `terraform show -json tfplan > plan.json`.
+- GitHub Action: `uses: isthatpratik/vpcdiff@main` with `plan: plan.json` and `fail-on: added`. It comments on the pull request and can fail the check.
+- CLI: `node packages/cli/dist/vpcdiff.mjs plan.json`. With no arguments in a terminal, it finds a plan in the folder (or converts `tfplan`, or runs `terraform plan` after you confirm) and walks you through the result. Formats: text, json, markdown. Exit codes: 0 no failing paths, 1 failing paths, 2 usage or input error.
+- Web viewer: [vpcdiff viewer](https://isthatpratik.github.io/vpcdiff/app/) (the plan is analyzed in the browser tab; a Content Security Policy blocks every network request). It starts with one verdict for the plan, then each path with the deciding rule, what to do, and a "Copy for PR" summary.
+
+## How to read a result
+- Plan verdict: "Fix before merge" (a path opens), "Check by hand" (a path is unknown), "Review before merge" (outage risk or changed sources), or "No new exposure". vpcdiff never says "safe": it checks IPv4 paths from the internet only.
+- Path changes: opened, closed, changed sources, unknown, or outage risk. Each path reads before → after, for example "Blocked → Reachable", "New resource → Reachable", or "Stays reachable".
+- "Partly undecided" on a reachable path lists the sources vpcdiff could not decide; they are neither allowed nor blocked.
 
 ## Questions
 - **Does vpcdiff need AWS credentials or an AWS account?** No. It reads the JSON that terraform show produces. Terraform needs credentials to make the plan; vpcdiff does not.
@@ -24,6 +30,7 @@
 - **What does it cost?** Nothing. vpcdiff is free and open source under the MIT license.
 
 ## Links
+- [Full text for language models](https://isthatpratik.github.io/vpcdiff/llms-full.txt): everything on this page in more detail, with the support matrix, the CLI and Action reference, and the roadmap.
 - [Site](https://isthatpratik.github.io/vpcdiff/): what vpcdiff does, how to run it, and questions.
 - [Viewer](https://isthatpratik.github.io/vpcdiff/app/): open a plan in the browser, offline.
 - [Source on GitHub](https://github.com/isthatpratik/vpcdiff): engine, CLI, GitHub Action, and fixtures.
