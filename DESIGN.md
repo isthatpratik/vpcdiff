@@ -199,9 +199,23 @@ Fonts load from Google Fonts (see section 10 for what that means for privacy).
   hop strip. A plan can be dropped anywhere on the page at any time.
 - **Path list:** hairline rows; the current row has a 2px bar in its change color, as
   the landing page's titles do. Up and down arrows move through the list.
-- **Path detail:** an eyebrow, the path as `internet → target`, the change and the port,
-  then the path strip (before and after, one square per hop) and the hop table (ADR
-  0008): hops that differ are open and marked in amber; the rest fold to one line.
+- **Path detail:** the target type, the path as `internet → target`, the change, the
+  port with its service name, and before → after. Then the **verdict** first: what
+  happens in one sentence, the hop and rule that decide it (copyable), what to do next
+  (with a Terraform snippet when there is a standard fix), and "Copy for PR" as
+  Markdown. Then the path strip with a legend, and the hop table (ADR 0008): hops that
+  differ are open and marked; hops that are the same fold behind one toggle.
+- **Plain words:** every hop name, counter, and the Changes / All paths toggle has a
+  tooltip in plain language (`src/explain.ts`). One term per state: Allows, Allows some
+  sources, Denies, Unknown, Not checked, Not in plan. Ports carry their service name
+  (tcp/5432 (PostgreSQL)).
+- **Color in the viewer:** red is new exposure, green is closed, amber is only a warning
+  (outage risk, some sources). "Differs" is a neutral mark, never amber. States where
+  nothing was decided are dashed outlines at full contrast, never faded text.
+- **Icons:** line icons from litt's set, monochrome: one per hop (globe, at sign, cloud,
+  filter, shield, branch) and one per target type (box for EC2, database for RDS,
+  layers for load balancers). AWS's own service logos are filled colored tiles that
+  read as blocks at 16 px and would break the rule that color means status.
 
 ## 7. Icons and logos
 

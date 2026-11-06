@@ -3,21 +3,22 @@
 // shows the difference at a glance, and one hop table where the hops that changed are
 // open and the rest fold to a line. Nothing leaves the tab.
 import type { Path, Result } from "@vpcdiff/engine";
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEvent } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEvent, type ReactNode } from "react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/litt/accordion";
 import { Button } from "@/components/litt/button";
 import { Callout } from "@/components/litt/callout";
-import { ArrowRightIcon, CheckIcon, CopyIcon, FileIcon, LockIcon, PlusIcon } from "@/components/litt/icons";
+import { ArrowRightIcon, ArrowUpRightIcon, AtSignIcon, BoxIcon, CheckIcon, CloudIcon, CopyIcon, DatabaseIcon, FileIcon, FilterIcon, GitBranchIcon, GlobeIcon, LayersIcon, LockIcon, MinusIcon, PlusIcon, SearchIcon, ShieldIcon } from "@/components/litt/icons";
 import { Segmented } from "@/components/litt/segmented";
 import { Loading, Skeleton } from "@/components/litt/states";
-import { TooltipProvider } from "@/components/litt/tooltip";
+import { Tooltip, TooltipProvider } from "@/components/litt/tooltip";
 import { analyzeInWorker } from "../engine.ts";
 import { EXAMPLES } from "../examples.ts";
-import { COLUMNS, lanesOf, rowsDiffer, type Cell, type CellState } from "../graph.ts";
+import { CHANGE_HELP, HOP_HELP, pathMarkdown, planMarkdown, portLabel, serviceOf, verdictOf, type Tone } from "../explain.ts";
+import { COLUMNS, lanesOf, rowsDiffer, type Cell, type CellState, type ColumnKey } from "../graph.ts";
 import { Wordmark } from "../shared/brand.tsx";
 import { GithubLink } from "../shared/github.tsx";
 import { ThemeSwitch } from "../shared/theme.tsx";
-import { CHANGE_ORDER, CHANGE_TEXT, ChangeTag, DecisionTag, STAT_LABEL, VERDICT_LABEL } from "./status.tsx";
+import { CHANGE_ORDER, CHANGE_TEXT, ChangeTag, DecisionTag, VERDICT_LABEL } from "./status.tsx";
 
 type State = { kind: "empty"; error?: string } | { kind: "loading"; name: string } | { kind: "ready"; name: string; result: Result };
 type Filter = "changes" | "all";
@@ -85,7 +86,7 @@ export function App() {
             />
           )}
           {state.kind === "loading" && <Busy />}
-          {state.kind === "ready" && <Workspace key={state.name} result={state.result} />}
+          {state.kind === "ready" && <Workspace key={state.name} name={state.name} result={state.result} />}
         </main>
         <div
           aria-hidden={!dragging}
@@ -149,25 +150,16 @@ function TopBar({ name, onNew }: { name?: string | undefined; onNew?: (() => voi
 
 /* ---------------------------------------------------------------- start */
 
-/** A row of eight hop squares: a small picture of a path, used on the example cards. */
-function MiniStrip({ pattern }: { pattern: string }) {
-  return (
-    <span aria-hidden="true" className="flex items-center gap-1">
-      {pattern.split("").map((c, i) => (
-        <span key={i} className="flex items-center gap-1">
-          <span className={`size-2 ${c === "#" ? "bg-litt-fg" : c === "x" ? "bg-litt-data-rose" : c === "!" ? "bg-litt-warning" : "border border-litt-line-strong"}`} />
-          {i < pattern.length - 1 && <span className="h-px w-2 bg-litt-line-strong" />}
-        </span>
-      ))}
-    </span>
-  );
-}
-
-const EXAMPLE_STRIP: Record<string, string> = {
-  "sg-5432-opened": "########",
-  "nacl-denies-ssh": "###x....",
-  "rule-resources": "########",
-  "sg-replaced": "####!###",
+/** What each example shows, as the same status words the viewer uses. */
+const EXAMPLE_TAG: Record<string, string> = {
+  "sg-5432-opened": "New exposure",
+  "nacl-denies-ssh": "Blocked by a network ACL",
+  "rule-resources": "Some sources only",
+  "sg-replaced": "Outage risk",
+};
+const EXAMPLE_TONE: Record<string, string> = {
+  "sg-5432-opened": "border-litt-danger/40 text-litt-danger",
+  "sg-replaced": "border-litt-warning/40 text-litt-warning",
 };
 
 function Start({ error, onFile, onExample }: { error?: string | undefined; onFile: (f: File | undefined) => void; onExample: (id: string) => void }) {
@@ -199,7 +191,7 @@ function Start({ error, onFile, onExample }: { error?: string | undefined; onFil
 
           <div className="relative border border-litt-line bg-litt-surface-1 p-2">
             <div
-              className={`relative grid min-h-[300px] place-items-center overflow-hidden border border-dashed px-6 py-12 text-center transition-colors duration-200 ${over ? "border-litt-fg bg-litt-surface-2" : "border-litt-line-strong"}`}
+              className={`relative grid min-h-[220px] place-items-center overflow-hidden border border-dashed px-6 py-10 sm:min-h-[300px] sm:py-12 text-center transition-colors duration-200 ${over ? "border-litt-fg bg-litt-surface-2" : "border-litt-line-strong"}`}
               onDragEnter={() => setOver(true)}
               onDragLeave={() => setOver(false)}
               onDrop={() => setOver(false)}
@@ -232,7 +224,7 @@ function Start({ error, onFile, onExample }: { error?: string | undefined; onFil
             </div>
             <div className="flex items-center gap-3 border-t border-litt-line px-3 py-2.5">
               <span className={LABEL}>Make it</span>
-              <code className="min-w-0 flex-1 truncate font-litt-mono text-litt-caption text-litt-fg-muted">{cmd}</code>
+              <code className="min-w-0 flex-1 overflow-x-auto whitespace-nowrap font-litt-mono text-litt-caption text-litt-fg-muted">{cmd}</code>
               <button
                 type="button"
                 aria-label={copied ? "Copied" : "Copy the command"}
@@ -264,7 +256,7 @@ function Start({ error, onFile, onExample }: { error?: string | undefined; onFil
                   onClick={() => onExample(ex.id)}
                   className={`group grid h-full w-full content-between gap-8 p-5 text-left transition-colors duration-300 ${EASE} hover:bg-litt-surface-1 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-litt-focus active:bg-litt-surface-2`}
                 >
-                  <MiniStrip pattern={EXAMPLE_STRIP[ex.id] ?? "........"} />
+                  <span className={`justify-self-start rounded-full border px-2.5 py-0.5 text-litt-caption ${EXAMPLE_TONE[ex.id] ?? "border-litt-line text-litt-fg-muted"}`}>{EXAMPLE_TAG[ex.id]}</span>
                   <span className="grid gap-1.5">
                     <span className="flex items-center justify-between gap-2 text-litt-small font-medium text-litt-fg">
                       {ex.title}
@@ -300,24 +292,57 @@ function Busy() {
   );
 }
 
+
 /* ------------------------------------------------------------ workspace */
 
-function Workspace({ result }: { result: Result }) {
-  const [filter, setFilter] = useState<Filter>("changes");
-  const visible = useMemo(
-    () =>
-      result.paths
-        .filter((p) => filter === "all" || p.change !== "unchanged" || p.outageRisk)
-        .toSorted((a, b) => CHANGE_ORDER.indexOf(a.change) - CHANGE_ORDER.indexOf(b.change) || (a.id < b.id ? -1 : 1)),
-    [result, filter],
+const TONE_TEXT: Record<Tone, string> = { danger: "text-litt-danger", success: "text-litt-success", warning: "text-litt-warning", neutral: "text-litt-fg" };
+const TONE_BAR: Record<Tone, string> = { danger: "bg-litt-danger", success: "bg-litt-success", warning: "bg-litt-warning", neutral: "bg-litt-line-strong" };
+
+/**
+ * A small line icon for the kind of target, from the same set as the hop icons. AWS's
+ * own service logos are filled tiles that read as blocks at 16px and bring their brand
+ * colors, so they are not used here (DESIGN.md, icons).
+ */
+function TargetIcon({ type, className = "" }: { type: string; className?: string }) {
+  const Icon = type === "aws_db_instance" ? DatabaseIcon : type === "aws_lb" ? LayersIcon : BoxIcon;
+  return <Icon aria-hidden="true" className={`shrink-0 text-litt-fg-subtle ${className}`} />;
+}
+const TYPE_NAME: Record<string, string> = { aws_instance: "EC2 instance", aws_db_instance: "RDS database", aws_lb: "Load balancer" };
+
+/** A word with a dotted underline that explains itself on hover or focus. */
+function Term({ children, help }: { children: ReactNode; help: string }) {
+  return (
+    <Tooltip content={help}>
+      <span tabIndex={0} className="cursor-help underline decoration-litt-line-strong decoration-dotted underline-offset-4 focus-visible:outline-2 focus-visible:outline-litt-focus">
+        {children}
+      </span>
+    </Tooltip>
   );
+}
+
+function sourcesOf(path: Path): string[] {
+  return path.after.verdict === "allowed" ? path.after.sources : path.before.verdict === "allowed" ? path.before.sources : [];
+}
+
+function Workspace({ name, result }: { name: string; result: Result }) {
+  const [filter, setFilter] = useState<Filter>("changes");
+  const [query, setQuery] = useState("");
+  const visible = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return result.paths
+      .filter((p) => filter === "all" || p.change !== "unchanged" || p.outageRisk)
+      .filter((p) => !q || [p.to, p.toType, `${p.protocol}/${p.ports}`, serviceOf(p.ports) ?? "", ...sourcesOf(p)].some((s) => s.toLowerCase().includes(q)))
+      .toSorted((a, b) => CHANGE_ORDER.indexOf(a.change) - CHANGE_ORDER.indexOf(b.change) || (a.id < b.id ? -1 : 1));
+  }, [result, filter, query]);
   const [selectedId, setSelectedId] = useState<string | undefined>(visible[0]?.id);
   useEffect(() => {
     if (!visible.some((p) => p.id === selectedId)) setSelectedId(visible[0]?.id);
   }, [visible, selectedId]);
   const selected = result.paths.find((p) => p.id === selectedId);
-  const unchanged = result.paths.length - visible.length;
+  const unchanged = result.paths.filter((p) => p.change === "unchanged" && !p.outageRisk).length;
+  const risky = result.paths.filter((p) => p.outageRisk?.length).length;
   const list = useRef<HTMLUListElement>(null);
+  const [copied, setCopied] = useState(false);
 
   // Up and down move through the list, like a native list box.
   const onKey = (e: KeyboardEvent) => {
@@ -331,29 +356,50 @@ function Workspace({ result }: { result: Result }) {
     list.current?.querySelector<HTMLButtonElement>(`[data-id="${CSS.escape(next.id)}"]`)?.focus();
   };
 
+  const counters: { key: string; label: string; value: number; tone: string; help: string }[] = [
+    { key: "added", label: "Opened", value: result.summary.added, tone: CHANGE_TEXT.added, help: CHANGE_HELP.added },
+    { key: "removed", label: "Closed", value: result.summary.removed, tone: CHANGE_TEXT.removed, help: CHANGE_HELP.removed },
+    { key: "changed", label: "Changed", value: result.summary.changed, tone: CHANGE_TEXT.changed, help: CHANGE_HELP.changed },
+    { key: "risk", label: "At risk", value: risky, tone: "text-litt-warning", help: CHANGE_HELP.outage },
+    { key: "unknown", label: "Unknown", value: result.summary.unknown, tone: CHANGE_TEXT.unknown, help: CHANGE_HELP.unknown },
+  ];
+
   return (
-    <div className="grid h-full min-h-0 grid-cols-1 overflow-auto md:grid-cols-[320px_minmax(0,1fr)] md:overflow-hidden">
+    <div className="grid h-full min-h-0 grid-cols-1 overflow-auto md:grid-cols-[340px_minmax(0,1fr)] md:overflow-hidden">
       <aside className="grid min-h-0 grid-rows-[auto_auto_minmax(0,1fr)_auto] border-b border-litt-line md:border-r md:border-b-0" aria-label="Paths">
-        <dl className="grid grid-cols-4 gap-px border-b border-litt-line bg-litt-line">
-          {CHANGE_ORDER.filter((c) => c !== "unchanged").map((c) => (
-            <div key={c} className="grid gap-1 bg-litt-canvas px-3 py-4">
-              <dd className={`font-display text-2xl leading-none font-normal tabular-nums ${result.summary[c] ? CHANGE_TEXT[c] : "text-litt-fg-subtle"}`}>{result.summary[c]}</dd>
-              <dt className="text-litt-caption text-litt-fg-subtle">{STAT_LABEL[c]}</dt>
+        <dl className="grid grid-cols-5 gap-px border-b border-litt-line bg-litt-line">
+          {counters.map((c) => (
+            <div key={c.key} className="grid content-start gap-1.5 bg-litt-canvas px-3 py-4">
+              <dd className={`font-display text-2xl leading-none font-normal tabular-nums ${c.value ? c.tone : "text-litt-fg-subtle"}`}>{c.value}</dd>
+              <dt className="text-litt-caption text-litt-fg-subtle">
+                <Term help={c.help}>{c.label}</Term>
+              </dt>
             </div>
           ))}
         </dl>
-        <div className="border-b border-litt-line p-3">
-          <Segmented<Filter>
-            legend="Show"
-            size="sm"
-            block
-            value={filter}
-            onValueChange={setFilter}
-            options={[
-              { value: "changes", label: "Changes" },
-              { value: "all", label: `All paths · ${result.paths.length}` },
-            ]}
-          />
+        <div className="grid gap-2.5 border-b border-litt-line p-4">
+          <Tooltip content="Changes: only paths the plan opens, closes, or puts at risk. All paths: every path from the internet the engine checked.">
+            <div>
+              <Segmented<Filter>
+                legend="Show"
+                size="sm"
+                block
+                value={filter}
+                onValueChange={setFilter}
+                options={[
+                  { value: "changes", label: "Changes" },
+                  { value: "all", label: `All paths · ${result.paths.length}` },
+                ]}
+              />
+            </div>
+          </Tooltip>
+          {result.paths.length > 5 && (
+            <label className="flex items-center gap-2 rounded-litt-control border border-litt-line px-2.5 focus-within:border-litt-line-strong">
+              <SearchIcon aria-hidden="true" className="size-4 text-litt-fg-subtle" />
+              <span className="sr-only">Filter paths</span>
+              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Filter by resource, port, or CIDR" className="h-8 min-w-0 flex-1 bg-transparent text-litt-small text-litt-fg outline-none placeholder:text-litt-fg-subtle" />
+            </label>
+          )}
         </div>
         <div className="min-h-0 overflow-auto">
           {visible.length ? (
@@ -366,42 +412,58 @@ function Workspace({ result }: { result: Result }) {
             </ul>
           ) : (
             <div className="grid gap-2 p-5">
-              <p className="text-litt-small font-medium text-litt-fg">No changes from the internet</p>
-              <p className="text-litt-small leading-relaxed text-litt-fg-subtle">
-                {result.paths.length
-                  ? `The plan does not change any path. All paths shows the ${unchanged} the engine checked.`
-                  : "No security group in this plan opens a port to a public address, so there is no internet path to check."}
+              <p className="text-litt-small font-medium text-litt-fg">{query ? "No path matches" : "No changes from the internet"}</p>
+              <p className="text-litt-small leading-relaxed text-litt-fg-muted">
+                {query
+                  ? "Try a resource name, a port such as 5432, or a CIDR."
+                  : result.paths.length
+                    ? `This plan does not change any path from the internet. All paths shows the ${unchanged} the engine checked.`
+                    : "No security group in this plan opens a port to a public address, so there is no path from the internet to check."}
               </p>
             </div>
           )}
         </div>
-        {result.notes.length > 0 && (
-          <div className="border-t border-litt-line px-4">
+        <div className="grid gap-1 border-t border-litt-line px-4 py-3">
+          <button
+            type="button"
+            onClick={() =>
+              void navigator.clipboard?.writeText(planMarkdown(name, result)).then(() => {
+                setCopied(true);
+                window.setTimeout(() => setCopied(false), 1600);
+              })
+            }
+            className="flex items-center gap-2 justify-self-start rounded-litt-control py-1 text-litt-small text-litt-fg-muted transition-colors duration-200 hover:text-litt-fg focus-visible:outline-2 focus-visible:outline-litt-focus [&_svg]:size-4"
+          >
+            {copied ? <CheckIcon aria-hidden="true" /> : <CopyIcon aria-hidden="true" />}
+            {copied ? "Copied the summary" : "Copy plan summary as Markdown"}
+          </button>
+          {result.notes.length > 0 && (
             <Accordion type="single" collapsible headingLevel={2}>
               <AccordionItem value="notes">
                 <AccordionTrigger>Not modeled yet · {result.notes.length}</AccordionTrigger>
                 <AccordionContent>
-                  <ul className="grid gap-1 pb-3">
+                  <ul className="grid gap-2.5 pb-3">
                     {result.notes.map((n) => (
-                      <li key={n.resource} className="font-litt-mono text-litt-caption text-litt-fg-subtle">
-                        {n.resource}
+                      <li key={n.resource} className="grid gap-0.5">
+                        <span className="font-litt-mono text-litt-caption text-litt-fg">{n.resource}</span>
+                        <span className="text-litt-caption leading-relaxed text-litt-fg-muted">{n.message}</span>
                       </li>
                     ))}
                   </ul>
                 </AccordionContent>
               </AccordionItem>
             </Accordion>
-          </div>
-        )}
+          )}
+        </div>
       </aside>
       {selected ? <PathDetail key={selected.id} path={selected} /> : <section aria-label="Path detail" />}
     </div>
   );
 }
 
-const CHANGE_BAR: Record<string, string> = { added: "bg-litt-danger", removed: "bg-litt-success", changed: "bg-litt-warning", unknown: "bg-litt-fg-subtle", unchanged: "bg-litt-line-strong" };
-
 function PathRow({ path, current, onSelect }: { path: Path; current: boolean; onSelect: () => void }) {
+  const v = verdictOf(path);
+  const src = sourcesOf(path);
   return (
     <button
       type="button"
@@ -411,31 +473,22 @@ function PathRow({ path, current, onSelect }: { path: Path; current: boolean; on
       onClick={onSelect}
       className={`relative grid w-full gap-1.5 px-5 py-3.5 text-left transition-colors duration-200 hover:bg-litt-surface-1 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-litt-focus ${current ? "bg-litt-surface-1" : ""}`}
     >
-      <span aria-hidden="true" className={`absolute top-0 bottom-0 left-0 w-0.5 transition-opacity duration-200 ${CHANGE_BAR[path.change]} ${current ? "opacity-100" : "opacity-0"}`} />
-      <span className="flex min-w-0 items-center justify-between gap-3">
+      <span aria-hidden="true" className={`absolute top-0 bottom-0 left-0 w-0.5 transition-opacity duration-200 ${TONE_BAR[v.tone]} ${current ? "opacity-100" : "opacity-0"}`} />
+      <span className="flex min-w-0 items-center gap-2.5">
+        <TargetIcon type={path.toType} className="size-4" />
         <span className="truncate font-litt-mono text-litt-small text-litt-fg">{path.to}</span>
-        <span aria-hidden="true" className={`size-1.5 shrink-0 rounded-full ${CHANGE_BAR[path.change]}`} />
+        <span className={`ml-auto shrink-0 text-litt-caption ${TONE_TEXT[v.tone]}`}>{v.title === "No change" ? "No change" : CHANGE_WORD[path.change] ?? v.title}</span>
       </span>
-      <span className="flex flex-wrap items-center gap-x-2 text-litt-caption text-litt-fg-subtle">
-        <span className="font-litt-mono">
-          {path.protocol}/{path.ports}
-        </span>
-        <span>
-          {VERDICT_LABEL[path.before.verdict]} → {VERDICT_LABEL[path.after.verdict]}
-        </span>
+      <span className="flex flex-wrap items-center gap-x-2 pl-[26px] text-litt-caption text-litt-fg-subtle">
+        <span className="font-litt-mono">{portLabel(path)}</span>
+        {src.length > 0 && <span className="font-litt-mono">from {src.includes("internet") ? "0.0.0.0/0" : src.join(", ")}</span>}
       </span>
-      <span className="sr-only">{path.change}</span>
-      {path.outageRisk && <span className="text-litt-caption text-litt-warning">Outage risk during apply</span>}
+      {path.outageRisk && <span className="pl-[26px] text-litt-caption text-litt-warning">Outage risk during apply</span>}
     </button>
   );
 }
 
-function sourcesText(path: Path): string {
-  const s = path.after.verdict === "allowed" ? path.after.sources : path.before.verdict === "allowed" ? path.before.sources : [];
-  if (!s.length) return "Not reachable from the internet on either side of the plan.";
-  const who = s.length === 1 && s[0] === "internet" ? "any public address" : s.join(", ");
-  return `Reachable from ${who} ${path.after.verdict === "allowed" ? "after the plan" : "before the plan only"}.`;
-}
+const CHANGE_WORD: Partial<Record<Path["change"], string>> = { added: "Opened", removed: "Closed", changed: "Sources changed", unknown: "Unknown" };
 
 /* --------------------------------------------------------------- detail */
 
@@ -445,46 +498,104 @@ const SQUARE: Record<CellState, string> = {
   deny: "bg-litt-data-rose border-litt-data-rose",
   unknown: "border-dashed border-litt-fg-subtle bg-litt-canvas",
   "not-reached": "border-litt-line-strong bg-litt-canvas",
-  absent: "border-litt-line bg-litt-canvas",
+  absent: "border-dashed border-litt-line-strong bg-litt-canvas",
 };
 
-/** Before and after as two rows of squares, one per hop, so the change reads at once. */
-function PathStrip({ before, after, changed, risk, selected, onSelect }: { before: Cell[]; after: Cell[]; changed: boolean[]; risk: number; selected: number; onSelect: (i: number) => void }) {
+const HOP_ICON: Partial<Record<ColumnKey, typeof GlobeIcon>> = {
+  source: GlobeIcon,
+  "public-ip": AtSignIcon,
+  "internet-gateway": CloudIcon,
+  "nacl-inbound": FilterIcon,
+  "security-group": ShieldIcon,
+  "nacl-outbound": FilterIcon,
+  route: GitBranchIcon,
+};
+
+function HopName({ col, type, className = "" }: { col: (typeof COLUMNS)[number]; type: string; className?: string }) {
+  const Icon = HOP_ICON[col.key];
   return (
-    <div className="grid gap-3 overflow-x-auto" role="group" aria-label="Path at a glance, before and after">
-      <div className="grid min-w-[560px] grid-cols-[64px_repeat(8,minmax(0,1fr))] items-center gap-y-3">
-        <span />
+    <span className={`flex min-w-0 items-center gap-2 ${className}`}>
+      {col.key === "target" ? <TargetIcon type={type} className="size-4" /> : Icon ? <Icon aria-hidden="true" className="size-4 shrink-0 text-litt-fg-subtle" /> : null}
+      <Term help={HOP_HELP[col.key]}>{col.label}</Term>
+    </span>
+  );
+}
+
+function Legend() {
+  const items: [CellState, string][] = [
+    ["allow", "Lets through"],
+    ["deny", "Blocks"],
+    ["partial", "Some sources"],
+    ["not-reached", "Not checked"],
+  ];
+  return (
+    <ul className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-litt-caption text-litt-fg-subtle" aria-label="Legend">
+      {items.map(([s, l]) => (
+        <li key={s} className="flex items-center gap-1.5">
+          <span aria-hidden="true" className={`size-2.5 border ${SQUARE[s]}`} />
+          {l}
+        </li>
+      ))}
+      <li className="flex items-center gap-1.5">
+        <span aria-hidden="true" className="h-0.5 w-2.5 bg-litt-fg-muted" />
+        Differs
+      </li>
+    </ul>
+  );
+}
+
+/** Before and after, one square per hop, so the change reads at once. Rows on wide
+ *  screens; one line per hop on small screens, so every hop stays visible. */
+function PathStrip({ before, after, differs, risk, selected, onSelect, type }: { before: Cell[]; after: Cell[]; differs: boolean[]; risk: number; selected: number; onSelect: (i: number) => void; type: string }) {
+  return (
+    <div className="grid gap-5">
+      <div className="hidden sm:block" role="group" aria-label="Path at a glance, before and after">
+        <div className="grid grid-cols-[64px_repeat(8,minmax(0,1fr))] items-center gap-y-3">
+          <span />
+          {COLUMNS.map((c, i) => (
+            <button key={c.key} type="button" onClick={() => onSelect(i)} className={`truncate px-1 text-center text-litt-caption transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-litt-focus ${i === selected ? "text-litt-fg" : "text-litt-fg-subtle hover:text-litt-fg"}`}>
+              {c.label}
+            </button>
+          ))}
+          {(["before", "after"] as const).map((side) => (
+            <Fragment key={side}>
+              <span className="text-litt-caption text-litt-fg-subtle">{side === "before" ? "Before" : "After"}</span>
+              {(side === "before" ? before : after).map((cell, i) => (
+                <span key={i} className="relative flex h-5 items-center justify-center">
+                  {i > 0 && <span aria-hidden="true" className={`absolute right-1/2 left-[-50%] h-px ${cell.state === "not-reached" || cell.state === "absent" ? "bg-litt-line" : "bg-litt-line-strong"}`} />}
+                  <span aria-hidden="true" className={`relative z-10 size-3 border transition-colors duration-300 ${SQUARE[cell.state]}`} />
+                  {(differs[i] || i === risk) && side === "after" && <span aria-hidden="true" className={`absolute -bottom-2.5 h-0.5 w-3 ${i === risk ? "bg-litt-warning" : "bg-litt-fg-muted"}`} />}
+                </span>
+              ))}
+            </Fragment>
+          ))}
+        </div>
+      </div>
+      <ol className="grid gap-2 sm:hidden" aria-label="Path at a glance, before and after">
+        <li aria-hidden="true" className="grid grid-cols-[minmax(0,1fr)_48px_48px] text-litt-caption text-litt-fg-subtle">
+          <span />
+          <span className="text-center">Before</span>
+          <span className="text-center">After</span>
+        </li>
         {COLUMNS.map((c, i) => (
-          <button
-            key={c.key}
-            type="button"
-            onClick={() => onSelect(i)}
-            className={`truncate px-1 text-center text-[11px] transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-litt-focus ${i === selected ? "text-litt-fg" : "text-litt-fg-subtle hover:text-litt-fg"}`}
-          >
-            {c.label}
-          </button>
-        ))}
-        {(["before", "after"] as const).map((side) => (
-          <Fragment key={side}>
-            <span className={LABEL}>{side}</span>
-            {(side === "before" ? before : after).map((cell, i) => (
-              <span key={i} className="relative flex h-5 items-center justify-center">
-                {i > 0 && <span aria-hidden="true" className={`absolute right-1/2 left-[-50%] h-px ${cell.state === "not-reached" || cell.state === "absent" ? "bg-litt-line" : "bg-litt-line-strong"}`} />}
-                <span aria-hidden="true" className={`relative z-10 size-3 border transition-colors duration-300 ${SQUARE[cell.state]}`} />
-                {(changed[i] || i === risk) && side === "after" && <span aria-hidden="true" className="absolute -bottom-2.5 h-0.5 w-3 bg-litt-warning" />}
+          <li key={c.key} className="grid grid-cols-[minmax(0,1fr)_48px_48px] items-center">
+            <HopName col={c} type={type} className="text-litt-small text-litt-fg" />
+            {[before[i], after[i]].map((cell, j) => (
+              <span key={j} className="flex justify-center">
+                <span aria-hidden="true" className={`size-3 border ${cell ? SQUARE[cell.state] : ""} ${j === 1 && differs[i] ? "outline outline-1 outline-offset-2 outline-litt-fg-muted" : ""}`} />
               </span>
             ))}
-          </Fragment>
+          </li>
         ))}
-      </div>
+      </ol>
+      <Legend />
     </div>
   );
 }
 
 function CellView({ cell, note }: { cell: Cell; note?: string }) {
-  const faint = cell.state === "not-reached" || cell.state === "absent";
   return (
-    <div className={`flex min-w-0 items-center gap-3 ${faint ? "opacity-60" : ""}`}>
+    <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
       <span className="shrink-0">
         <DecisionTag state={cell.state} />
       </span>
@@ -494,58 +605,108 @@ function CellView({ cell, note }: { cell: Cell; note?: string }) {
   );
 }
 
-function CopyText({ text }: { text: string }) {
+function CopyText({ text, label }: { text: string; label?: string }) {
   const [done, setDone] = useState(false);
   return (
     <button
       type="button"
-      aria-label={done ? "Copied" : `Copy ${text}`}
+      aria-label={done ? "Copied" : (label ?? `Copy ${text}`)}
       onClick={() =>
         void navigator.clipboard?.writeText(text).then(() => {
           setDone(true);
           window.setTimeout(() => setDone(false), 1400);
         })
       }
-      className="grid size-6 shrink-0 place-items-center rounded-litt-control text-litt-fg-subtle transition-colors duration-200 hover:bg-litt-surface-2 hover:text-litt-fg focus-visible:outline-2 focus-visible:outline-litt-focus [&_svg]:size-3"
+      className="grid size-6 shrink-0 place-items-center rounded-litt-control text-litt-fg-subtle transition-colors duration-200 hover:bg-litt-surface-2 hover:text-litt-fg focus-visible:outline-2 focus-visible:outline-litt-focus [&_svg]:size-3.5"
     >
       {done ? <CheckIcon aria-hidden="true" /> : <CopyIcon aria-hidden="true" />}
     </button>
   );
 }
 
-/** One side of an open hop: the rule that decided it, the resource to copy, the AWS docs. */
+/** One side of an open hop: the rule that decided it, the resource, the AWS docs. */
 function SideDetail({ title, cell }: { title: string; cell: Cell }) {
   return (
-    <div className="grid content-start gap-2.5">
-      <p className={LABEL}>{title}</p>
+    <div className="grid content-start gap-2">
+      <p className="text-litt-caption text-litt-fg-subtle">{title}</p>
       {cell.rule && <p className="text-litt-small leading-relaxed text-litt-fg">{cell.rule}</p>}
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-        {cell.resource && (
-          <span className="flex min-w-0 items-center gap-1 font-litt-mono text-litt-caption text-litt-fg-subtle">
-            <span className="truncate">{cell.resource}</span>
-            <CopyText text={cell.resource} />
-          </span>
-        )}
-        {cell.doc && (
-          <a href={cell.doc} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-litt-caption text-litt-fg-muted underline decoration-litt-line-strong underline-offset-4 transition-colors duration-200 hover:text-litt-fg hover:decoration-litt-fg">
-            How AWS decides this hop <ArrowRightIcon aria-hidden="true" className="size-3" />
-          </a>
-        )}
-      </div>
+      {cell.doc && (
+        <a href={cell.doc} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 justify-self-start text-litt-caption text-litt-fg-muted underline decoration-litt-line-strong underline-offset-4 transition-colors duration-200 hover:text-litt-fg hover:decoration-litt-fg">
+          How AWS decides this hop <ArrowUpRightIcon aria-hidden="true" className="size-3" />
+        </a>
+      )}
     </div>
+  );
+}
+
+/** The answer first: what happens, what caused it, what to do. */
+function VerdictPanel({ path }: { path: Path }) {
+  const v = verdictOf(path);
+  const [copied, setCopied] = useState(false);
+  return (
+    <section aria-label="Verdict" className="relative grid gap-4 border border-litt-line bg-litt-surface-1 p-5 pl-6">
+      <span aria-hidden="true" className={`absolute top-0 bottom-0 left-0 w-0.5 ${TONE_BAR[v.tone]}`} />
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="grid gap-1.5">
+          <p className={`font-display text-xl font-normal tracking-[-0.01em] ${TONE_TEXT[v.tone]}`}>{v.title}</p>
+          <p className="max-w-[68ch] text-base leading-relaxed text-litt-fg">{v.body}</p>
+        </div>
+        <button
+          type="button"
+          onClick={() =>
+            void navigator.clipboard?.writeText(pathMarkdown(path)).then(() => {
+              setCopied(true);
+              window.setTimeout(() => setCopied(false), 1600);
+            })
+          }
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-litt-control border border-litt-line px-2.5 py-1 text-litt-caption text-litt-fg-muted transition-colors duration-200 hover:border-litt-line-strong hover:text-litt-fg focus-visible:outline-2 focus-visible:outline-litt-focus [&_svg]:size-3.5"
+        >
+          {copied ? <CheckIcon aria-hidden="true" /> : <CopyIcon aria-hidden="true" />}
+          {copied ? "Copied" : "Copy for PR"}
+        </button>
+      </div>
+      {v.cause && v.cause.rule && (
+        <div className="grid gap-1.5 border-t border-litt-line pt-4">
+          <p className="text-litt-caption text-litt-fg-subtle">
+            Decided at the <Term help={HOP_HELP[COLUMNS.find((c) => c.label === v.cause?.hop)?.key ?? "target"]}>{v.cause.hop}</Term> hop
+          </p>
+          <p className="flex min-w-0 items-start gap-2 font-litt-mono text-litt-small text-litt-fg">
+            <span className="min-w-0 break-words">{v.cause.rule}</span>
+            <CopyText text={v.cause.rule} label="Copy the rule" />
+          </p>
+        </div>
+      )}
+      {v.action && (
+        <div className="grid gap-2 border-t border-litt-line pt-4">
+          <p className="text-litt-small leading-relaxed text-litt-fg-muted">
+            <span className="text-litt-fg">What to do · </span>
+            {v.action}
+          </p>
+          {v.snippet && <pre className="justify-self-start rounded-litt-control border border-litt-line bg-litt-canvas px-3 py-2 font-litt-mono text-litt-caption text-litt-fg">{v.snippet}</pre>}
+        </div>
+      )}
+    </section>
   );
 }
 
 function PathDetail({ path }: { path: Path }) {
   const lanes = useMemo(() => lanesOf(path), [path]);
-  // Changed hops start open; the rest fold to a line until opened.
-  const [openRows, setOpenRows] = useState<Set<number>>(() => new Set(lanes.changed.some(Boolean) ? lanes.changed.flatMap((c, i) => (c ? [i] : [])) : [lanes.focus]));
+  const oneSideAbsent = path.before.verdict === "absent" || path.after.verdict === "absent";
+  // A row differs when its two cells differ; when the resource exists on one side only,
+  // every hop is new, so rows show the side that exists instead of marking each one.
+  const differs = oneSideAbsent ? COLUMNS.map(() => false) : rowsDiffer(lanes);
+  const changedCount = differs.filter(Boolean).length;
+  // On a path with outage risk, the focus hop is the one the plan replaces delete-first.
+  const risk = path.outageRisk?.length ? lanes.focus : -1;
   const [selected, setSelected] = useState(lanes.focus);
+  const [openRows, setOpenRows] = useState<Set<number>>(() => new Set([lanes.focus]));
+  const [showSame, setShowSame] = useState(false);
   const rows = useRef<(HTMLLIElement | null)[]>([]);
   const select = (i: number) => {
     setSelected(i);
+    if (!differs[i] && changedCount) setShowSame(true);
     setOpenRows((s) => new Set(s).add(i));
-    rows.current[i]?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    window.setTimeout(() => rows.current[i]?.scrollIntoView({ block: "nearest", behavior: "smooth" }), 0);
   };
   const toggle = (i: number) =>
     setOpenRows((s) => {
@@ -554,65 +715,67 @@ function PathDetail({ path }: { path: Path }) {
       else n.add(i);
       return n;
     });
-  // For the table, a row differs whenever its two cells differ, including when the
-  // resource exists on one side only (lanes.changed leaves those unmarked on purpose).
-  const rowDiffers = rowsDiffer(lanes);
-  const changedCount = rowDiffers.filter(Boolean).length;
-  // On a path with outage risk and no other change, the focus hop is the replaced one.
-  const risk = path.outageRisk && !lanes.changed.some(Boolean) ? lanes.focus : -1;
+  const sideShown = path.before.verdict === "absent" ? "after" : "before";
+  const sameRows = COLUMNS.map((_, i) => i).filter((i) => !differs[i]);
+  const hideSame = changedCount > 0 && !showSame;
 
   return (
     <section className="min-h-0 min-w-0 overflow-auto" aria-labelledby="detail-title">
       <div className="mx-auto grid max-w-[1040px] gap-8 px-5 py-8 sm:px-10 sm:py-10 [&>*]:min-w-0">
-        <header className="grid gap-4">
-          <p className={`flex items-center gap-3 ${LABEL}`}>
-            <span aria-hidden="true" className={`size-2 ${CHANGE_BAR[path.change]}`} />
-            Path
+        <header className="grid gap-3">
+          <p className="flex items-center gap-2 text-litt-caption text-litt-fg-subtle">
+            <TargetIcon type={path.toType} className="size-4" />
+            {TYPE_NAME[path.toType] ?? path.toType}
           </p>
           <h2 id="detail-title" className="font-display text-2xl leading-tight font-normal tracking-[-0.02em] text-litt-fg sm:text-3xl">
             <span className="text-litt-fg-subtle">internet → </span>
             <span className="font-litt-mono text-[0.85em] break-all">{path.to}</span>
           </h2>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-            <ChangeTag change={path.change} />
-            <span className="rounded-full border border-litt-line px-2.5 py-0.5 font-litt-mono text-litt-caption text-litt-fg-muted">
-              {path.protocol}/{path.ports}
+            {path.change !== "unchanged" ? <ChangeTag change={path.change} /> : <span className={`rounded-full border border-litt-line px-2.5 py-0.5 text-litt-caption ${TONE_TEXT[verdictOf(path).tone]}`}>{verdictOf(path).title}</span>}
+            <span className="rounded-full border border-litt-line px-2.5 py-0.5 font-litt-mono text-litt-caption text-litt-fg-muted">{portLabel(path)}</span>
+            <span className="text-litt-small text-litt-fg-subtle">
+              {VERDICT_LABEL[path.before.verdict]} → <span className="text-litt-fg">{VERDICT_LABEL[path.after.verdict]}</span>
             </span>
-            <span className="text-litt-small text-litt-fg-muted">{sourcesText(path)}</span>
           </div>
-          {path.outageRisk && (
-            <Callout
-              tone="warning"
-              title="Outage risk during apply"
-              description={`The plan replaces ${path.outageRisk.join(", ")} by deleting it before creating the new one. Traffic on this path can drop during the apply. create_before_destroy avoids the gap.`}
-            />
-          )}
         </header>
 
+        <VerdictPanel path={path} />
+
         <div className="min-w-0 border border-litt-line p-5">
-          <PathStrip before={lanes.before.cells} after={lanes.after.cells} changed={lanes.changed} risk={risk} selected={selected} onSelect={select} />
+          <PathStrip before={lanes.before.cells} after={lanes.after.cells} differs={differs} risk={risk} selected={selected} onSelect={select} type={path.toType} />
         </div>
 
         <section className="grid gap-3" aria-labelledby="hops-title">
-          <div className="flex items-baseline justify-between gap-3">
-            <h3 id="hops-title" className={LABEL}>
+          <div className="flex flex-wrap items-baseline justify-between gap-3">
+            <h3 id="hops-title" className="font-display text-lg font-normal text-litt-fg">
               Hops
             </h3>
-            <p className="text-litt-caption text-litt-fg-subtle">{changedCount ? `${changedCount} of ${COLUMNS.length} differ` : "No hop differs"}</p>
+            <p className="text-litt-caption text-litt-fg-subtle">
+              {oneSideAbsent
+                ? path.before.verdict === "absent"
+                  ? "The plan creates this resource: every hop is new."
+                  : "The plan destroys this resource: every hop goes away."
+                : changedCount
+                  ? `${changedCount} of ${COLUMNS.length} hops differ`
+                  : "No hop differs"}
+            </p>
           </div>
           <ol className="divide-y divide-litt-line border border-litt-line">
-            <li aria-hidden="true" className="hidden grid-cols-[180px_minmax(0,1fr)_minmax(0,1fr)_32px] gap-4 bg-litt-surface-1 px-4 py-2 sm:grid">
-              <span className={LABEL}>Hop</span>
-              <span className={LABEL}>Before</span>
-              <span className={LABEL}>After</span>
+            <li aria-hidden="true" className="hidden grid-cols-[200px_minmax(0,1fr)_minmax(0,1fr)_32px] gap-4 bg-litt-surface-1 px-4 py-2 text-litt-caption text-litt-fg-subtle sm:grid">
+              <span>Hop</span>
+              <span>Before</span>
+              <span>After</span>
               <span />
             </li>
             {COLUMNS.map((c, i) => {
               const b = lanes.before.cells[i];
               const a = lanes.after.cells[i];
               if (!b || !a) return null;
+              if (hideSame && !differs[i] && i !== selected) return null;
               const isOpen = openRows.has(i);
-              const differs = rowDiffers[i];
+              const row = differs[i];
+              const only = oneSideAbsent ? (sideShown === "after" ? a : b) : undefined;
               return (
                 <li
                   key={c.key}
@@ -621,27 +784,30 @@ function PathDetail({ path }: { path: Path }) {
                   }}
                   className={`relative transition-colors duration-200 ${i === selected ? "bg-litt-surface-1" : ""}`}
                 >
-                  {(differs || i === risk) && <span aria-hidden="true" className="absolute top-0 bottom-0 left-0 w-0.5 bg-litt-warning" />}
-                  <button
-                    type="button"
-                    aria-expanded={isOpen}
-                    onClick={() => {
-                      setSelected(i);
-                      toggle(i);
-                    }}
-                    className={`grid w-full grid-cols-[minmax(0,1fr)_32px] items-center gap-4 px-4 text-left ${differs ? "py-4" : "py-2.5"} focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-litt-focus sm:grid-cols-[180px_minmax(0,1fr)_minmax(0,1fr)_32px]`}
-                  >
-                    <span className="grid gap-0.5">
-                      <span className="text-litt-small text-litt-fg">{c.label}</span>
-                      {differs && <span className="text-litt-caption text-litt-warning">Differs</span>}
-                      {i === risk && <span className="text-litt-caption text-litt-warning">Replaced delete-first</span>}
-                      <span className="mt-1 flex items-center gap-2 sm:hidden">
-                        <DecisionTag state={b.state} />
-                        <ArrowRightIcon aria-label="to" className="size-3 text-litt-fg-subtle" />
-                        <DecisionTag state={a.state} />
+                  {(row || i === risk) && <span aria-hidden="true" className={`absolute top-0 bottom-0 left-0 w-0.5 ${i === risk ? "bg-litt-warning" : "bg-litt-fg-muted"}`} />}
+                  <div className={`grid grid-cols-[minmax(0,1fr)_32px] items-center gap-4 px-4 sm:grid-cols-[200px_minmax(0,1fr)_minmax(0,1fr)_32px] ${row ? "py-3.5" : "py-2.5"}`}>
+                    <span className="grid min-w-0 gap-1">
+                      <HopName col={c} type={path.toType} className="text-litt-small text-litt-fg" />
+                      {row && <span className="pl-6 text-litt-caption text-litt-fg-muted">Differs</span>}
+                      {i === risk && <span className="pl-6 text-litt-caption text-litt-warning">Replaced delete-first</span>}
+                      <span className="mt-1 flex flex-wrap items-center gap-2 pl-6 sm:hidden">
+                        {only ? (
+                          <DecisionTag state={only.state} />
+                        ) : (
+                          <>
+                            <DecisionTag state={b.state} />
+                            <ArrowRightIcon aria-label="to" className="size-3 text-litt-fg-subtle" />
+                            <DecisionTag state={a.state} />
+                          </>
+                        )}
                       </span>
                     </span>
-                    {differs ? (
+                    {only ? (
+                      <>
+                        <span className="hidden sm:block">{sideShown === "after" ? <DecisionTag state="absent" /> : <CellView cell={only} />}</span>
+                        <span className="hidden sm:block">{sideShown === "after" ? <CellView cell={only} /> : <DecisionTag state="absent" />}</span>
+                      </>
+                    ) : row ? (
                       <>
                         <span className="hidden sm:block">
                           <CellView cell={b} />
@@ -655,22 +821,47 @@ function PathDetail({ path }: { path: Path }) {
                         <CellView cell={a} note="same before and after" />
                       </span>
                     )}
-                    <span aria-hidden="true" className={`grid size-6 place-items-center justify-self-end text-litt-fg-subtle transition-transform duration-300 ${EASE} ${isOpen ? "rotate-90" : ""}`}>
-                      <ArrowRightIcon className="size-3.5" />
-                    </span>
-                  </button>
+                    <button
+                      type="button"
+                      aria-expanded={isOpen}
+                      aria-label={`${isOpen ? "Hide" : "Show"} the rule for ${c.label}`}
+                      onClick={() => {
+                        setSelected(i);
+                        toggle(i);
+                      }}
+                      className={`grid size-8 place-items-center justify-self-end rounded-litt-control text-litt-fg-subtle transition-[transform,color,background-color] duration-300 ${EASE} hover:bg-litt-surface-2 hover:text-litt-fg focus-visible:outline-2 focus-visible:outline-litt-focus ${isOpen ? "rotate-90" : ""}`}
+                    >
+                      <ArrowRightIcon aria-hidden="true" className="size-3.5" />
+                    </button>
+                  </div>
                   <div className={`grid transition-[grid-template-rows] duration-300 ${EASE} ${isOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}>
                     <div className="min-h-0 overflow-hidden">
-                      <div className="grid gap-6 border-t border-dashed border-litt-line px-4 py-4 sm:grid-cols-[180px_minmax(0,1fr)_minmax(0,1fr)_32px] sm:gap-4">
-                        <span className="hidden sm:block" />
-                        <SideDetail title="Before" cell={b} />
-                        <SideDetail title="After" cell={a} />
+                      <div className="grid gap-5 border-t border-dashed border-litt-line px-4 py-4 sm:grid-cols-[200px_minmax(0,1fr)_minmax(0,1fr)_32px] sm:gap-4">
+                        <span className="hidden text-litt-caption leading-relaxed text-litt-fg-subtle sm:block">{HOP_HELP[c.key]}</span>
+                        {only ? (
+                          <span className="sm:col-span-2">
+                            <SideDetail title={sideShown === "after" ? "After" : "Before"} cell={only} />
+                          </span>
+                        ) : (
+                          <>
+                            <SideDetail title="Before" cell={b} />
+                            <SideDetail title="After" cell={a} />
+                          </>
+                        )}
                       </div>
                     </div>
                   </div>
                 </li>
               );
             })}
+            {changedCount > 0 && sameRows.length > 0 && (
+              <li>
+                <button type="button" onClick={() => setShowSame((v) => !v)} className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-litt-caption text-litt-fg-muted transition-colors duration-200 hover:bg-litt-surface-1 hover:text-litt-fg focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-litt-focus">
+                  {showSame ? <MinusIcon aria-hidden="true" className="size-3.5" /> : <PlusIcon aria-hidden="true" className="size-3.5" />}
+                  {showSame ? "Hide the hops that are the same" : `Show ${sameRows.length} hops that are the same before and after`}
+                </button>
+              </li>
+            )}
           </ol>
         </section>
       </div>

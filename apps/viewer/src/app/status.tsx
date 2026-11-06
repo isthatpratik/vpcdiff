@@ -9,12 +9,12 @@ export const CHANGE_ORDER: Change[] = ["added", "removed", "changed", "unknown",
 const CHANGE_STATUS: Record<Change, TagStatus> = { added: "danger", removed: "success", changed: "warning", unknown: "neutral", unchanged: "neutral" };
 export const CHANGE_TEXT: Record<Change, string> = { added: "text-litt-danger", removed: "text-litt-success", changed: "text-litt-warning", unknown: "text-litt-fg-subtle", unchanged: "text-litt-fg-muted" };
 
-export const VERDICT_LABEL: Record<Verdict, string> = { allowed: "Reachable", blocked: "Blocked", unknown: "Unknown", absent: "Does not exist" };
+export const VERDICT_LABEL: Record<Verdict, string> = { allowed: "Reachable", blocked: "Blocked", unknown: "Unknown", absent: "Not in plan" };
 
 // Hop decisions: the site is monochrome, so "allows" is plain ink. Only a decision that
 // stops or narrows traffic gets a hue, and those hues are not the status colors: red and
 // green already mean new and closed exposure (DESIGN.md, section 3).
-export const STATE_LABEL: Record<CellState, string> = { allow: "Allows", partial: "Allows some", deny: "Denies", unknown: "Unknown", "not-reached": "Not reached", absent: "Absent" };
+export const STATE_LABEL: Record<CellState, string> = { allow: "Allows", partial: "Allows some sources", deny: "Denies", unknown: "Unknown", "not-reached": "Not checked", absent: "Not in plan" };
 const STATE_HUE: Partial<Record<CellState, TagHue>> = { partial: "amber", deny: "rose" };
 
 export function ChangeTag({ change }: { change: Change }) {
@@ -24,5 +24,12 @@ export function ChangeTag({ change }: { change: Change }) {
 export function DecisionTag({ state }: { state: CellState }) {
   const hue = STATE_HUE[state];
   if (hue) return <Tag hue={hue}>{STATE_LABEL[state]}</Tag>;
-  return state === "allow" ? <Tag raised>{STATE_LABEL[state]}</Tag> : <Tag status="neutral">{STATE_LABEL[state]}</Tag>;
+  if (state === "allow") return <Tag raised>{STATE_LABEL[state]}</Tag>;
+  // States where nothing was decided read as an outline, not as faded text: the shape
+  // carries the meaning and the label keeps full contrast.
+  return (
+    <span className="inline-flex h-6 items-center rounded-litt-control border border-dashed border-litt-line-strong px-2 text-litt-caption font-medium text-litt-fg-muted">
+      {STATE_LABEL[state]}
+    </span>
+  );
 }

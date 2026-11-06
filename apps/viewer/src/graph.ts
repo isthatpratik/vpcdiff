@@ -39,7 +39,7 @@ export interface Lanes {
 
 function laneOf(outcome: Outcome, path: Path): Lane {
   if (outcome.verdict === "absent") {
-    return { outcome, cells: COLUMNS.map((c) => ({ state: "absent", resource: c.key === "target" ? path.to : "", rule: "The resource does not exist on this side of the plan." })) };
+    return { outcome, cells: COLUMNS.map((c) => ({ state: "absent", resource: c.key === "target" ? path.to : "", rule: "Not in the plan on this side: the plan creates or destroys this resource." })) };
   }
   const cells = COLUMNS.map((col): Cell => {
     if (col.key === "source") return { state: "allow", resource: "internet", rule: outcome.sources.join(", ") };
@@ -49,7 +49,7 @@ function laneOf(outcome: Outcome, path: Path): Lane {
         : { state: "not-reached", resource: path.to, rule: outcome.reason };
     }
     const hop = outcome.hops.find((h) => h.hop === col.key);
-    return hop ? { state: hop.decision, resource: hop.resource, rule: hop.rule, doc: hop.doc } : { state: "not-reached", resource: "", rule: "Not evaluated: an earlier hop decided the path." };
+    return hop ? { state: hop.decision, resource: hop.resource, rule: hop.rule, doc: hop.doc } : { state: "not-reached", resource: "", rule: "Not checked: an earlier hop already decided the path." };
   });
   // The response hops come after the target in the picture, but the engine checks them
   // before it calls the target reachable; a stop there leaves the target not reached.
