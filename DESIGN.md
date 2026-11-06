@@ -155,6 +155,11 @@ Fonts load from Google Fonts (see section 10 for what that means for privacy).
   - The hero camera moves on a critically damped spring (no overshoot, soft start, slow
     landing): close on the internet, then it follows each hop as it lights and pulls back
     to the whole path. The caption stays still, like a caption on a frame.
+  - Hero depth of field: as the path moves forward, the left of the field drifts out of
+    focus (a backdrop blur feathered toward the center, 0 to 5.6 px, in-out), like a lens
+    racking focus to follow the head of the line. It clears when the loop begins again.
+  - The hero's background blocks are small. About 40% are dimmer at random, and a few at
+    a time dim briefly and come back; none is ever brighter than its base.
   - On the left of the hero, the spokes from "any public address" keep moving: one
     spoke at a time snaps its far end to an adjacent block (one cell, 0.28 s, a hard
     ease-out), and only the blocks a spoke lands on are lit.

@@ -13,6 +13,11 @@
 // On the left, any public address keeps arriving: each spoke snaps its far end to a
 // block next to it, one cell at a time, and only the blocks a spoke lands on are lit.
 //
+// Depth of field: as the path moves forward, the left of the field slowly goes out of
+// focus, like a lens racking focus to follow the head of the line. It clears when the
+// loop begins again. The background blocks are small; some are dimmer than others, and
+// a few at a time dim briefly and come back (they never get brighter than their base).
+//
 // Camera and spokes run in one animation frame loop that writes SVG attributes directly
 // (no React render per frame). Off screen, nothing runs. Under reduced motion, one still
 // frame with the path drawn is shown.
@@ -75,6 +80,7 @@ export function PathField({ className = "" }: { className?: string }) {
   const ref = useRef<SVGSVGElement>(null);
   const camRef = useRef<SVGGElement>(null);
   const fieldRef = useRef<SVGGElement>(null);
+  const dotsRef = useRef<SVGGElement>(null);
   const spokeRefs = useRef<(SVGLineElement | null)[]>([]);
   const tipRefs = useRef<(SVGRectElement | null)[]>([]);
   const stepRef = useRef(step);
@@ -131,6 +137,9 @@ export function PathField({ className = "" }: { className?: string }) {
     let pan: { from: Shot; to: Shot; ease: (t: number) => number; t0: number; len: number; yk: (t: number) => number } | null = null;
     let lastStep = stepRef.current;
     let nextHop = 0;
+    // Blocks that are dimming for a moment: index, start, depth (fraction removed).
+    const flicker: { i: number; t0: number; depth: number; base: number }[] = [];
+    let nextFlicker = 0;
     let last = performance.now();
     let frame = 0;
     let visible = true;
@@ -201,6 +210,25 @@ export function PathField({ className = "" }: { className?: string }) {
           }
         }
       }
+      // A few background blocks dim and recover; never brighter than their base.
+      const blocks = dotsRef.current?.children;
+      if (blocks && t > nextFlicker) {
+        nextFlicker = t + 0.06;
+        const i = Math.floor(Math.random() * blocks.length);
+        const el = blocks[i];
+        if (el && !flicker.some((f) => f.i === i)) flicker.push({ i, t0: t, depth: 0.35 + Math.random() * 0.35, base: Number(el.getAttribute("opacity")) || 0 });
+      }
+      for (let n = flicker.length - 1; n >= 0; n--) {
+        const f = flicker[n];
+        if (!f) continue;
+        const u = (t - f.t0) / 1.8;
+        const el = blocks?.[f.i];
+        if (u >= 1) {
+          el?.setAttribute("opacity", `${f.base}`);
+          flicker.splice(n, 1);
+        } else el?.setAttribute("opacity", `${f.base * (1 - f.depth * Math.sin(Math.PI * u))}`);
+      }
+
       spokes.forEach((sp, i) => {
         const e = snap(Math.min(1, (t - sp.t0) / MOVE));
         const x = sp.from.x + (sp.to.x - sp.from.x) * e;
@@ -231,12 +259,19 @@ export function PathField({ className = "" }: { className?: string }) {
   // showing an edge. Far from the network the dots shrink to a faint floor.
   const dots = useMemo(() => {
     const out: { x: number; y: number; s: number; o: number }[] = [];
+    let seed = 17;
+    const rnd = () => {
+      seed = (seed * 1664525 + 1013904223) % 4294967296;
+      return seed / 4294967296;
+    };
     for (let c = -24; c < W / STEP + 21; c++) {
       for (let r = -3; r < H / STEP + 4; r++) {
         const { x, y } = at(c, r);
         const d = Math.hypot(x - FOCUS.x, (y - FOCUS.y) * 1.3);
-        const s = Math.max(1.6, Math.min(7, 9 - d / 70));
-        out.push({ x, y, s, o: Math.max(0.12, 1 - d / 640) });
+        const s = Math.max(1.4, Math.min(7, 9 - d / 70)) * 0.82;
+        // Some blocks are dimmer, at random; none is brighter than its base.
+        const dim = rnd() < 0.4 ? 0.5 + rnd() * 0.45 : 1;
+        out.push({ x, y, s, o: Math.max(0.12, 1 - d / 640) * 0.42 * dim });
       }
     }
     return out;
@@ -247,14 +282,20 @@ export function PathField({ className = "" }: { className?: string }) {
   // The path resets while the field is away; it is never seen to retract.
   const resetting = step === 0;
 
+  // How far the lens has racked: no blur at rest, more with each hop that lights.
+  const blur = reduced ? 0 : ({ 3: 1, 4: 2.2, 5: 3.4, 6: 4.6, 7: 5.6, 8: 5.6 } as Record<number, number>)[step] ?? 0;
+
   return (
+    <>
     <svg ref={ref} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMin slice" className={`block h-full w-full ${className}`} aria-hidden="true">
       <style>{`@media (max-width: 640px) { .pf-text { display: none } }`}</style>
       <g ref={fieldRef}>
         <g ref={camRef}>
-          {dots.map((d) => (
-            <rect key={`${d.x}-${d.y}`} x={d.x - d.s / 2} y={d.y - d.s / 2} width={d.s} height={d.s} fill="var(--litt-fg)" opacity={d.o * 0.42} />
-          ))}
+          <g ref={dotsRef}>
+            {dots.map((d) => (
+              <rect key={`${d.x}-${d.y}`} x={d.x - d.s / 2} y={d.y - d.s / 2} width={d.s} height={d.s} fill="var(--litt-fg)" opacity={d.o} />
+            ))}
+          </g>
 
           {/* Any public address: spokes into the internet node, their far ends wandering
               one block at a time; only the blocks they land on are lit. */}
@@ -368,5 +409,12 @@ export function PathField({ className = "" }: { className?: string }) {
         </linearGradient>
       </defs>
     </svg>
+    {/* Depth of field: the left of the field drifts out of focus as the path moves on. */}
+    <div
+      aria-hidden="true"
+      className="pointer-events-none absolute inset-0 [mask-image:linear-gradient(to_right,black_0%,black_14%,transparent_48%)]"
+      style={{ backdropFilter: `blur(${blur}px)`, WebkitBackdropFilter: `blur(${blur}px)`, transition: `backdrop-filter ${blur === 0 ? 900 : 1800}ms cubic-bezier(0.65, 0, 0.35, 1), -webkit-backdrop-filter ${blur === 0 ? 900 : 1800}ms cubic-bezier(0.65, 0, 0.35, 1)` }}
+    />
+    </>
   );
 }
