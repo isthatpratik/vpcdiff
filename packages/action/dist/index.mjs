@@ -1088,10 +1088,13 @@ var ModelBuilder = class {
         subnets = bad ? unknown(bad.kind === "unknown" ? bad.reason : `${group.address}: a subnet is not managed in this plan`) : known(refs.map((x) => x.address));
       }
     }
-    if (!subnets.ok) return [this.fail(r, subnets.reason)];
-    if (!subnets.value.length) return [this.fail(r, `${r.address}: its DB subnet group has no subnets`)];
     const pa = r.values.publicly_accessible;
-    const publicIp = () => isUnknown(r, ["publicly_accessible"]) ? r.configured.has("publicly_accessible") ? unknown(`${r.address}: publicly_accessible is unknown until apply`) : known(void 0) : known(pa === true ? `${r.address} publicly_accessible = true` : void 0);
+    const publicIp = () => isUnknown(r, ["publicly_accessible"]) ? unknown(`${r.address}: publicly_accessible is unknown until apply`) : known(pa === true ? `${r.address} publicly_accessible = true` : void 0);
+    if (!subnets.ok || !subnets.value.length) {
+      const reason = subnets.ok ? `${r.address}: its DB subnet group has no subnets` : subnets.reason;
+      const ip = publicIp();
+      return [ip.ok && !ip.value ? { ...this.fail(r, reason), publicIp: ip } : this.fail(r, reason)];
+    }
     return subnets.value.map(
       (sub) => this.place(r, sub, publicIp, (vpc) => {
         const g = this.groups(r, "vpc_security_group_ids", vpc);
@@ -1107,22 +1110,34 @@ var ModelBuilder = class {
    * https://docs.aws.amazon.com/elasticloadbalancing/latest/network/load-balancer-security-groups.html
    */
   loadBalancer(r) {
-    let subnets;
+    const fromSubnets = () => {
+      const refs = resolveRefs(this.snap, r, "subnets", "aws_subnet");
+      const bad = refs.find((x) => x.kind !== "resource");
+      return bad ? unknown(bad.kind === "unknown" ? bad.reason : `${r.address}: a subnet is not managed in this plan`) : known(refs.map((x) => x.address).toSorted(cmp));
+    };
     const mappings = arr(r.values.subnet_mapping);
+    let subnets;
     if (mappings.length) {
       const ids = mappings.map((m) => isObj(m) ? m.subnet_id : void 0);
       const all = ids.every((id) => typeof id === "string") ? ids.map((id) => this.snap.byId.get(id)) : [];
-      subnets = all.length === ids.length && all.every(Boolean) ? known(all) : unknown(`${r.address}: subnet_mapping is unknown until apply or outside this plan`);
-    } else {
-      const refs = resolveRefs(this.snap, r, "subnets", "aws_subnet");
-      const bad = refs.find((x) => x.kind !== "resource");
-      subnets = bad ? unknown(bad.kind === "unknown" ? bad.reason : `${r.address}: a subnet is not managed in this plan`) : known(refs.map((x) => x.address));
-    }
+      subnets = all.length === ids.length && all.every(Boolean) ? known(all.toSorted(cmp)) : unknown(`${r.address}: subnet_mapping is unknown until apply or outside this plan`);
+      const listed = arr(r.values.subnets).length || isUnknown(r, ["subnets"]) ? fromSubnets() : void 0;
+      if (subnets.ok && listed && (!listed.ok || listed.value.join() !== subnets.value.join())) subnets = unknown(`${r.address}: subnets and subnet_mapping disagree`);
+    } else subnets = fromSubnets();
     if (!subnets.ok) return [this.fail(r, subnets.reason)];
     if (!subnets.value.length) return [this.fail(r, `${r.address} has no subnets in this plan`)];
-    const internal = r.values.internal;
-    const publicIp = () => isUnknown(r, ["internal"]) ? unknown(`${r.address}: internal is unknown until apply`) : known(internal === true ? void 0 : `${r.address} is internet-facing (internal = false)`);
-    const network = r.values.load_balancer_type === "network" || r.values.load_balancer_type === "gateway";
+    if (isUnknown(r, ["load_balancer_type"]) && r.configured.has("load_balancer_type")) return [this.fail(r, `${r.address}: load_balancer_type is unknown until apply`)];
+    const type = isUnknown(r, ["load_balancer_type"]) ? "application" : String(r.values.load_balancer_type ?? "application");
+    const publicIp = () => {
+      if (isUnknown(r, ["internal"])) return unknown(`${r.address}: internal is unknown until apply`);
+      if (r.values.internal === true) return known(void 0);
+      if (isUnknown(r, ["ip_address_type"]) && r.configured.has("ip_address_type")) return unknown(`${r.address}: ip_address_type is unknown until apply`);
+      const ipType = isUnknown(r, ["ip_address_type"]) ? "ipv4" : String(r.values.ip_address_type ?? "ipv4");
+      if (ipType === "dualstack-without-public-ipv4") return known(void 0);
+      if (ipType !== "ipv4" && ipType !== "dualstack") return unknown(`${r.address}: ip_address_type ${ipType} is not modeled`);
+      return known(`${r.address} is internet-facing (internal = false)`);
+    };
+    const network = type === "network" || type === "gateway";
     const groups = (vpc) => {
       const g = this.groups(r, "security_groups", vpc, !network);
       return g === "empty" ? this.listenerGroup(r) : g;
@@ -1199,7 +1214,8 @@ function evaluateAll(list, p, ports) {
   if (!list?.length) return evaluate(void 0, p, ports);
   const outcomes = list.map((e) => evaluate(e, p, ports));
   const first = outcomes[0];
-  if (outcomes.every((o) => JSON.stringify(o) === JSON.stringify(first))) return first;
+  const same = (o) => o.verdict === first.verdict && JSON.stringify(o.sources) === JSON.stringify(first.sources) && o.reason === first.reason;
+  if (outcomes.every(same) || first.verdict === "blocked" && outcomes.every((o) => o.verdict === "blocked")) return first;
   const detail = list.map((e, i) => `${e.subnet.ok ? e.subnet.value : "unknown subnet"}: ${outcomes[i]?.verdict ?? "unknown"}`).join("; ");
   return { verdict: "unknown", sources: [], hops: [], reason: `${list[0]?.placement ?? "the result differs between placements"} (${detail})` };
 }

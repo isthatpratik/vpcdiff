@@ -66,7 +66,10 @@ function evaluateAll(list: Endpoint[] | undefined, p: Protocol, ports: Range): O
   if (!list?.length) return evaluate(undefined, p, ports);
   const outcomes = list.map((e) => evaluate(e, p, ports));
   const first = outcomes[0] as Outcome;
-  if (outcomes.every((o) => JSON.stringify(o) === JSON.stringify(first))) return first;
+  // Placements that agree on the verdict and the sources give the same answer, even when
+  // their explanations name different route tables or NACLs. The first placement explains it.
+  const same = (o: Outcome) => o.verdict === first.verdict && JSON.stringify(o.sources) === JSON.stringify(first.sources) && o.reason === first.reason;
+  if (outcomes.every(same) || (first.verdict === "blocked" && outcomes.every((o) => o.verdict === "blocked"))) return first;
   const detail = list.map((e, i) => `${e.subnet.ok ? e.subnet.value : "unknown subnet"}: ${outcomes[i]?.verdict ?? "unknown"}`).join("; ");
   return { verdict: "unknown", sources: [], hops: [], reason: `${list[0]?.placement ?? "the result differs between placements"} (${detail})` };
 }

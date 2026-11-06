@@ -101,3 +101,7 @@ resource "aws_lb" "web" {
   subnets            = [aws_subnet.a.id, aws_subnet.b.id]
   security_groups    = [aws_security_group.web.id]
 }
+output "pw" {
+  value     = aws_db_instance.main.password
+  sensitive = true
+}
