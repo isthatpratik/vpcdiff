@@ -114,13 +114,23 @@ function Check({ s }: { s: S }) {
           value={status}
           align="end"
           states={{
-            clear: <span className="hd-status is-ok">No new exposure</span>,
-            running: (
-              <span className="hd-status">
-                <Spinner size={12} /> Checking paths
+            clear: (
+              <span className="hd-status is-ok">
+                <span className="hd-status-dot" aria-hidden="true" />
+                No new exposure
               </span>
             ),
-            found: <span className="hd-status is-bad">New exposure</span>,
+            running: (
+              <span className="hd-status">
+                <Spinner size={11} /> Checking paths
+              </span>
+            ),
+            found: (
+              <span className="hd-status is-bad">
+                <span className="hd-status-dot" aria-hidden="true" />
+                New exposure
+              </span>
+            ),
           }}
         />
       </div>
@@ -171,7 +181,7 @@ export function HeroDemo() {
       {(s, _rect, layout) =>
         layout === "compact" ? (
           <>
-            <Window url="github.com/acme/infra/pull/42" urlShape="pill" className="hd-window hd-window--compact">
+            <Window url="github.com/acme/infra/pull/42" urlShape="pill" lights="grey" className="hd-window hd-window--compact">
               <div className="hd-page">
                 <Diff s={s} />
               </div>
@@ -182,7 +192,7 @@ export function HeroDemo() {
           </>
         ) : (
           <>
-            <Window url="github.com/acme/infra/pull/42" urlShape="pill" nav className="hd-window">
+            <Window url="github.com/acme/infra/pull/42" urlShape="pill" lights="grey" nav className="hd-window">
               <div className="hd-page">
                 <div className="hd-pr">
                   <div className="hd-pr-title">Pull request #42</div>

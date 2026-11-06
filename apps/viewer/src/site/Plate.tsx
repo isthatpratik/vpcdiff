@@ -7,7 +7,7 @@ import type { ReactNode } from "react";
 export function Plate({ children, className = "", inset = "pt-12 pl-12 sm:pt-16 sm:pl-16" }: { children: ReactNode; className?: string; inset?: string }) {
   return (
     <div className={`relative isolate overflow-hidden bg-litt-surface-1 ${className}`}>
-      <div aria-hidden="true" className="absolute inset-0 -z-10 [background-image:radial-gradient(color-mix(in_oklab,var(--litt-fg)_26%,transparent)_1px,transparent_1.5px)] [background-size:16px_16px] [mask-image:linear-gradient(135deg,black,transparent_75%)]" />
+      <div aria-hidden="true" className="absolute inset-0 -z-10 [background-image:radial-gradient(color-mix(in_oklab,var(--litt-fg)_26%,transparent)_1px,transparent_1.5px)] [background-size:16px_16px] [mask-image:radial-gradient(ellipse_80%_70%_at_30%_35%,black,transparent_85%)]" />
       <div className={inset}>{children}</div>
     </div>
   );

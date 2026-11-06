@@ -122,14 +122,20 @@ Fonts load from Google Fonts (see section 10 for what that means for privacy).
 - **The landing page frame** (after primora.xyz): a 1200 px column drawn by two 1px
   rails. Sections stack inside it, cut by 1px hairlines that run from edge to edge of
   the screen, 12 px in. Where a hairline meets a rail it stops 12 px short on both
-  sides, so lines never cross. Grids of cells inside a section are drawn with the same
+  sides, so lines never cross. Most gaps stay empty; only the crossings that frame the
+  tagline hold a 3 px dot, so a dot marks something worth stopping at. Grids of cells inside a section are drawn with the same
   1px line. A few section titles get a 2px ink bar on the left rail. Content sits 64 px
   inside the rails (24 px on small screens).
 - **Radius:** controls 8 px (`--litt-radius-control`), landing buttons 6 px, surfaces
   8 px, the footer card 14 px. Cells and framed panels are square. A nested shape gets the outer radius minus
   the gap.
-- **Cards:** a framed panel has a small cross at each corner, after cardcn's basic card
-  #6.
+- **Cards:** a framed panel has four hairlines that stop 10 px short of each corner,
+  with a 3 px dot in each corner (after the crossings on firecrawl.dev).
+- **Spotlight:** framed panels and feature cells show a soft ink light under the
+  pointer (6% ink, 360 px). It is off on touch screens and under reduced motion.
+- **Tagline:** four chips from a real plan sit around the tagline on wide screens, each
+  tied to a word by an elbow leader. A chip and its leader appear when their word
+  lights up.
 - **Depth:** a hairline, not a shadow, separates things. Dark themes use a lighter
   surface.
 - **Plates:** a product panel (the pull request demo, the "How it works" terminals) sits
@@ -251,7 +257,7 @@ Fonts load from Google Fonts (see section 10 for what that means for privacy).
   which allows use in apps but not resale of the raw files): the landing page's motion,
   in `apps/viewer/src/components/sora-ui/`.
 - **Stageshow kit** (MIT): the pull request demo, in `apps/viewer/src/stageshow/`.
-- **cardcn** (https://cardcn.dev): the corner-cross card is rebuilt from its basic card
+- **cardcn** (https://cardcn.dev): the framed card started from its basic card
   #6 on litt tokens, in `apps/viewer/src/site/rails.tsx`.
 - **Lenis** (MIT): smooth scrolling on the landing page.
 - Vendored files are not linted; a change to them is marked with a `vpcdiff patch`

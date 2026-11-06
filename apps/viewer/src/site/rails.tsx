@@ -53,14 +53,20 @@ export function Rail({ children, className = "", id, label, reveal = true, as: T
   );
 }
 
-/** An edge-to-edge hairline with a gap where it meets each rail. */
-export function Divider() {
+/**
+ * An edge-to-edge hairline with a gap where it meets each rail. With `dots`, a small dot
+ * sits in each gap. Use it only where a crossing frames something (the tagline), so most
+ * crossings stay as plain gaps.
+ */
+export function Divider({ dots = false }: { dots?: boolean }) {
+  const gap = "absolute -top-3 grid size-6 place-items-center bg-litt-canvas";
+  const dot = dots ? <span className="size-[3px] rounded-full bg-litt-fg-subtle" /> : null;
   return (
     <div aria-hidden="true" className="relative z-10 h-px">
       <div className="absolute inset-x-3 top-0 h-px bg-litt-line" />
       <div className="relative mx-3 h-px sm:mx-6 xl:mx-auto xl:max-w-[1200px]">
-        <span className="absolute -top-3 -left-3 size-6 bg-litt-canvas" />
-        <span className="absolute -top-3 -right-3 size-6 bg-litt-canvas" />
+        <span className={`${gap} -left-3`}>{dot}</span>
+        <span className={`${gap} -right-3`}>{dot}</span>
       </div>
     </div>
   );
@@ -96,18 +102,60 @@ export function SectionHead({ eyebrow, title, rest, children, bar = false, class
 }
 
 /**
- * A card with a small cross at each corner, after cardcn's basic card #6
- * (https://cardcn.dev/cards/basic-cards). Rebuilt here on litt tokens.
+ * Cursor spotlight: a soft light under the pointer, in the ink tone. Sets --mx and --my on
+ * the element itself (not a parent) so only it restyles. Off on touch screens and under
+ * reduced motion, where the light never shows.
  */
-export function CrossCard({ children, className = "" }: { children: ReactNode; className?: string }) {
-  const corner = "pointer-events-none absolute size-[11px] text-litt-fg-subtle before:absolute before:top-1/2 before:left-0 before:h-px before:w-full before:-translate-y-1/2 before:bg-current after:absolute after:top-0 after:left-1/2 after:h-full after:w-px after:-translate-x-1/2 after:bg-current";
+export function useSpotlight<T extends HTMLElement>() {
+  const ref = useRef<T>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    if (!window.matchMedia("(hover: hover) and (pointer: fine)").matches || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const move = (e: PointerEvent) => {
+      const r = el.getBoundingClientRect();
+      el.style.setProperty("--mx", `${e.clientX - r.left}px`);
+      el.style.setProperty("--my", `${e.clientY - r.top}px`);
+    };
+    el.addEventListener("pointermove", move, { passive: true });
+    return () => el.removeEventListener("pointermove", move);
+  }, []);
+  return ref;
+}
+
+/** The light for `useSpotlight`. Put it first inside a `group relative` element. */
+export function Spotlight({ size = 360 }: { size?: number }) {
   return (
-    <div className={`relative border border-litt-line ${className}`}>
-      <span aria-hidden="true" className={`${corner} -top-[6px] -left-[6px]`} />
-      <span aria-hidden="true" className={`${corner} -top-[6px] -right-[6px]`} />
-      <span aria-hidden="true" className={`${corner} -bottom-[6px] -left-[6px]`} />
-      <span aria-hidden="true" className={`${corner} -right-[6px] -bottom-[6px]`} />
-      {children}
+    <span
+      aria-hidden="true"
+      className={`pointer-events-none absolute inset-0 z-[1] opacity-0 transition-opacity duration-300 ${EASE} group-hover:opacity-100 motion-reduce:hidden`}
+      style={{ background: `radial-gradient(${size}px circle at var(--mx, 50%) var(--my, 50%), color-mix(in oklab, var(--litt-fg) 6%, transparent), transparent 70%)` }}
+    />
+  );
+}
+
+/**
+ * A framed card: four hairlines that stop short of each corner, and a small dot in each
+ * corner, like the line crossings on firecrawl.dev and primora.xyz.
+ */
+export function DotCard({ children, className = "" }: { children: ReactNode; className?: string }) {
+  const ref = useSpotlight<HTMLDivElement>();
+  const dot = "pointer-events-none absolute size-[3px] rounded-full bg-litt-fg-subtle";
+  const line = "pointer-events-none absolute bg-litt-line";
+  return (
+    <div ref={ref} className={`group relative ${className}`}>
+      <span aria-hidden="true" className={`${line} top-0 right-2.5 left-2.5 h-px`} />
+      <span aria-hidden="true" className={`${line} right-2.5 bottom-0 left-2.5 h-px`} />
+      <span aria-hidden="true" className={`${line} top-2.5 bottom-2.5 left-0 w-px`} />
+      <span aria-hidden="true" className={`${line} top-2.5 right-0 bottom-2.5 w-px`} />
+      <span aria-hidden="true" className={`${dot} -top-px -left-px`} />
+      <span aria-hidden="true" className={`${dot} -top-px -right-px`} />
+      <span aria-hidden="true" className={`${dot} -bottom-px -left-px`} />
+      <span aria-hidden="true" className={`${dot} -right-px -bottom-px`} />
+      <div className="relative p-px">
+        <Spotlight />
+        {children}
+      </div>
     </div>
   );
 }

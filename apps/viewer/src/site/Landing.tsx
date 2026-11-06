@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect } from "react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/litt/accordion";
 import { Tag } from "@/components/litt/tag";
 import { TooltipProvider } from "@/components/litt/tooltip";
@@ -19,61 +19,14 @@ import { PathField } from "./PathField.tsx";
 import { Footer } from "./Footer.tsx";
 import { HopStrip } from "./HopStrip.tsx";
 import { Plate } from "./Plate.tsx";
+import { Tagline } from "./Tagline.tsx";
+import { CliSection } from "./Terminal.tsx";
 import { StepTabs } from "./StepTabs.tsx";
-import { CrossCard, Divider, EASE, PAD, Rail, SectionHead, useInViewOnce } from "./rails.tsx";
+import { DotCard, Divider, EASE, PAD, Rail, SectionHead, Spotlight, useInViewOnce, useSpotlight } from "./rails.tsx";
 import { ScrollFrost } from "./ScrollFrost.tsx";
 import { startSmoothScroll } from "./smooth.ts";
 
 const APP = "./app/";
-
-/** The tagline: each word moves from a muted tone to full ink as it crosses the trigger line. */
-function TaglineReveal({ lines }: { lines: string[] }) {
-  const ref = useRef<HTMLParagraphElement>(null);
-  const words = lines.flatMap((line, li) => {
-    const parts = line.split(" ");
-    return parts.map((w, wi) => ({ w, key: `${li}-${wi}`, lineEnd: wi === parts.length - 1 && li < lines.length - 1 }));
-  });
-  const [lit, setLit] = useState(0);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return setLit(words.length);
-    let frame = 0;
-    const update = () => {
-      frame = 0;
-      const trigger = window.innerHeight * 0.62;
-      let n = 0;
-      el.querySelectorAll<HTMLSpanElement>("[data-word]").forEach((s) => {
-        if (s.getBoundingClientRect().top < trigger) n++;
-      });
-      setLit((prev) => Math.max(prev, n));
-    };
-    const onScroll = () => {
-      if (!frame) frame = requestAnimationFrame(update);
-    };
-    update();
-    window.addEventListener("scroll", onScroll, { passive: true });
-    window.addEventListener("resize", onScroll);
-    return () => {
-      window.removeEventListener("scroll", onScroll);
-      window.removeEventListener("resize", onScroll);
-      if (frame) cancelAnimationFrame(frame);
-    };
-  }, [words.length]);
-  return (
-    <p ref={ref} className="mx-auto max-w-[820px] text-center font-display text-4xl leading-[1.1] font-normal tracking-[-0.035em] text-balance sm:text-6xl sm:leading-[1.04]">
-      <span className="sr-only">{lines.join(" ")}</span>
-      {words.map((x, i) => (
-        <span key={x.key} aria-hidden="true">
-          <span data-word className={`transition-colors duration-500 ${EASE} ${i < lit ? "text-litt-fg" : "text-litt-fg/20"}`}>
-            {x.w}
-          </span>
-          {x.lineEnd ? <br /> : " "}
-        </span>
-      ))}
-    </p>
-  );
-}
 
 /* ---- Feature visuals: each shows its idea working, in the product's own words. ---- */
 
@@ -130,6 +83,17 @@ function OutageTimeline({ on }: { on: boolean }) {
   );
 }
 
+/** A feature cell with the cursor spotlight. */
+function Cell({ children, className, id }: { children: React.ReactNode; className: string; id?: string }) {
+  const ref = useSpotlight<HTMLElement>();
+  return (
+    <article ref={ref} id={id} className={`group relative ${className}`}>
+      <Spotlight />
+      {children}
+    </article>
+  );
+}
+
 function Features() {
   const [ref, seen] = useInViewOnce<HTMLDivElement>("0px 0px -20% 0px");
   const cell = "grid content-between gap-12 bg-litt-canvas px-6 py-10 md:px-16 md:py-14";
@@ -138,31 +102,31 @@ function Features() {
   const label = "font-litt-mono text-litt-caption text-litt-fg-subtle";
   return (
     <div ref={ref} className="grid gap-px border-t border-litt-line bg-litt-line md:grid-cols-2">
-      <article className={cell}>
+      <Cell className={cell}>
         <div className="grid gap-3">
           <span className={label}>01 · hop by hop</span>
           <h3 className={title}>Every hop, with the rule that decided it</h3>
           <p className={body}>Each path is checked in the order traffic meets it. Every answer names the resource and links the AWS documentation for that hop.</p>
         </div>
         <HopChain on={seen} />
-      </article>
-      <article className={cell}>
+      </Cell>
+      <Cell className={cell}>
         <div className="grid gap-3">
           <span className={label}>02 · honest</span>
           <h3 className={title}>Unknown when it cannot know</h3>
           <p className={body}>Values set only at apply time give unknown with the reason, never a guess.</p>
         </div>
         <UnknownLine />
-      </article>
-      <article id="outage" className={`${cell} scroll-mt-24`}>
+      </Cell>
+      <Cell id="outage" className={`${cell} scroll-mt-24`}>
         <div className="grid gap-3">
           <span className={label}>03 · new in v0.1</span>
           <h3 className={title}>Outage risk, not only exposure</h3>
           <p className={body}>A group or route replaced by deleting it first leaves a gap on a path that stays open.</p>
         </div>
         <OutageTimeline on={seen} />
-      </article>
-      <article className={cell}>
+      </Cell>
+      <Cell className={cell}>
         <div className="grid gap-3">
           <span className={label}>04 · private</span>
           <h3 className={title}>Nothing leaves your machine</h3>
@@ -172,7 +136,7 @@ function Features() {
           <span className="font-litt-mono text-2xl text-litt-fg sm:text-3xl">connect-src &apos;none&apos;</span>
           <span className="text-litt-small text-litt-fg-subtle">in the viewer's Content Security Policy</span>
         </div>
-      </article>
+      </Cell>
     </div>
   );
 }
@@ -182,7 +146,7 @@ function Stats() {
   const facts = [
     { value: 6, label: "hops checked for every path, before and after the plan" },
     { value: 5, label: "real Terraform plans in the test suite, each with a written proof" },
-    { value: 102, label: "tests on every change, with byte for byte expected results" },
+    { value: 127, label: "tests on every change, with byte for byte expected results" },
     { value: 0, label: "runtime dependencies in the engine: a terminal, CI, or a tab" },
   ];
   return (
@@ -366,22 +330,22 @@ export function Landing() {
           <SectionHead eyebrow="In review" title="The check runs on the pull request." rest="Before anyone applies." bar>
             A rule widens in a pull request. vpcdiff finds the new path from the internet and shows the hop that changed.
           </SectionHead>
-          <CrossCard>
-            <Plate inset="p-4 sm:p-10 lg:p-14">
+          <DotCard>
+            <Plate inset="px-4 pt-4 sm:px-10 sm:pt-10 lg:px-14 lg:pt-14">
               <div role="img" aria-label="Product demo: a pull request widens a security group rule, and vpcdiff finds and explains the new path from the internet">
                 <div aria-hidden="true">
                   <HeroDemo />
                 </div>
               </div>
             </Plate>
-          </CrossCard>
+          </DotCard>
         </Rail>
-        <Divider />
+        <Divider dots />
 
-        <Rail label="Tagline" className="px-6 py-32 sm:py-44">
-          <TaglineReveal lines={["A diff shows which rules changed.", "vpcdiff shows what they open."]} />
+        <Rail label="Tagline">
+          <Tagline />
         </Rail>
-        <Divider />
+        <Divider dots />
 
         <Rail label="Why vpcdiff">
           <div className={`${PAD} pt-24 pb-16 md:pt-28 md:pb-20`}>
@@ -410,6 +374,16 @@ export function Landing() {
             />
           </div>
           <StepTabs />
+        </Rail>
+        <Divider />
+
+        <Rail id="cli" label="In the terminal">
+          <div className={`${PAD} pt-24 pb-16 md:pt-28 md:pb-20`}>
+            <SectionHead eyebrow="In the terminal" title="It asks for what it needs." rest="You answer, it explains." bar>
+              The CLI finds your plan, reads it, and shows each new path in plain words. The same check runs in CI with plain text output.
+            </SectionHead>
+          </div>
+          <CliSection />
         </Rail>
         <Divider />
 
