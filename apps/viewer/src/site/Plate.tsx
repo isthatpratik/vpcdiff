@@ -13,18 +13,28 @@ export function Plate({ children, className = "", inset = "pt-12 pl-12 sm:pt-16 
   );
 }
 
-/** A plain window for panels on a plate: a title bar with three quiet dots, then content. */
+/**
+ * The one window style for panels on a plate (the "How it works" panels and the CLI
+ * terminal): a rounded top-left corner (the other corners run off the plate), a soft
+ * outline with a lit top edge, a deep shadow, quiet window dots, and a mono title.
+ */
+export const WINDOW = "rounded-tl-[10px] bg-litt-canvas shadow-[0_0_0_1px_color-mix(in_oklab,var(--litt-fg)_10%,transparent),inset_0_1px_0_color-mix(in_oklab,var(--litt-fg)_6%,transparent),0_40px_80px_-24px_rgba(0,0,0,0.6)]";
+
+export function WindowBar({ title }: { title: string }) {
+  return (
+    <div className="flex h-9 items-center gap-1.5 border-b border-litt-line px-4">
+      <span aria-hidden="true" className="size-2.5 rounded-full bg-litt-fg/15" />
+      <span aria-hidden="true" className="size-2.5 rounded-full bg-litt-fg/15" />
+      <span aria-hidden="true" className="size-2.5 rounded-full bg-litt-fg/15" />
+      <span className="ml-3 font-litt-mono text-litt-caption text-litt-fg-subtle">{title}</span>
+    </div>
+  );
+}
+
 export function PanelWindow({ title, children, className = "" }: { title: string; children: ReactNode; className?: string }) {
   return (
-    <div className={`border-t border-l border-litt-line-strong bg-litt-surface-1 shadow-[0_24px_64px_-24px_rgba(0,0,0,0.6)] ${className}`}>
-      <div className="flex h-10 items-center gap-3 border-b border-litt-line px-4">
-        <span aria-hidden="true" className="flex gap-1.5">
-          <span className="size-2.5 rounded-full bg-litt-line-strong" />
-          <span className="size-2.5 rounded-full bg-litt-line-strong" />
-          <span className="size-2.5 rounded-full bg-litt-line-strong" />
-        </span>
-        <span className="font-litt-mono text-litt-caption text-litt-fg-subtle">{title}</span>
-      </div>
+    <div className={`${WINDOW} ${className}`}>
+      <WindowBar title={title} />
       {children}
     </div>
   );

@@ -3,6 +3,7 @@
 // `clear`. Under reduced motion the terminal shows its final frame and does not loop.
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { CheckIcon, CopyIcon } from "@/components/litt/icons";
+import { WINDOW, WindowBar } from "./Plate.tsx";
 import { EASE, useInViewOnce } from "./rails.tsx";
 
 const RUN = ["git clone https://github.com/isthatpratik/vpcdiff", "cd vpcdiff && pnpm install && pnpm build", "node packages/cli/dist/vpcdiff.mjs"];
@@ -235,13 +236,8 @@ export function CliSection() {
       <div ref={ref} className="relative isolate overflow-hidden border-t border-litt-line bg-litt-surface-1 lg:border-t-0 lg:border-l">
         <div aria-hidden="true" className="absolute inset-0 -z-10 [background-image:radial-gradient(color-mix(in_oklab,var(--litt-fg)_22%,transparent)_1px,transparent_1.5px)] [background-size:16px_16px] [mask-image:radial-gradient(ellipse_80%_70%_at_30%_35%,black,transparent_85%)]" />
         <div role="img" aria-label="Terminal: vpcdiff asks which plan to read, then shows that the plan opens aws_instance.db on tcp/5432 to the internet, decided by a security group rule." className="pt-8 pl-6 sm:pt-12 sm:pl-12">
-          <div aria-hidden="true" className="rounded-tl-[10px] bg-litt-canvas shadow-[0_0_0_1px_color-mix(in_oklab,var(--litt-fg)_10%,transparent),inset_0_1px_0_color-mix(in_oklab,var(--litt-fg)_6%,transparent),0_40px_80px_-24px_rgba(0,0,0,0.6)]">
-            <div className="flex h-9 items-center gap-1.5 border-b border-litt-line px-4">
-              <span className="size-2.5 rounded-full bg-litt-fg/15" />
-              <span className="size-2.5 rounded-full bg-litt-fg/15" />
-              <span className="size-2.5 rounded-full bg-litt-fg/15" />
-              <span className="ml-3 font-litt-mono text-litt-caption text-litt-fg-subtle">~/infra</span>
-            </div>
+          <div aria-hidden="true" className={WINDOW}>
+            <WindowBar title="~/infra" />
             <div className="h-[460px] overflow-hidden px-5 py-4 font-litt-mono text-[12.5px] leading-[20px] text-litt-fg-muted sm:text-[13px]">
               <Screen step={step} typed={typed} />
             </div>
