@@ -1152,13 +1152,13 @@
       ]
     },
     {
-      "resource": "aws_vpc.main",
+      "resource": "aws_route_table.web",
       "attribute": [
         "id"
       ]
     },
     {
-      "resource": "aws_route_table.web",
+      "resource": "aws_security_group.web",
       "attribute": [
         "id"
       ]
@@ -1170,7 +1170,7 @@
       ]
     },
     {
-      "resource": "aws_security_group.web",
+      "resource": "aws_vpc.main",
       "attribute": [
         "id"
       ]

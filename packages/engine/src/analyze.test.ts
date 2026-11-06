@@ -71,8 +71,8 @@ describe("analyze", () => {
   });
 
   it("notes resource types it does not model", () => {
-    const db: Res = { type: "aws_db_instance", name: "db", after: { id: "db-1", publicly_accessible: true } };
-    expect(analyze(plan(network({}, [db]))).notes).toEqual([{ resource: "aws_db_instance.db", message: expect.stringContaining("not modeled yet") }]);
+    const db: Res = { type: "aws_rds_cluster", name: "db", after: { id: "cluster-1" } };
+    expect(analyze(plan(network({}, [db]))).notes).toEqual([{ resource: "aws_rds_cluster.db", message: expect.stringContaining("not modeled yet") }]);
   });
 
   it("gives the same bytes for the same input in any resource order", () => {

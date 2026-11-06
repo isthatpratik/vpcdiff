@@ -1,5 +1,5 @@
 import { evaluate, exposedPorts, portCuts, segment } from "./evaluate.js";
-import { formatPorts, union, type Range } from "./intervals.js";
+import { formatPorts, union, type IntervalSet, type Range } from "./intervals.js";
 import { ModelBuilder, type Endpoint } from "./model.js";
 import { cmp, parsePlan, type Snapshot } from "./plan.js";
 import { RESULT_FORMAT, type Change, type Note, type Outcome, type Path, type Protocol, type Result } from "./types.js";
@@ -35,6 +35,10 @@ const MODELED = new Set([
   "aws_eip",
   "aws_eip_association",
   "aws_instance",
+  "aws_db_instance",
+  "aws_db_subnet_group",
+  "aws_lb",
+  "aws_lb_listener",
 ]);
 const NETWORK_TYPE = /^aws_(vpc\w*|vpn_gateway\w*|subnet|route\w*|internet_gateway\w*|nat_gateway|egress_only_internet_gateway|network_acl\w*|default_\w+|security_group\w*|vpc_security_group_\w+|eip\w*|network_interface\w*|lb|alb|elb|db_instance|rds_cluster\w*|ecs_service|ec2_transit_gateway\w*|vpc_peering_connection\w*|vpc_endpoint\w*|instance)$/;
 
@@ -50,9 +54,24 @@ function changeOf(before: Outcome, after: Outcome): Change {
   return "unchanged";
 }
 
-function endpointsOf(snap: Snapshot): Map<string, Endpoint> {
-  return new Map(new ModelBuilder(snap).endpoints().map((e) => [e.address, e]));
+/** Endpoints by address; RDS and load balancers have one entry per possible subnet. */
+function endpointsOf(snap: Snapshot): Map<string, Endpoint[]> {
+  const out = new Map<string, Endpoint[]>();
+  for (const e of new ModelBuilder(snap).endpoints()) out.set(e.address, [...(out.get(e.address) ?? []), e]);
+  return out;
 }
+
+/** One outcome for all placements of an endpoint; placements that disagree give unknown. */
+function evaluateAll(list: Endpoint[] | undefined, p: Protocol, ports: Range): Outcome {
+  if (!list?.length) return evaluate(undefined, p, ports);
+  const outcomes = list.map((e) => evaluate(e, p, ports));
+  const first = outcomes[0] as Outcome;
+  if (outcomes.every((o) => JSON.stringify(o) === JSON.stringify(first))) return first;
+  const detail = list.map((e, i) => `${e.subnet.ok ? e.subnet.value : "unknown subnet"}: ${outcomes[i]?.verdict ?? "unknown"}`).join("; ");
+  return { verdict: "unknown", sources: [], hops: [], reason: `${list[0]?.placement ?? "the result differs between placements"} (${detail})` };
+}
+
+const unionOf = (list: Endpoint[] | undefined, f: (e: Endpoint) => IntervalSet): IntervalSet => (list ?? []).reduce<IntervalSet>((acc, e) => union(acc, f(e)), []);
 
 function notesFor(before: Snapshot, after: Snapshot): Note[] {
   const seen = new Map<string, Note>();
@@ -80,17 +99,17 @@ export function analyze(plan: unknown): Result {
     const b = epBefore.get(address);
     const a = epAfter.get(address);
     for (const p of PROTOCOLS) {
-      const candidates = union(exposedPorts(b, p), exposedPorts(a, p));
+      const candidates = union(unionOf(b, (e) => exposedPorts(e, p)), unionOf(a, (e) => exposedPorts(e, p)));
       let run: { ports: Range; before: Outcome; after: Outcome } | undefined;
       const flush = () => {
         if (!run) return;
         const ports = formatPorts([run.ports]);
-        paths.push({ id: `internet->${address}:${p}:${ports}`, from: "internet", to: address, toType: (a ?? b)?.type ?? "", protocol: p, ports, change: changeOf(run.before, run.after), before: run.before, after: run.after });
+        paths.push({ id: `internet->${address}:${p}:${ports}`, from: "internet", to: address, toType: (a ?? b)?.[0]?.type ?? "", protocol: p, ports, change: changeOf(run.before, run.after), before: run.before, after: run.after });
         run = undefined;
       };
-      for (const seg of segment(candidates, [...portCuts(b), ...portCuts(a)])) {
-        const ob = evaluate(b, p, seg);
-        const oa = evaluate(a, p, seg);
+      for (const seg of segment(candidates, [...(b ?? []).flatMap(portCuts), ...(a ?? []).flatMap(portCuts)])) {
+        const ob = evaluateAll(b, p, seg);
+        const oa = evaluateAll(a, p, seg);
         // Merge neighboring port ranges with the same outcome on both sides.
         if (run && run.ports[1] + 1 === seg[0] && JSON.stringify([run.before, run.after]) === JSON.stringify([ob, oa])) run.ports = [run.ports[0], seg[1]];
         else {

@@ -1544,25 +1544,7 @@
   },
   "relevant_attributes": [
     {
-      "resource": "aws_internet_gateway.main",
-      "attribute": [
-        "id"
-      ]
-    },
-    {
-      "resource": "aws_security_group.app",
-      "attribute": [
-        "id"
-      ]
-    },
-    {
       "resource": "aws_default_route_table.main",
-      "attribute": [
-        "id"
-      ]
-    },
-    {
-      "resource": "aws_vpc.main",
       "attribute": [
         "id"
       ]
@@ -1574,7 +1556,25 @@
       ]
     },
     {
+      "resource": "aws_internet_gateway.main",
+      "attribute": [
+        "id"
+      ]
+    },
+    {
       "resource": "aws_network_acl.app",
+      "attribute": [
+        "id"
+      ]
+    },
+    {
+      "resource": "aws_security_group.app",
+      "attribute": [
+        "id"
+      ]
+    },
+    {
+      "resource": "aws_subnet.app",
       "attribute": [
         "id"
       ]
@@ -1586,7 +1586,7 @@
       ]
     },
     {
-      "resource": "aws_subnet.app",
+      "resource": "aws_vpc.main",
       "attribute": [
         "id"
       ]

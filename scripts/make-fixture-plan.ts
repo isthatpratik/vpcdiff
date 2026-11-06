@@ -185,9 +185,33 @@ if (existsSync(join(fixture, "before", "main.tf"))) {
 }
 const after = plan(join(fixture, "after"), state).plan;
 after.timestamp = "2026-01-01T00:00:00Z"; // Fixed, so regenerating gives the same file.
+// Terraform lists relevant_attributes in a different order on each run.
+if (Array.isArray(after.relevant_attributes)) after.relevant_attributes = after.relevant_attributes.map((a) => JSON.stringify(a)).sort().map((a) => JSON.parse(a) as Json);
+
 // Remove the fake credentials and skip flags that fixture_override.tf added.
 const providerConfig = ((after.configuration as Obj).provider_config as Obj | undefined)?.aws as Obj | undefined;
 const providerExprs = providerConfig?.expressions as Obj | undefined;
 if (providerConfig && providerExprs) providerConfig.expressions = { region: providerExprs.region ?? null };
-writeFileSync(join(fixture, "plan.json"), JSON.stringify(after, null, 2) + "\n");
+// Plan JSON keeps sensitive values in clear text and only marks them in *_sensitive.
+// Replace every such value everywhere in the file, so no secret can reach a fixture.
+const secrets = new Set<string>();
+const collectSecrets = (value: Json, mask: Json): void => {
+  if (mask === true) {
+    if (typeof value === "string" && value) secrets.add(value);
+    else if (value && typeof value === "object") for (const v of Object.values(value)) collectSecrets(v, true);
+    return;
+  }
+  if (Array.isArray(value) && Array.isArray(mask)) value.forEach((v, i) => collectSecrets(v, mask[i] ?? false));
+  else if (value && typeof value === "object" && !Array.isArray(value) && mask && typeof mask === "object" && !Array.isArray(mask)) {
+    for (const [k, m] of Object.entries(mask)) collectSecrets((value as Obj)[k] ?? null, m);
+  }
+};
+for (const rc of (after.resource_changes as Obj[] | undefined) ?? []) {
+  const change = rc.change as Obj;
+  collectSecrets(change.before ?? null, change.before_sensitive ?? false);
+  collectSecrets(change.after ?? null, change.after_sensitive ?? false);
+}
+let text = JSON.stringify(after, null, 2);
+for (const secret of [...secrets].sort((a, b) => b.length - a.length)) text = text.split(JSON.stringify(secret)).join(JSON.stringify("(sensitive value removed)"));
+writeFileSync(join(fixture, "plan.json"), text + "\n");
 console.log(`Wrote ${join(fixture, "plan.json")}`);

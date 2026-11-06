@@ -84,7 +84,9 @@ reported as `unknown` with a reason, never as allowed or blocked by guess.
 | `aws_network_acl` (inline), `aws_network_acl_rule`, `aws_network_acl_association`, `aws_default_network_acl`, unmanaged default NACL | supported |
 | `aws_instance` (endpoint), `aws_eip`, `aws_eip_association` | supported |
 | `aws_vpc_security_group_egress_rule` | read; does not affect inbound paths (security groups are stateful) |
-| `aws_db_instance`, `aws_lb` (as endpoints) | planned; noted |
+| `aws_db_instance` (endpoint; `publicly_accessible`, `aws_db_subnet_group`) | supported |
+| `aws_lb` (endpoint; internet-facing ALB and NLB, `aws_lb_listener` for NLBs without groups) | supported |
+| Aurora, ECS services, Classic and Gateway Load Balancers | noted |
 | Prefix lists, VPN route propagation, network interface attachments, secondary VPC CIDRs | unknown |
 | NAT gateway, VPC peering, Transit Gateway, VPC endpoints, IPv6 | not yet; unknown or noted |
 

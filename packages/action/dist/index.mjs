@@ -980,67 +980,170 @@ var ModelBuilder = class {
     if (main.value.length > 1) return unknown(`${vpc.address} has ${main.value.length} main route table associations`);
     return known(this.routeTable(main.value[0] ?? `default-rt:${vpc.address}`, vpc, true));
   }
-  /** EC2 instances as endpoints. */
+  /**
+   * Endpoints, one entry per possible placement. An EC2 instance has one subnet. RDS and
+   * load balancers have several; the analysis compares the results of all placements.
+   */
   endpoints() {
-    return this.ofType("aws_instance").map((r) => this.instance(r));
+    return [
+      ...this.ofType("aws_instance").map((r) => this.instance(r)),
+      ...this.ofType("aws_db_instance").flatMap((r) => this.dbInstance(r)),
+      ...this.ofType("aws_lb").flatMap((r) => this.loadBalancer(r))
+    ];
   }
-  instance(r) {
-    const fail = (reason) => ({ address: r.address, type: r.type, vpc: unknown(reason), subnet: unknown(reason), publicIp: unknown(reason), securityGroups: unknown(reason), nacl: unknown(reason), routeTable: unknown(reason) });
-    const touched = this.touched(r.address, UNMODELED_INSTANCE);
-    if (touched) return fail(touched);
-    if (arr(r.values.network_interface).length) return fail(`${r.address}: network_interface blocks are not modeled yet`);
-    const subnet = this.refTo(r, "subnet_id", "aws_subnet");
-    if (!subnet.ok) return fail(subnet.reason);
-    const s = this.get(subnet.value);
+  fail(r, reason) {
+    return { address: r.address, type: r.type, vpc: unknown(reason), subnet: unknown(reason), publicIp: unknown(reason), securityGroups: unknown(reason), nacl: unknown(reason), routeTable: unknown(reason) };
+  }
+  /** An endpoint for `r` placed in `subnet`. */
+  place(r, subnet, publicIp, groups, placement) {
+    const s = this.get(subnet);
+    if (!s) return this.fail(r, `${subnet} is not in this plan`);
     const vpcRef = this.refTo(s, "vpc_id", "aws_vpc");
-    if (!vpcRef.ok) return fail(vpcRef.reason);
+    if (!vpcRef.ok) return this.fail(r, vpcRef.reason);
     const vpc = this.vpc(vpcRef.value);
-    if (!vpc.ok) return fail(vpc.reason);
-    let publicIp;
-    const eips = this.eips.get(r.address);
-    const assoc = r.values.associate_public_ip_address;
-    if (eips.ok && eips.value.length) publicIp = known(`${eips.value.toSorted(cmp).join(", ")} is associated with ${r.address}`);
-    else if (isUnknown(r, ["associate_public_ip_address"]) && r.configured.has("associate_public_ip_address")) {
-      publicIp = unknown(`${r.address}: associate_public_ip_address is set to a value that is unknown until apply`);
-    } else if (!isUnknown(r, ["associate_public_ip_address"]) && typeof assoc === "boolean") {
-      publicIp = known(assoc ? `${r.address} associate_public_ip_address = true` : void 0);
-    } else if (!isUnknown(s, ["map_public_ip_on_launch"]) && typeof s.values.map_public_ip_on_launch === "boolean") {
-      publicIp = known(s.values.map_public_ip_on_launch ? `${s.address} map_public_ip_on_launch = true` : void 0);
-    } else {
-      publicIp = unknown(`${r.address}: whether it gets a public IPv4 address is unknown until apply`);
-    }
-    if (!eips.ok && !(publicIp.ok && publicIp.value)) publicIp = unknown(eips.reason);
-    let securityGroups;
-    const keys = [];
-    let sgReason;
-    if (isNull(r, "vpc_security_group_ids") || Array.isArray(r.values.vpc_security_group_ids) && !r.values.vpc_security_group_ids.length && !isUnknown(r, ["vpc_security_group_ids"])) {
-      keys.push(`default-sg:${vpcRef.value}`);
-    } else {
-      for (const ref of resolveRefs(this.snap, r, "vpc_security_group_ids", ["aws_security_group", "aws_default_security_group"])) {
-        if (ref.kind === "unknown") sgReason ??= ref.reason;
-        else if (ref.kind === "external") {
-          const vpcDefault = this.get(vpcRef.value)?.values.default_security_group_id === ref.id;
-          if (vpcDefault) keys.push(`default-sg:${vpcRef.value}`);
-          else sgReason ??= `${r.address}: security group ${ref.id} is not managed in this plan`;
-        } else {
-          const k = this.canonical(ref.address);
-          if (k.ok) keys.push(k.value);
-          else sgReason ??= k.reason;
-        }
-      }
-    }
-    if (sgReason) securityGroups = unknown(sgReason);
-    else securityGroups = known([...new Set(keys)].toSorted(cmp).map((k) => this.securityGroup(k)));
+    if (!vpc.ok) return this.fail(r, vpc.reason);
     return {
       address: r.address,
       type: r.type,
       vpc,
-      subnet,
-      publicIp,
-      securityGroups,
-      nacl: this.subnetNacl(subnet.value, vpcRef.value),
-      routeTable: this.subnetRouteTable(subnet.value, vpc.value)
+      subnet: known(subnet),
+      publicIp: publicIp(s),
+      securityGroups: groups(vpcRef.value),
+      nacl: this.subnetNacl(subnet, vpcRef.value),
+      routeTable: this.subnetRouteTable(subnet, vpc.value),
+      ...placement ? { placement } : {}
     };
+  }
+  /**
+   * Security groups listed in `attr`. An empty list means the VPC's default group.
+   * https://docs.aws.amazon.com/vpc/latest/userguide/default-security-group.html
+   */
+  groups(r, attr, vpc, emptyMeansDefault = true) {
+    const v = r.values[attr];
+    if (isNull(r, attr) || Array.isArray(v) && !v.length && !isUnknown(r, [attr])) {
+      return emptyMeansDefault ? known([this.securityGroup(`default-sg:${vpc}`)]) : "empty";
+    }
+    const keys = [];
+    for (const ref of resolveRefs(this.snap, r, attr, ["aws_security_group", "aws_default_security_group"])) {
+      if (ref.kind === "unknown") return unknown(ref.reason);
+      if (ref.kind === "external") {
+        if (this.get(vpc)?.values.default_security_group_id !== ref.id) return unknown(`${r.address}: security group ${ref.id} is not managed in this plan`);
+        keys.push(`default-sg:${vpc}`);
+      } else {
+        const k = this.canonical(ref.address);
+        if (!k.ok) return unknown(k.reason);
+        keys.push(k.value);
+      }
+    }
+    return known([...new Set(keys)].toSorted(cmp).map((k) => this.securityGroup(k)));
+  }
+  instance(r) {
+    const touched = this.touched(r.address, UNMODELED_INSTANCE);
+    if (touched) return this.fail(r, touched);
+    if (arr(r.values.network_interface).length) return this.fail(r, `${r.address}: network_interface blocks are not modeled yet`);
+    const subnet = this.refTo(r, "subnet_id", "aws_subnet");
+    if (!subnet.ok) return this.fail(r, subnet.reason);
+    const publicIp = (s) => {
+      let out;
+      const eips = this.eips.get(r.address);
+      const assoc = r.values.associate_public_ip_address;
+      if (eips.ok && eips.value.length) out = known(`${eips.value.toSorted(cmp).join(", ")} is associated with ${r.address}`);
+      else if (isUnknown(r, ["associate_public_ip_address"]) && r.configured.has("associate_public_ip_address")) {
+        out = unknown(`${r.address}: associate_public_ip_address is set to a value that is unknown until apply`);
+      } else if (!isUnknown(r, ["associate_public_ip_address"]) && typeof assoc === "boolean") {
+        out = known(assoc ? `${r.address} associate_public_ip_address = true` : void 0);
+      } else if (!isUnknown(s, ["map_public_ip_on_launch"]) && typeof s.values.map_public_ip_on_launch === "boolean") {
+        out = known(s.values.map_public_ip_on_launch ? `${s.address} map_public_ip_on_launch = true` : void 0);
+      } else {
+        out = unknown(`${r.address}: whether it gets a public IPv4 address is unknown until apply`);
+      }
+      if (!eips.ok && !(out.ok && out.value)) out = unknown(eips.reason);
+      return out;
+    };
+    return this.place(r, subnet.value, publicIp, (vpc) => {
+      const g = this.groups(r, "vpc_security_group_ids", vpc);
+      return g === "empty" ? known([]) : g;
+    });
+  }
+  /**
+   * RDS: the DB instance gets a public address only when publicly_accessible is true, and
+   * "Amazon RDS chooses a subnet and an IP address within that subnet group".
+   * https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_VPC.WorkingWithRDSInstanceinaVPC.html
+   */
+  dbInstance(r) {
+    let subnets;
+    const groupName = r.values.db_subnet_group_name;
+    if (isNull(r, "db_subnet_group_name")) subnets = unknown(`${r.address} uses the default DB subnet group, which is not in this plan`);
+    else {
+      let group;
+      if (!isUnknown(r, ["db_subnet_group_name"]) && typeof groupName === "string") group = this.ofType("aws_db_subnet_group").find((g) => g.values.name === groupName);
+      else if (!r.otherRefs.has("db_subnet_group_name")) {
+        const refs = fromConfig(this.snap, r, "db_subnet_group_name", "aws_db_subnet_group");
+        if (refs.length === 1 && refs[0]?.kind === "resource") group = this.get(refs[0].address);
+      }
+      if (!group) subnets = unknown(`${r.address}: its DB subnet group is not in this plan`);
+      else {
+        const refs = resolveRefs(this.snap, group, "subnet_ids", "aws_subnet");
+        const bad = refs.find((x) => x.kind !== "resource");
+        subnets = bad ? unknown(bad.kind === "unknown" ? bad.reason : `${group.address}: a subnet is not managed in this plan`) : known(refs.map((x) => x.address));
+      }
+    }
+    if (!subnets.ok) return [this.fail(r, subnets.reason)];
+    if (!subnets.value.length) return [this.fail(r, `${r.address}: its DB subnet group has no subnets`)];
+    const pa = r.values.publicly_accessible;
+    const publicIp = () => isUnknown(r, ["publicly_accessible"]) ? r.configured.has("publicly_accessible") ? unknown(`${r.address}: publicly_accessible is unknown until apply`) : known(void 0) : known(pa === true ? `${r.address} publicly_accessible = true` : void 0);
+    return subnets.value.map(
+      (sub) => this.place(r, sub, publicIp, (vpc) => {
+        const g = this.groups(r, "vpc_security_group_ids", vpc);
+        return g === "empty" ? known([]) : g;
+      }, "the result depends on the subnet that RDS chooses from the DB subnet group")
+    );
+  }
+  /**
+   * Load balancers: internet-facing when internal = false, with a node in each subnet.
+   * A Network Load Balancer without security groups lets "all client traffic reach the
+   * Network Load Balancer listeners", so its listener ports act as the allow rules.
+   * https://docs.aws.amazon.com/elasticloadbalancing/latest/application/application-load-balancers.html
+   * https://docs.aws.amazon.com/elasticloadbalancing/latest/network/load-balancer-security-groups.html
+   */
+  loadBalancer(r) {
+    let subnets;
+    const mappings = arr(r.values.subnet_mapping);
+    if (mappings.length) {
+      const ids = mappings.map((m) => isObj(m) ? m.subnet_id : void 0);
+      const all = ids.every((id) => typeof id === "string") ? ids.map((id) => this.snap.byId.get(id)) : [];
+      subnets = all.length === ids.length && all.every(Boolean) ? known(all) : unknown(`${r.address}: subnet_mapping is unknown until apply or outside this plan`);
+    } else {
+      const refs = resolveRefs(this.snap, r, "subnets", "aws_subnet");
+      const bad = refs.find((x) => x.kind !== "resource");
+      subnets = bad ? unknown(bad.kind === "unknown" ? bad.reason : `${r.address}: a subnet is not managed in this plan`) : known(refs.map((x) => x.address));
+    }
+    if (!subnets.ok) return [this.fail(r, subnets.reason)];
+    if (!subnets.value.length) return [this.fail(r, `${r.address} has no subnets in this plan`)];
+    const internal = r.values.internal;
+    const publicIp = () => isUnknown(r, ["internal"]) ? unknown(`${r.address}: internal is unknown until apply`) : known(internal === true ? void 0 : `${r.address} is internet-facing (internal = false)`);
+    const network = r.values.load_balancer_type === "network" || r.values.load_balancer_type === "gateway";
+    const groups = (vpc) => {
+      const g = this.groups(r, "security_groups", vpc, !network);
+      return g === "empty" ? this.listenerGroup(r) : g;
+    };
+    return subnets.value.map((sub) => this.place(r, sub, publicIp, groups, "the result differs between the load balancer's subnets"));
+  }
+  /** Listener ports of a load balancer without security groups, as allow rules from anywhere. */
+  listenerGroup(lb) {
+    if (lb.values.load_balancer_type === "gateway") return unknown(`${lb.address}: Gateway Load Balancers are not modeled yet`);
+    const rules = [];
+    for (const l of this.ofType("aws_lb_listener")) {
+      const target = this.optionalRefTo(l, "load_balancer_arn", "aws_lb");
+      if (!target.ok) return unknown(target.reason);
+      if (target.value !== lb.address) continue;
+      const port = num(l.values.port);
+      const proto = String(l.values.protocol ?? "").toUpperCase();
+      if (port === void 0 || isUnknown(l, ["port"]) || isUnknown(l, ["protocol"])) return unknown(`${l.address}: port or protocol is unknown until apply`);
+      const protocols = proto === "UDP" ? ["udp"] : proto === "TCP_UDP" ? ["tcp", "udp"] : ["tcp"];
+      for (const protocol of protocols) rules.push({ protocol, ports: [[port, port]], sources: ALL_IPV4, text: `${l.address} listens on ${protocol} ${port} (${lb.address} has no security groups)` });
+    }
+    return known([{ address: `listeners of ${lb.address}`, ingress: known(rules) }]);
   }
 };
 
@@ -1070,7 +1173,11 @@ var MODELED = /* @__PURE__ */ new Set([
   "aws_default_network_acl",
   "aws_eip",
   "aws_eip_association",
-  "aws_instance"
+  "aws_instance",
+  "aws_db_instance",
+  "aws_db_subnet_group",
+  "aws_lb",
+  "aws_lb_listener"
 ]);
 var NETWORK_TYPE = /^aws_(vpc\w*|vpn_gateway\w*|subnet|route\w*|internet_gateway\w*|nat_gateway|egress_only_internet_gateway|network_acl\w*|default_\w+|security_group\w*|vpc_security_group_\w+|eip\w*|network_interface\w*|lb|alb|elb|db_instance|rds_cluster\w*|ecs_service|ec2_transit_gateway\w*|vpc_peering_connection\w*|vpc_endpoint\w*|instance)$/;
 function changeOf(before, after) {
@@ -1084,8 +1191,19 @@ function changeOf(before, after) {
   return "unchanged";
 }
 function endpointsOf(snap) {
-  return new Map(new ModelBuilder(snap).endpoints().map((e) => [e.address, e]));
+  const out = /* @__PURE__ */ new Map();
+  for (const e of new ModelBuilder(snap).endpoints()) out.set(e.address, [...out.get(e.address) ?? [], e]);
+  return out;
 }
+function evaluateAll(list, p, ports) {
+  if (!list?.length) return evaluate(void 0, p, ports);
+  const outcomes = list.map((e) => evaluate(e, p, ports));
+  const first = outcomes[0];
+  if (outcomes.every((o) => JSON.stringify(o) === JSON.stringify(first))) return first;
+  const detail = list.map((e, i) => `${e.subnet.ok ? e.subnet.value : "unknown subnet"}: ${outcomes[i]?.verdict ?? "unknown"}`).join("; ");
+  return { verdict: "unknown", sources: [], hops: [], reason: `${list[0]?.placement ?? "the result differs between placements"} (${detail})` };
+}
+var unionOf = (list, f) => (list ?? []).reduce((acc, e) => union(acc, f(e)), []);
 function notesFor(before, after) {
   const seen = /* @__PURE__ */ new Map();
   for (const snap of [before, after]) {
@@ -1106,17 +1224,17 @@ function analyze(plan) {
     const b = epBefore.get(address);
     const a = epAfter.get(address);
     for (const p of PROTOCOLS) {
-      const candidates = union(exposedPorts(b, p), exposedPorts(a, p));
+      const candidates = union(unionOf(b, (e) => exposedPorts(e, p)), unionOf(a, (e) => exposedPorts(e, p)));
       let run2;
       const flush = () => {
         if (!run2) return;
         const ports = formatPorts([run2.ports]);
-        paths.push({ id: `internet->${address}:${p}:${ports}`, from: "internet", to: address, toType: (a ?? b)?.type ?? "", protocol: p, ports, change: changeOf(run2.before, run2.after), before: run2.before, after: run2.after });
+        paths.push({ id: `internet->${address}:${p}:${ports}`, from: "internet", to: address, toType: (a ?? b)?.[0]?.type ?? "", protocol: p, ports, change: changeOf(run2.before, run2.after), before: run2.before, after: run2.after });
         run2 = void 0;
       };
-      for (const seg of segment(candidates, [...portCuts(b), ...portCuts(a)])) {
-        const ob = evaluate(b, p, seg);
-        const oa = evaluate(a, p, seg);
+      for (const seg of segment(candidates, [...(b ?? []).flatMap(portCuts), ...(a ?? []).flatMap(portCuts)])) {
+        const ob = evaluateAll(b, p, seg);
+        const oa = evaluateAll(a, p, seg);
         if (run2 && run2.ports[1] + 1 === seg[0] && JSON.stringify([run2.before, run2.after]) === JSON.stringify([ob, oa])) run2.ports = [run2.ports[0], seg[1]];
         else {
           flush();

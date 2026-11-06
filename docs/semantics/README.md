@@ -10,4 +10,5 @@ returns `unknown` with a reason.
 - [network-acls.md](network-acls.md): stateless, ordered rules, implicit deny, default NACL, ephemeral ports
 - [route-tables.md](route-tables.md): main vs explicit association, `local` route, longest-prefix match
 - [gateways.md](gateways.md): internet gateway, public IPv4 address (NAT and egress-only IGW later)
+- [endpoints.md](endpoints.md): EC2 instances, RDS DB instances, load balancers
 - [terraform-plan-json.md](terraform-plan-json.md): `actions`, `before`, `after`, `after_unknown`, replacements
