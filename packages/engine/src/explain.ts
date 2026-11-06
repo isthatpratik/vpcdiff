@@ -205,7 +205,7 @@ function baseVerdict(path: Path): Verdict {
     const res = path.outageRisk.join(", ");
     return {
       tone: "warning",
-      title: "May drop during the apply",
+      title: "Outage risk during the apply",
       body: `${path.to} stays reachable on ${port}, but the plan replaces ${res} by deleting it before creating the new one. Traffic can drop until the new one exists.`,
       action: `Add create_before_destroy to ${res}, so the new one exists before the old one is deleted.${path.outageRisk.some((r) => /^(module\.[^.]+\.)*aws_security_group\./.test(r)) ? " If the group has a fixed name, use name_prefix instead, because AWS does not allow two groups with the same name in a VPC." : ""}`,
       snippet: "lifecycle {\n  create_before_destroy = true\n}",
@@ -248,6 +248,49 @@ export function mdText(value: string): string {
     .replace(/@/g, "@\u200b");
 }
 
+/** The answer for one side of a path, in words that read before → after. */
+export function sideWord(path: Path, side: "before" | "after"): string {
+  const v = path[side].verdict;
+  if (v === "absent") return side === "before" ? "New resource" : "Removed";
+  return v === "allowed" ? "Reachable" : v === "blocked" ? "Blocked" : "Unknown";
+}
+
+/** "Blocked → Reachable", or "Stays reachable" when both sides are reachable. */
+export function changeWords(path: Path): string {
+  if (path.before.verdict === "allowed" && path.after.verdict === "allowed") return "Stays reachable";
+  if (path.before.verdict === "blocked" && path.after.verdict === "blocked") return "Stays blocked";
+  return `${sideWord(path, "before")} → ${sideWord(path, "after")}`;
+}
+
+export interface PlanVerdict {
+  tone: Tone;
+  /** What to do with the pull request, for example "Fix before merge". */
+  title: string;
+  /** Why, in one short line. */
+  detail: string;
+}
+
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+/**
+ * One answer for the whole plan, from the most serious finding down. It never says
+ * "safe": with nothing opened it says "No new exposure", within the engine's scope.
+ */
+export function planVerdict(result: Result): PlanVerdict {
+  const s = result.summary;
+  const risky = result.paths.filter((p) => p.outageRisk?.length).length;
+  if (s.added) {
+    const wide = result.paths.filter((p) => p.change === "added" && p.after.sources.includes("internet")).length;
+    return { tone: "danger", title: "Fix before merge", detail: wide ? `${plural(wide, "path opens", "paths open")} to any public IPv4 address` : `${plural(s.added, "path opens", "paths open")} to some addresses` };
+  }
+  if (s.unknown) return { tone: "warning", title: "Check by hand", detail: `vpcdiff could not decide ${plural(s.unknown, "path", "paths")}` };
+  if (risky || s.changed) {
+    const parts = [risky ? plural(risky, "outage risk", "outage risks") : "", s.changed ? plural(s.changed, "path changes sources", "paths change sources") : ""].filter(Boolean);
+    return { tone: "warning", title: "Review before merge", detail: parts.join(" · ") };
+  }
+  return { tone: "success", title: "No new exposure", detail: s.removed ? `${plural(s.removed, "path closes", "paths close")}; nothing new opens` : "Nothing new opens to the internet" };
+}
+
 /** The headline word for a path: the change, or the outage risk on an unchanged path. */
 function headline(path: Path): string {
   return path.change === "unchanged" && path.outageRisk?.length ? verdictOf(path).title : CHANGE_WORD[path.change];
@@ -275,12 +318,16 @@ export const SCOPE = "IPv4 paths from the internet";
 export function planMarkdown(name: string, result: Result, meta?: { version?: string; sha256?: string }): string {
   const s = result.summary;
   const risky = result.paths.filter((p) => p.outageRisk?.length).length;
-  const out = [`### vpcdiff · ${mdText(name)}`, "", `${s.added} opened · ${s.removed} closed · ${s.changed} changed · ${s.unknown} unknown${risky ? ` · ${risky} outage risk` : ""}`, "", `Scope: ${SCOPE}.${result.notes.length ? ` ${result.notes.length} not modeled yet (listed below).` : ""}`];
+  const pv = planVerdict(result);
+  const out = [`### vpcdiff · ${mdText(name)}`, "", `**${pv.title}:** ${pv.detail}.`, "", `${s.added} opened · ${s.removed} closed · ${s.changed} changed · ${s.unknown} unknown${risky ? ` · ${risky} outage risk` : ""}`, "", `Scope: ${SCOPE}.${result.notes.length ? ` ${result.notes.length} not modeled yet (listed below).` : ""}`];
   const items = result.paths
     .filter((p) => p.change !== "unchanged" || p.outageRisk?.length)
     .toSorted((a, b) => severityOf(a) - severityOf(b) || (a.id < b.id ? -1 : 1))
-    .map((p) => `- ${pathMarkdown(p).split("\n")[0]}`);
-  out.push("", items.length ? items.join("\n") : "No path from the internet changes.");
+    .map((p) => {
+      const [head = "", ...rest] = pathMarkdown(p).split("\n");
+      return `<details><summary>${head}</summary>\n${rest.join("\n")}\n\n</details>`;
+    });
+  out.push("", items.length ? items.join("\n\n") : "No path from the internet changes.");
   if (result.notes.length) {
     out.push("", "Not modeled yet:", ...result.notes.map((n) => `- ${mdCode(n.resource)}: ${mdText(n.message)}`));
   }

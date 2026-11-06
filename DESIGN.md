@@ -226,6 +226,20 @@ Fonts load from Google Fonts (see section 10 for what that means for privacy).
   says "Partly undecided" with the reason. The PR Markdown escapes every name and
   rule (no links or @-mentions from a plan), and the plan summary ends with the
   vpcdiff version and the plan's SHA-256, computed in the tab.
+- **Plan verdict:** the top of the path list says what to do with the pull request:
+  "Fix before merge", "Check by hand", "Review before merge", or "No new exposure"
+  (never "safe"). The counters under it are filters: choose one to list only those
+  paths. Search is always there.
+- **Path strip shapes:** filled lets through, a slash blocks, half filled is some
+  sources, dashed amber is unknown, hollow was not checked, dotted is not in the plan.
+  A soft band marks columns that changed (amber for the hop with outage risk). A caption
+  says "Traffic goes left to right. Every hop must let it through."
+- **One name per idea:** "Outage risk" everywhere (counter, row, tag, title, Markdown).
+  Change words read "New resource → Reachable", "Stays reachable", "Stays blocked".
+- **Copy:** one control (`src/app/copy.tsx`). The icon crossfades to a tick and
+  "Copied" fades in beside it (200 ms ease-out, a 2 px blur); a failure says "Copy
+  failed". A polite live region announces both. "Copy for PR" copies one path; "Copy all
+  for PR" copies the plan with each path folded in a details block.
 - **Words for reach:** "the network lets any public IPv4 address reach …", not
   "anyone can connect": the engine checks the network path, not the host.
 - **Plain words:** every hop name, counter, and the Changes / All paths toggle has a

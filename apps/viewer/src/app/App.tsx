@@ -7,18 +7,19 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type DragE
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/litt/accordion";
 import { Button } from "@/components/litt/button";
 import { Callout } from "@/components/litt/callout";
-import { ArrowRightIcon, ArrowUpRightIcon, AtSignIcon, BoxIcon, CheckIcon, CloudIcon, CopyIcon, DatabaseIcon, FileIcon, FilterIcon, GitBranchIcon, GlobeIcon, LayersIcon, LockIcon, MinusIcon, PlusIcon, SearchIcon, ShieldIcon } from "@/components/litt/icons";
+import { ArrowRightIcon, ArrowUpRightIcon, AtSignIcon, BoxIcon, CloudIcon, DatabaseIcon, FileIcon, FilterIcon, GitBranchIcon, GlobeIcon, LayersIcon, LockIcon, MinusIcon, PlusIcon, SearchIcon, ShieldIcon } from "@/components/litt/icons";
 import { Segmented } from "@/components/litt/segmented";
 import { Loading, Skeleton } from "@/components/litt/states";
 import { Tooltip, TooltipProvider } from "@/components/litt/tooltip";
 import { analyzeInWorker } from "../engine.ts";
 import { EXAMPLES } from "../examples.ts";
-import { CHANGE_HELP, HOP_HELP, pathMarkdown, planMarkdown, portLabel, SCOPE, serviceOf, severityOf, verdictOf, type Tone } from "@vpcdiff/engine/explain";
+import { CHANGE_HELP, changeWords, HOP_HELP, pathMarkdown, planMarkdown, planVerdict, portLabel, SCOPE, serviceOf, severityOf, verdictOf, type Tone } from "@vpcdiff/engine/explain";
+import { Announcer, CopyButton } from "./copy.tsx";
 import { COLUMNS, lanesOf, rowsDiffer, type Cell, type CellState, type ColumnKey } from "@vpcdiff/engine/lanes";
 import { Wordmark } from "../shared/brand.tsx";
 import { GithubLink } from "../shared/github.tsx";
 import { ThemeSwitch } from "../shared/theme.tsx";
-import { CHANGE_TEXT, ChangeTag, DecisionTag, VERDICT_LABEL } from "./status.tsx";
+import { CHANGE_TEXT, ChangeTag, DecisionTag } from "./status.tsx";
 
 type State = { kind: "empty"; error?: string } | { kind: "loading"; name: string } | { kind: "ready"; name: string; result: Result; sha256?: string };
 
@@ -31,7 +32,7 @@ async function sha256(text: string): Promise<string | undefined> {
     return undefined;
   }
 }
-type Filter = "changes" | "all";
+type Filter = "changes" | "all" | "added" | "removed" | "changed" | "risk" | "unknown";
 
 const EASE = "ease-[cubic-bezier(0.23,1,0.32,1)]";
 const LABEL = "font-litt-mono text-[11px] tracking-[0.12em] text-litt-fg-subtle uppercase";
@@ -80,6 +81,7 @@ export function App() {
 
   return (
     <TooltipProvider>
+      <Announcer />
       <div className="grid h-dvh grid-rows-[auto_1fr] overflow-hidden bg-litt-canvas" onDragEnter={onDragEnter} onDragLeave={onDragLeave} onDragOver={(e) => hasFiles(e) && e.preventDefault()} onDrop={onDrop}>
         <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:top-3 focus:left-3 focus:z-50">
           Skip to content
@@ -176,8 +178,7 @@ const EXAMPLE_TONE: Record<string, string> = {
 function Start({ error, onFile, onExample }: { error?: string | undefined; onFile: (f: File | undefined) => void; onExample: (id: string) => void }) {
   const input = useRef<HTMLInputElement>(null);
   const [over, setOver] = useState(false);
-  const [copied, setCopied] = useState(false);
-  const cmd = "terraform show -json tfplan > plan.json";
+  const steps = ["terraform plan -out=tfplan", "terraform show -json tfplan > plan.json"];
   return (
     <div className="h-full overflow-auto">
       <div className="mx-auto grid max-w-[1120px] gap-14 px-5 py-14 sm:px-8 lg:py-20 [&>*]:min-w-0">
@@ -233,22 +234,19 @@ function Start({ error, onFile, onExample }: { error?: string | undefined; onFil
                 />
               </div>
             </div>
-            <div className="flex items-center gap-3 border-t border-litt-line px-3 py-2.5">
-              <span className={LABEL}>Make it</span>
-              <code className="min-w-0 flex-1 overflow-x-auto whitespace-nowrap font-litt-mono text-litt-caption text-litt-fg-muted">{cmd}</code>
-              <button
-                type="button"
-                aria-label={copied ? "Copied" : "Copy the command"}
-                onClick={() => {
-                  void navigator.clipboard?.writeText(`terraform plan -out=tfplan\n${cmd}`).then(() => {
-                    setCopied(true);
-                    window.setTimeout(() => setCopied(false), 1400);
-                  });
-                }}
-                className="grid size-7 place-items-center rounded-litt-control text-litt-fg-subtle transition-colors duration-200 hover:bg-litt-surface-2 hover:text-litt-fg focus-visible:outline-2 focus-visible:outline-litt-focus [&_svg]:size-3.5"
-              >
-                {copied ? <CheckIcon aria-hidden="true" /> : <CopyIcon aria-hidden="true" />}
-              </button>
+            <div className="grid gap-2 border-t border-litt-line px-3 pt-3 pb-2">
+              <p className={LABEL}>Make the file</p>
+              <ol className="grid gap-1">
+                {steps.map((c, i) => (
+                  <li key={c} className="flex min-w-0 items-center gap-3">
+                    <span aria-hidden="true" className="grid size-5 shrink-0 place-items-center rounded-full border border-litt-line-strong font-litt-mono text-[11px] text-litt-fg-subtle">
+                      {i + 1}
+                    </span>
+                    <code className="min-w-0 flex-1 font-litt-mono text-litt-caption [overflow-wrap:anywhere] text-litt-fg">{c}</code>
+                    <CopyButton text={c} what={`step ${i + 1}`} label={`Copy step ${i + 1}`} side="left" />
+                  </li>
+                ))}
+              </ol>
             </div>
           </div>
         </div>
@@ -341,7 +339,7 @@ function Workspace({ name, result, sha256: hash }: { name: string; result: Resul
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
     return result.paths
-      .filter((p) => filter === "all" || p.change !== "unchanged" || p.outageRisk)
+      .filter((p) => (filter === "all" ? true : filter === "changes" ? p.change !== "unchanged" || p.outageRisk : filter === "risk" ? p.outageRisk?.length : p.change === filter))
       .filter((p) => !q || [p.to, p.toType, `${p.protocol}/${p.ports}`, serviceOf(p.ports) ?? "", ...sourcesOf(p)].some((s) => s.toLowerCase().includes(q)))
       .toSorted((a, b) => severityOf(a) - severityOf(b) || (a.id < b.id ? -1 : 1));
   }, [result, filter, query]);
@@ -353,7 +351,6 @@ function Workspace({ name, result, sha256: hash }: { name: string; result: Resul
   const unchanged = result.paths.filter((p) => p.change === "unchanged" && !p.outageRisk).length;
   const risky = result.paths.filter((p) => p.outageRisk?.length).length;
   const list = useRef<HTMLUListElement>(null);
-  const [copied, setCopied] = useState(false);
   const [notesOpen, setNotesOpen] = useState("");
   const notesRef = useRef<HTMLDivElement>(null);
 
@@ -369,27 +366,42 @@ function Workspace({ name, result, sha256: hash }: { name: string; result: Resul
     list.current?.querySelector<HTMLButtonElement>(`[data-id="${CSS.escape(next.id)}"]`)?.focus();
   };
 
-  const counters: { key: string; label: string; value: number; tone: string; help: string }[] = [
+  const counters: { key: Filter; label: string; value: number; tone: string; help: string }[] = [
     { key: "added", label: "Opened", value: result.summary.added, tone: CHANGE_TEXT.added, help: CHANGE_HELP.added },
     { key: "removed", label: "Closed", value: result.summary.removed, tone: CHANGE_TEXT.removed, help: CHANGE_HELP.removed },
     { key: "changed", label: "Changed", value: result.summary.changed, tone: CHANGE_TEXT.changed, help: CHANGE_HELP.changed },
-    { key: "risk", label: "At risk", value: risky, tone: "text-litt-warning", help: CHANGE_HELP.outage },
+    { key: "risk", label: "Outage risk", value: risky, tone: "text-litt-warning", help: CHANGE_HELP.outage },
     { key: "unknown", label: "Unknown", value: result.summary.unknown, tone: CHANGE_TEXT.unknown, help: CHANGE_HELP.unknown },
   ];
+  const pv = planVerdict(result);
+  const only = counters.find((c) => c.key === filter);
 
   return (
     <div className="grid h-full min-h-0 grid-cols-1 overflow-auto md:grid-cols-[340px_minmax(0,1fr)] md:overflow-hidden">
-      <aside className="grid min-h-0 grid-rows-[auto_auto_auto_minmax(0,1fr)_auto] border-b border-litt-line md:border-r md:border-b-0" aria-label="Paths">
-        <dl className="grid grid-cols-5 gap-px border-b border-litt-line bg-litt-line">
+      <aside className="grid min-h-0 grid-rows-[auto_auto_auto_auto_minmax(0,1fr)_auto] border-b border-litt-line md:border-r md:border-b-0" aria-label="Paths">
+        <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 border-b border-litt-line px-4 py-3">
+          <span aria-hidden="true" className={`size-2 rounded-full ${TONE_BAR[pv.tone]}`} />
+          <p className="grid min-w-0">
+            <span className={`text-litt-small font-medium ${TONE_TEXT[pv.tone]}`}>{pv.title}</span>
+            <span className="text-litt-caption text-litt-fg-muted">{pv.detail}</span>
+          </p>
+        </div>
+        <div role="group" aria-label="Counts. Choose one to show only those paths." className="grid grid-cols-5 gap-px border-b border-litt-line bg-litt-line">
           {counters.map((c) => (
-            <div key={c.key} className="grid content-start gap-1.5 bg-litt-canvas px-3 py-4">
-              <dd className={`font-display text-2xl leading-none font-normal tabular-nums ${c.value ? c.tone : "text-litt-fg-subtle"}`}>{c.value}</dd>
-              <dt className="text-litt-caption text-litt-fg-subtle">
-                <Term help={c.help}>{c.label}</Term>
-              </dt>
-            </div>
+            <button
+              key={c.key}
+              type="button"
+              disabled={!c.value}
+              aria-pressed={filter === c.key}
+              onClick={() => setFilter(filter === c.key ? "changes" : c.key)}
+              title={c.help}
+              className={`grid content-start gap-1.5 bg-litt-canvas px-3 py-4 text-left transition-colors duration-150 enabled:hover:bg-litt-surface-1 focus-visible:z-10 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-litt-fg disabled:cursor-default ${filter === c.key ? "bg-litt-surface-2" : ""}`}
+            >
+              <span className={`font-display text-2xl leading-none font-normal tabular-nums ${c.value ? c.tone : "text-litt-fg-subtle"}`}>{c.value}</span>
+              <span className="text-litt-caption leading-tight text-litt-fg-subtle">{c.label}</span>
+            </button>
           ))}
-        </dl>
+        </div>
         <p className="flex flex-wrap items-center gap-x-1.5 border-b border-litt-line px-4 py-2.5 text-litt-caption text-litt-fg-subtle">
           <span>Checks {SCOPE} only.</span>
           {result.notes.length > 0 && (
@@ -412,7 +424,7 @@ function Workspace({ name, result, sha256: hash }: { name: string; result: Resul
                 legend="Show"
                 size="sm"
                 block
-                value={filter}
+                value={filter === "all" ? "all" : "changes"}
                 onValueChange={setFilter}
                 options={[
                   { value: "changes", label: "Changes" },
@@ -421,8 +433,18 @@ function Workspace({ name, result, sha256: hash }: { name: string; result: Resul
               />
             </div>
           </Tooltip>
-          {result.paths.length > 5 && (
-            <label className="flex items-center gap-2 rounded-litt-control border border-litt-line px-2.5 focus-within:border-litt-line-strong">
+          {only && (
+            <p className="flex items-center justify-between gap-2 text-litt-caption text-litt-fg-muted">
+              <span>
+                Showing <span className="text-litt-fg">{only.label.toLowerCase()}</span> only
+              </span>
+              <button type="button" onClick={() => setFilter("changes")} className="rounded-[6px] px-1.5 py-0.5 text-litt-fg-subtle underline underline-offset-4 hover:text-litt-fg focus-visible:outline-2 focus-visible:outline-litt-fg">
+                Show all changes
+              </button>
+            </p>
+          )}
+          {result.paths.length > 0 && (
+            <label className="flex items-center gap-2 rounded-[6px] border border-litt-line px-2.5 focus-within:border-litt-fg-subtle focus-within:outline-2 focus-within:outline-offset-1 focus-within:outline-litt-fg">
               <SearchIcon aria-hidden="true" className="size-4 text-litt-fg-subtle" />
               <span className="sr-only">Filter paths</span>
               <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Filter by resource, port, or CIDR" className="h-8 min-w-0 flex-1 bg-transparent text-litt-small text-litt-fg outline-none placeholder:text-litt-fg-subtle" />
@@ -453,19 +475,7 @@ function Workspace({ name, result, sha256: hash }: { name: string; result: Resul
           )}
         </div>
         <div className="grid gap-1 border-t border-litt-line px-4 py-3">
-          <button
-            type="button"
-            onClick={() =>
-              void navigator.clipboard?.writeText(planMarkdown(name, result, { version: ENGINE_VERSION, ...(hash ? { sha256: hash } : {}) })).then(() => {
-                setCopied(true);
-                window.setTimeout(() => setCopied(false), 1600);
-              })
-            }
-            className="flex items-center gap-2 justify-self-start rounded-litt-control py-1 text-litt-small text-litt-fg-muted transition-colors duration-200 hover:text-litt-fg focus-visible:outline-2 focus-visible:outline-litt-focus [&_svg]:size-4"
-          >
-            {copied ? <CheckIcon aria-hidden="true" /> : <CopyIcon aria-hidden="true" />}
-            {copied ? "Copied the summary" : "Copy plan summary as Markdown"}
-          </button>
+          <CopyButton variant="text" className="justify-self-start" label="Copy all for PR" what="the plan summary for the pull request" text={() => planMarkdown(name, result, { version: ENGINE_VERSION, ...(hash ? { sha256: hash } : {}) })} />
           {result.notes.length > 0 && (
             <div ref={notesRef}>
             <Accordion type="single" collapsible headingLevel={2} value={notesOpen} onValueChange={setNotesOpen}>
@@ -508,13 +518,12 @@ function PathRow({ path, current, onSelect }: { path: Path; current: boolean; on
       <span className="flex min-w-0 items-center gap-2.5">
         <TargetIcon type={path.toType} className="size-4" />
         <span className="truncate font-litt-mono text-litt-small text-litt-fg">{path.to}</span>
-        <span className={`ml-auto shrink-0 text-litt-caption ${TONE_TEXT[v.tone]}`}>{v.title === "No change" ? "No change" : CHANGE_WORD[path.change] ?? v.title}</span>
+        <span className={`ml-auto shrink-0 text-litt-caption ${TONE_TEXT[v.tone]}`}>{path.change === "unchanged" ? (path.outageRisk?.length ? "Outage risk" : "No change") : CHANGE_WORD[path.change]}</span>
       </span>
       <span className="flex flex-wrap items-center gap-x-2 pl-[26px] text-litt-caption text-litt-fg-subtle">
         <span className="font-litt-mono">{portLabel(path)}</span>
         {src.length > 0 && <span className="font-litt-mono">from {src.includes("internet") ? "0.0.0.0/0" : src.join(", ")}</span>}
       </span>
-      {path.outageRisk && <span className="pl-[26px] text-litt-caption text-litt-warning">Outage risk during apply</span>}
     </button>
   );
 }
@@ -523,13 +532,18 @@ const CHANGE_WORD: Partial<Record<Path["change"], string>> = { added: "Opened", 
 
 /* --------------------------------------------------------------- detail */
 
+/**
+ * One shape per state, so the strip reads without color: filled lets through, a slash
+ * blocks, half filled is some sources, dashed amber is unknown, a hollow box was not
+ * checked, and a dotted box is not in the plan on that side.
+ */
 const SQUARE: Record<CellState, string> = {
   allow: "bg-litt-fg border-litt-fg",
-  partial: "bg-litt-warning border-litt-warning",
-  deny: "bg-litt-data-rose border-litt-data-rose",
-  unknown: "border-dashed border-litt-fg-subtle bg-litt-canvas",
-  "not-reached": "border-litt-line-strong bg-litt-canvas",
-  absent: "border-dashed border-litt-line-strong bg-litt-canvas",
+  partial: "border-litt-fg bg-[linear-gradient(to_right,var(--litt-fg)_50%,var(--litt-canvas)_50%)]",
+  deny: "border-litt-fg bg-litt-canvas bg-[linear-gradient(to_top_right,transparent_calc(50%-0.75px),var(--litt-fg)_calc(50%-0.75px),var(--litt-fg)_calc(50%+0.75px),transparent_calc(50%+0.75px))]",
+  unknown: "border-dashed border-litt-warning bg-litt-canvas",
+  "not-reached": "border-litt-fg-subtle/70 bg-litt-canvas",
+  absent: "border-dotted border-litt-fg-subtle/70 bg-litt-canvas",
 };
 
 const HOP_ICON: Partial<Record<ColumnKey, typeof GlobeIcon>> = {
@@ -552,25 +566,33 @@ function HopName({ col, type, className = "" }: { col: (typeof COLUMNS)[number];
   );
 }
 
-function Legend() {
+function Legend({ risk }: { risk: boolean }) {
   const items: [CellState, string][] = [
     ["allow", "Lets through"],
     ["deny", "Blocks"],
     ["partial", "Some sources"],
+    ["unknown", "Unknown"],
     ["not-reached", "Not checked"],
+    ["absent", "Not in plan"],
   ];
   return (
     <ul className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-litt-caption text-litt-fg-subtle" aria-label="Legend">
       {items.map(([s, l]) => (
         <li key={s} className="flex items-center gap-1.5">
-          <span aria-hidden="true" className={`size-2.5 border ${SQUARE[s]}`} />
+          <span aria-hidden="true" className={`size-3 border ${SQUARE[s]}`} />
           {l}
         </li>
       ))}
       <li className="flex items-center gap-1.5">
-        <span aria-hidden="true" className="h-0.5 w-2.5 bg-litt-fg-muted" />
-        Differs
+        <span aria-hidden="true" className="h-3 w-3 rounded-[2px] bg-litt-fg/10" />
+        Changed
       </li>
+      {risk && (
+        <li className="flex items-center gap-1.5">
+          <span aria-hidden="true" className="h-3 w-3 rounded-[2px] bg-litt-warning/20" />
+          Outage risk
+        </li>
+      )}
     </ul>
   );
 }
@@ -580,6 +602,7 @@ function Legend() {
 function PathStrip({ before, after, differs, risk, selected, onSelect, type }: { before: Cell[]; after: Cell[]; differs: boolean[]; risk: number; selected: number; onSelect: (i: number) => void; type: string }) {
   return (
     <div className="grid gap-5">
+      <p className="text-litt-caption text-litt-fg-subtle">Traffic goes left to right. Every hop must let it through.</p>
       <div className="hidden sm:block" role="group" aria-label="Path at a glance, before and after">
         <div className="grid grid-cols-[64px_repeat(8,minmax(0,1fr))] items-center gap-y-3">
           <span />
@@ -593,9 +616,9 @@ function PathStrip({ before, after, differs, risk, selected, onSelect, type }: {
               <span className="text-litt-caption text-litt-fg-subtle">{side === "before" ? "Before" : "After"}</span>
               {(side === "before" ? before : after).map((cell, i) => (
                 <span key={i} className="relative flex h-5 items-center justify-center">
+                  {(differs[i] || i === risk) && <span aria-hidden="true" className={`absolute inset-x-[18%] -inset-y-1.5 ${side === "before" ? "rounded-t-[4px]" : "rounded-b-[4px]"} ${i === risk ? "bg-litt-warning/15" : "bg-litt-fg/[0.08]"}`} />}
                   {i > 0 && <span aria-hidden="true" className={`absolute right-1/2 left-[-50%] h-px ${cell.state === "not-reached" || cell.state === "absent" ? "bg-litt-line" : "bg-litt-line-strong"}`} />}
-                  <span aria-hidden="true" className={`relative z-10 size-3 border transition-colors duration-300 ${SQUARE[cell.state]}`} />
-                  {(differs[i] || i === risk) && side === "after" && <span aria-hidden="true" className={`absolute -bottom-2.5 h-0.5 w-3 ${i === risk ? "bg-litt-warning" : "bg-litt-fg-muted"}`} />}
+                  <span aria-hidden="true" className={`relative z-10 size-3.5 border transition-colors duration-300 ${SQUARE[cell.state]}`} />
                 </span>
               ))}
             </Fragment>
@@ -619,7 +642,7 @@ function PathStrip({ before, after, differs, risk, selected, onSelect, type }: {
           </li>
         ))}
       </ol>
-      <Legend />
+      <Legend risk={risk >= 0} />
     </div>
   );
 }
@@ -633,25 +656,6 @@ function CellView({ cell, note }: { cell: Cell; note?: string }) {
       {cell.resource && <span className="truncate font-litt-mono text-litt-caption text-litt-fg-muted">{cell.resource}</span>}
       {note && <span className="shrink-0 text-litt-caption text-litt-fg-subtle">{note}</span>}
     </div>
-  );
-}
-
-function CopyText({ text, label }: { text: string; label?: string }) {
-  const [done, setDone] = useState(false);
-  return (
-    <button
-      type="button"
-      aria-label={done ? "Copied" : (label ?? `Copy ${text}`)}
-      onClick={() =>
-        void navigator.clipboard?.writeText(text).then(() => {
-          setDone(true);
-          window.setTimeout(() => setDone(false), 1400);
-        })
-      }
-      className="grid size-6 shrink-0 place-items-center rounded-litt-control text-litt-fg-subtle transition-colors duration-200 hover:bg-litt-surface-2 hover:text-litt-fg focus-visible:outline-2 focus-visible:outline-litt-focus [&_svg]:size-3.5"
-    >
-      {done ? <CheckIcon aria-hidden="true" /> : <CopyIcon aria-hidden="true" />}
-    </button>
   );
 }
 
@@ -673,7 +677,6 @@ function SideDetail({ title, cell }: { title: string; cell: Cell }) {
 /** The answer first: what happens, what caused it, what to do. */
 function VerdictPanel({ path }: { path: Path }) {
   const v = verdictOf(path);
-  const [copied, setCopied] = useState(false);
   return (
     <section aria-label="Verdict" className="relative grid gap-4 border border-litt-line bg-litt-surface-1 p-5 pl-6">
       <span aria-hidden="true" className={`absolute top-0 bottom-0 left-0 w-0.5 ${TONE_BAR[v.tone]}`} />
@@ -688,19 +691,7 @@ function VerdictPanel({ path }: { path: Path }) {
             </p>
           )}
         </div>
-        <button
-          type="button"
-          onClick={() =>
-            void navigator.clipboard?.writeText(pathMarkdown(path)).then(() => {
-              setCopied(true);
-              window.setTimeout(() => setCopied(false), 1600);
-            })
-          }
-          className="inline-flex shrink-0 items-center gap-1.5 rounded-litt-control border border-litt-line px-2.5 py-1 text-litt-caption text-litt-fg-muted transition-colors duration-200 hover:border-litt-line-strong hover:text-litt-fg focus-visible:outline-2 focus-visible:outline-litt-focus [&_svg]:size-3.5"
-        >
-          {copied ? <CheckIcon aria-hidden="true" /> : <CopyIcon aria-hidden="true" />}
-          {copied ? "Copied" : "Copy for PR"}
-        </button>
+        <CopyButton variant="text" label="Copy for PR" what="this path for the pull request" text={() => pathMarkdown(path)} />
       </div>
       {v.cause && v.cause.rule && (
         <div className="grid gap-1.5 border-t border-litt-line pt-4">
@@ -709,7 +700,7 @@ function VerdictPanel({ path }: { path: Path }) {
           </p>
           <p className="flex min-w-0 items-start gap-2 font-litt-mono text-litt-small text-litt-fg">
             <span className="min-w-0 break-words">{v.cause.rule}</span>
-            <CopyText text={v.cause.rule} label="Copy the rule" />
+            <CopyButton text={v.cause.rule} what="the rule" />
           </p>
         </div>
       )}
@@ -719,7 +710,12 @@ function VerdictPanel({ path }: { path: Path }) {
             <span className="text-litt-fg">What to do · </span>
             {v.action}
           </p>
-          {v.snippet && <pre className="justify-self-start rounded-litt-control border border-litt-line bg-litt-canvas px-3 py-2 font-litt-mono text-litt-caption text-litt-fg">{v.snippet}</pre>}
+          {v.snippet && (
+            <div className="flex items-start gap-2 justify-self-start">
+              <pre className="rounded-[6px] border border-litt-line bg-litt-canvas px-3 py-2 font-litt-mono text-litt-caption text-litt-fg">{v.snippet}</pre>
+              <CopyButton text={v.snippet} what="the fix" />
+            </div>
+          )}
         </div>
       )}
     </section>
@@ -733,6 +729,10 @@ function PathDetail({ path }: { path: Path }) {
   // every hop is new, so rows show the side that exists instead of marking each one.
   const differs = oneSideAbsent ? COLUMNS.map(() => false) : rowsDiffer(lanes);
   const changedCount = differs.filter(Boolean).length;
+  // Hops whose rule or decision changed, as opposed to hops that are simply checked now
+  // because an earlier hop stopped blocking (or not checked because one started to).
+  const reachedBoth = (i: number) => lanes.before.cells[i]?.state !== "not-reached" && lanes.after.cells[i]?.state !== "not-reached";
+  const ruleChanges = differs.filter((d, i) => d && reachedBoth(i)).length;
   // On a path with outage risk, the focus hop is the one the plan replaces delete-first.
   const risk = path.outageRisk?.length ? lanes.focus : -1;
   const [selected, setSelected] = useState(lanes.focus);
@@ -772,7 +772,7 @@ function PathDetail({ path }: { path: Path }) {
             {path.change !== "unchanged" ? <ChangeTag change={path.change} /> : <span className={`rounded-full border border-litt-line px-2.5 py-0.5 text-litt-caption ${TONE_TEXT[verdictOf(path).tone]}`}>{verdictOf(path).title}</span>}
             <span className="rounded-full border border-litt-line px-2.5 py-0.5 font-litt-mono text-litt-caption text-litt-fg-muted">{portLabel(path)}</span>
             <span className="text-litt-small text-litt-fg-subtle">
-              {VERDICT_LABEL[path.before.verdict]} → <span className="text-litt-fg">{VERDICT_LABEL[path.after.verdict]}</span>
+              {changeWords(path)}
             </span>
           </div>
         </header>
@@ -794,7 +794,7 @@ function PathDetail({ path }: { path: Path }) {
                   ? "The plan creates this resource: every hop is new."
                   : "The plan destroys this resource: every hop goes away."
                 : changedCount
-                  ? `${changedCount} of ${COLUMNS.length} hops differ`
+                  ? `${ruleChanges} ${ruleChanges === 1 ? "hop changed" : "hops changed"}${changedCount > ruleChanges ? ` · ${changedCount - ruleChanges} more ${changedCount - ruleChanges === 1 ? "is" : "are"} now checked or skipped` : ""}`
                   : "No hop differs"}
             </p>
           </div>

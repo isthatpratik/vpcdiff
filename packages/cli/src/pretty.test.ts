@@ -25,7 +25,8 @@ describe("pretty report for a terminal", () => {
     const r = cli([fixture("sg-5432-opened")]);
     expect(r.code).toBe(1);
     const lines = r.out.split("\n");
-    expect(lines[1]).toBe("1 opened · 0 closed · 0 changed · 0 at risk · 0 unknown");
+    expect(lines[1]).toBe("Fix before merge · 1 path opens to any public IPv4 address");
+    expect(lines[2]).toBe("1 opened · 0 closed · 0 changed · 0 outage risk · 0 unknown");
     expect(r.out).toContain("● Opened to the internet");
     expect(r.out).toContain("aws_instance.db  tcp/5432 (PostgreSQL)  Blocked → Reachable");
     expect(r.out).toContain("Decided at the Security groups hop:");
@@ -35,7 +36,7 @@ describe("pretty report for a terminal", () => {
 
   it("shows only the hops that differ", () => {
     const r = cli([fixture("sg-replaced")]);
-    expect(r.out).toContain("May drop during the apply");
+    expect(r.out).toContain("Outage risk during the apply");
     expect(r.out).toContain("create_before_destroy = true");
   });
 

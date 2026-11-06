@@ -2,7 +2,7 @@
 // that differ. Used when stdout is a terminal; CI logs and pipes keep the stable plain
 // text from render.ts. Colors come from picocolors and follow NO_COLOR and FORCE_COLOR.
 import type { Path, Result } from "@vpcdiff/engine";
-import { portLabel, verdictOf, type Tone } from "@vpcdiff/engine/explain";
+import { changeWords, planVerdict, portLabel, verdictOf, type Tone } from "@vpcdiff/engine/explain";
 import { COLUMNS, lanesOf, rowsDiffer, type CellState } from "@vpcdiff/engine/lanes";
 import type pc from "picocolors";
 import { visiblePaths, type RenderOptions } from "./render.ts";
@@ -11,7 +11,6 @@ import { visiblePaths, type RenderOptions } from "./render.ts";
 export type Colors = ReturnType<typeof pc.createColors>;
 
 const STATE: Record<CellState, string> = { allow: "allows", partial: "allows some", deny: "denies", unknown: "unknown", "not-reached": "not checked", absent: "not in plan" };
-const VERDICT: Record<string, string> = { allowed: "Reachable", blocked: "Blocked", unknown: "Unknown", absent: "Not in plan" };
 
 function tone(c: Colors, t: Tone, s: string): string {
   return t === "danger" ? c.red(s) : t === "success" ? c.green(s) : t === "warning" ? c.yellow(s) : c.bold(s);
@@ -34,7 +33,7 @@ export function prettyPath(c: Colors, path: Path, full = false): string[] {
   const differs = oneSide ? COLUMNS.map(() => false) : rowsDiffer(lanes);
   const lines = [
     `${tone(c, v.tone, "●")} ${tone(c, v.tone, v.title)}`,
-    `  ${c.bold(path.to)}  ${c.dim(portLabel(path))}  ${c.dim(`${VERDICT[path.before.verdict]} →`)} ${VERDICT[path.after.verdict]}`,
+    `  ${c.bold(path.to)}  ${c.dim(portLabel(path))}  ${c.dim(changeWords(path))}`,
     `  ${v.body}`,
   ];
   if (v.doubt) lines.push(`  ${c.yellow("Partly undecided:")} ${v.doubt}`);
@@ -80,7 +79,11 @@ export function renderPretty(c: Colors, result: Result, opts: RenderOptions & { 
   const count = (n: number, word: string, color: (x: string) => string) => (n ? color(`${n} ${word}`) : c.dim(`${n} ${word}`));
   const lines = [
     `${c.bold("vpcdiff")}${opts.name ? `  ${c.dim(opts.name)}` : ""}`,
-    [count(s.added, "opened", c.red), count(s.removed, "closed", c.green), count(s.changed, "changed", c.yellow), count(risk, "at risk", c.yellow), count(s.unknown, "unknown", c.bold)].join(c.dim(" · ")),
+    (() => {
+      const pv = planVerdict(result);
+      return `${tone(c, pv.tone, pv.title)}${c.dim(` · ${pv.detail}`)}`;
+    })(),
+    [count(s.added, "opened", c.red), count(s.removed, "closed", c.green), count(s.changed, "changed", c.yellow), count(risk, "outage risk", c.yellow), count(s.unknown, "unknown", c.bold)].join(c.dim(" · ")),
   ];
   const paths = visiblePaths(result, opts);
   if (!paths.length) {

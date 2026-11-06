@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { analyze, type Path, type Result } from "@vpcdiff/engine";
 import { describe, expect, it } from "vitest";
-import { mdCode, mdText, pathMarkdown, planMarkdown, portLabel, serviceOf, severityOf, verdictOf, whoText } from "@vpcdiff/engine/explain";
+import { changeWords, mdCode, mdText, pathMarkdown, planVerdict, planMarkdown, portLabel, serviceOf, severityOf, verdictOf, whoText } from "@vpcdiff/engine/explain";
 
 const resultOf = (fixture: string): Result => analyze(JSON.parse(readFileSync(join(import.meta.dirname, "../../../fixtures", fixture, "plan.json"), "utf8")) as unknown);
 const pathOf = (fixture: string, id: string): Path => {
@@ -48,7 +48,7 @@ describe("verdictOf", () => {
   it("gives the create_before_destroy fix for outage risk", () => {
     const v = verdictOf(pathOf("sg-replaced", "internet->aws_instance.web:tcp:443"));
     expect(v.tone).toBe("warning");
-    expect(v.title).toBe("May drop during the apply");
+    expect(v.title).toBe("Outage risk during the apply");
     expect(v.snippet).toContain("create_before_destroy = true");
     expect(v.action).toContain("aws_security_group.web");
   });
@@ -101,7 +101,7 @@ describe("trust", () => {
 
   it("names the outage risk in the PR text and includes the fix", () => {
     const md = pathMarkdown(pathOf("sg-replaced", "internet->aws_instance.web:tcp:443"));
-    expect(md.split("\n")[0]).toMatch(/^\*\*May drop during the apply\*\*/);
+    expect(md.split("\n")[0]).toMatch(/^\*\*Outage risk during the apply\*\*/);
     expect(md).toContain("```hcl");
     expect(md).toContain("create_before_destroy = true");
     expect(md).toContain("name\\_prefix");
@@ -129,5 +129,27 @@ describe("trust", () => {
     const md = planMarkdown("plan.json", resultOf("sg-5432-opened"), { version: "0.1.0", sha256: "abcdef0123456789ffff" });
     expect(md).toContain("Scope: IPv4 paths from the internet.");
     expect(md).toContain("<sub>vpcdiff 0.1.0 · plan sha256 abcdef0123456789</sub>");
+  });
+});
+
+describe("plan verdict and change words", () => {
+  it("says what to do with the whole plan, most serious first", () => {
+    expect(planVerdict(resultOf("sg-5432-opened"))).toMatchObject({ tone: "danger", title: "Fix before merge", detail: "1 path opens to any public IPv4 address" });
+    expect(planVerdict(resultOf("sg-replaced"))).toMatchObject({ tone: "warning", title: "Review before merge", detail: "1 outage risk" });
+    const r = resultOf("sg-5432-opened");
+    const none: Result = { ...r, summary: { added: 0, removed: 0, changed: 0, unknown: 0, unchanged: 1 }, paths: r.paths.map((p) => ({ ...p, change: "unchanged" as const })) };
+    expect(planVerdict(none)).toMatchObject({ tone: "success", title: "No new exposure" });
+  });
+
+  it("reads new and unchanged paths in plain words", () => {
+    expect(changeWords(pathOf("rule-resources", "internet->aws_instance.app:tcp:443"))).toBe("New resource → Reachable");
+    expect(changeWords(pathOf("sg-replaced", "internet->aws_instance.web:tcp:443"))).toBe("Stays reachable");
+    expect(changeWords(pathOf("sg-5432-opened", "internet->aws_instance.db:tcp:5432"))).toBe("Blocked → Reachable");
+  });
+
+  it("folds each path's details in the plan summary", () => {
+    const md = planMarkdown("plan.json", resultOf("sg-5432-opened"));
+    expect(md).toContain("**Fix before merge:** 1 path opens to any public IPv4 address.");
+    expect(md).toContain("<details><summary>**New exposure**");
   });
 });

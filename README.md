@@ -44,7 +44,8 @@ In a terminal, the report leads with the verdict. Example for
 
 ```text
 vpcdiff  plan.json
-1 opened · 0 closed · 0 changed · 0 at risk · 0 unknown
+Fix before merge · 1 path opens to any public IPv4 address
+1 opened · 0 closed · 0 changed · 0 outage risk · 0 unknown
 
 ● Opened to the internet
   aws_instance.db  tcp/5432 (PostgreSQL)  Blocked → Reachable
