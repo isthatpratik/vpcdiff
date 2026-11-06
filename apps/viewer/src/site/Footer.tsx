@@ -114,7 +114,7 @@ export function Footer() {
         <div className={`${PAD} grid gap-4 py-8 text-litt-caption text-litt-fg-subtle`}>
           <Report />
           <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
-            <p>© {new Date().getFullYear()} vpcdiff · Apache 2.0 license. Terraform, AWS, GitHub, GitHub Actions, and Node.js are trademarks of their owners; vpcdiff is not affiliated with them.</p>
+            <p>© {new Date().getFullYear()} vpcdiff · Apache 2.0</p>
             <div className="flex gap-5">
               <a href={`${REPO}/blob/main/LICENSE`} className={LINK}>
                 License
@@ -127,9 +127,10 @@ export function Footer() {
               </a>
             </div>
           </div>
+          <p className="max-w-[72ch] text-xs leading-relaxed text-litt-fg-subtle/80">Terraform, AWS, GitHub, GitHub Actions, and Node.js are trademarks of their owners. vpcdiff is not affiliated with them.</p>
         </div>
       </div>
-      <Divider />
+      <Divider dots />
       <div aria-hidden="true" className="h-10" />
     </footer>
   );

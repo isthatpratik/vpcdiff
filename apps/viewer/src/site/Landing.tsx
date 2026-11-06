@@ -231,7 +231,7 @@ function Nav() {
           </div>
         </nav>
       </div>
-      <Divider />
+      <Divider dots />
     </header>
   );
 }

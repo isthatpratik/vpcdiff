@@ -55,12 +55,13 @@ export function Rail({ children, className = "", id, label, reveal = true, as: T
 
 /**
  * An edge-to-edge hairline with a gap where it meets each rail. With `dots`, a small dot
- * sits in each gap. Use it only where a crossing frames something (the tagline), so most
- * crossings stay as plain gaps.
+ * sits in each gap. Use it only where a crossing means something: where the frame starts
+ * (under the nav), around the tagline, and where the frame ends (the last line of the
+ * page). Every other crossing stays a plain gap.
  */
 export function Divider({ dots = false }: { dots?: boolean }) {
   const gap = "absolute -top-3 grid size-6 place-items-center bg-litt-canvas";
-  const dot = dots ? <span className="size-[3px] rounded-full bg-litt-fg-subtle" /> : null;
+  const dot = dots ? <span className="size-1 rounded-full bg-litt-fg-muted" /> : null;
   return (
     <div aria-hidden="true" className="relative z-10 h-px">
       <div className="intro-line absolute inset-x-3 top-0 h-px bg-litt-line" />
