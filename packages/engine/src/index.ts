@@ -12,6 +12,7 @@ export * from "./types.js";
 export const ENGINE_VERSION = "0.1.1";
 
 const PROTOCOLS: Protocol[] = ["tcp", "udp"];
+const arr = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
 
 // Endpoint and network types the engine models. Other aws_* types in a plan get a note.
 const MODELED = new Set([
@@ -40,6 +41,10 @@ const MODELED = new Set([
   "aws_db_subnet_group",
   "aws_lb",
   "aws_lb_listener",
+  "aws_rds_cluster",
+  "aws_rds_cluster_instance",
+  "aws_ecs_service",
+  "aws_elb",
 ]);
 const NETWORK_TYPE = /^aws_(vpc\w*|vpn_gateway\w*|subnet|route\w*|internet_gateway\w*|nat_gateway|egress_only_internet_gateway|network_acl\w*|default_\w+|security_group\w*|vpc_security_group_\w+|eip\w*|network_interface\w*|lb|alb|elb|db_instance|rds_cluster\w*|ecs_service|ec2_transit_gateway\w*|vpc_peering_connection\w*|vpc_endpoint\w*|instance)$/;
 
@@ -125,7 +130,13 @@ function notesFor(before: Snapshot, after: Snapshot): Note[] {
   const seen = new Map<string, Note>();
   for (const snap of [before, after]) {
     for (const r of snap.resources.values()) {
-      if (MODELED.has(r.type) || !NETWORK_TYPE.test(r.type) || seen.has(r.address)) continue;
+      if (seen.has(r.address)) continue;
+      // An ECS service without network_configuration uses bridge or host networking.
+      if (r.type === "aws_ecs_service" && !arr(r.values.network_configuration).length && !r.configured.has("network_configuration")) {
+        seen.set(r.address, { resource: r.address, message: "aws_ecs_service without awsvpc networking (bridge or host mode) shares the container instance's network interface, which is not modeled yet; paths to its tasks are not reported" });
+        continue;
+      }
+      if (MODELED.has(r.type) || !NETWORK_TYPE.test(r.type)) continue;
       seen.set(r.address, { resource: r.address, message: `${r.type} is not modeled yet; paths it can change are reported as unknown or not reported` });
     }
   }

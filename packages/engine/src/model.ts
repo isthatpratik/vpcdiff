@@ -876,6 +876,9 @@ export class ModelBuilder {
       ...this.ofType("aws_instance").map((r) => this.instance(r)),
       ...this.ofType("aws_db_instance").flatMap((r) => this.dbInstance(r)),
       ...this.ofType("aws_lb").flatMap((r) => this.loadBalancer(r)),
+      ...this.ofType("aws_rds_cluster_instance").flatMap((r) => this.auroraInstance(r)),
+      ...this.ofType("aws_ecs_service").flatMap((r) => this.ecsService(r)),
+      ...this.ofType("aws_elb").flatMap((r) => this.classicLoadBalancer(r)),
     ];
   }
 
@@ -915,8 +918,13 @@ export class ModelBuilder {
     if (isNull(r, attr) || (Array.isArray(v) && !v.length && !isUnknown(r, [attr]))) {
       return emptyMeansDefault ? known([this.securityGroup(`default-sg:${vpc}`)]) : "empty";
     }
+    return this.groupsOf(r, resolveRefs(this.snap, r, attr, ["aws_security_group", "aws_default_security_group"]), vpc);
+  }
+
+  /** Security groups from resolved references; a known ID outside the plan is unknown, except the VPC's default group. */
+  private groupsOf(r: Resource, refs: Ref[], vpc: string): Known<SecurityGroup[]> {
     const keys: Key[] = [];
-    for (const ref of resolveRefs(this.snap, r, attr, ["aws_security_group", "aws_default_security_group"])) {
+    for (const ref of refs) {
       if (ref.kind === "unknown") return unknown(ref.reason);
       if (ref.kind === "external") {
         if (this.get(vpc)?.values.default_security_group_id !== ref.id) return unknown(`${r.address}: security group ${ref.id} is not managed in this plan`);
@@ -970,20 +978,58 @@ export class ModelBuilder {
    * https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_VPC.WorkingWithRDSInstanceinaVPC.html
    */
   private dbInstance(r: Resource): Endpoint[] {
+    return this.rds(r, r, r);
+  }
+
+  /**
+   * Aurora: each cluster instance is an endpoint. "In an Aurora DB cluster, the VPC
+   * security group associated with the DB cluster is also associated with all of the DB
+   * instances in the DB cluster." The subnet group is the instance's, else the cluster's;
+   * publicly_accessible is set per instance.
+   * https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/Overview.RDSSecurityGroups.html
+   * https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/rds_cluster_instance
+   */
+  private auroraInstance(r: Resource): Endpoint[] {
+    const cluster = this.clusterOf(r);
+    if (!cluster.ok) return [this.fail(r, cluster.reason)];
+    const c = cluster.value;
+    return this.rds(r, isNull(r, "db_subnet_group_name") ? c : r, c, [c.address]);
+  }
+
+  /** The aws_rds_cluster a cluster instance belongs to, by identifier or configuration reference. */
+  private clusterOf(r: Resource): Known<Resource> {
+    const id = r.values.cluster_identifier;
+    if (!isUnknown(r, ["cluster_identifier"]) && typeof id === "string") {
+      const found = this.ofType("aws_rds_cluster").filter((c) => !isUnknown(c, ["cluster_identifier"]) && c.values.cluster_identifier === id);
+      if (found.length === 1) return known(found[0] as Resource);
+    }
+    const refs = r.otherRefs.has("cluster_identifier") ? [] : fromConfig(this.snap, r, "cluster_identifier", "aws_rds_cluster");
+    if (refs.length === 1 && refs[0]?.kind === "resource") {
+      const c = this.get(refs[0].address);
+      if (c) return known(c);
+    }
+    return unknown(`${r.address}: its aws_rds_cluster is not in this plan`);
+  }
+
+  /**
+   * An RDS endpoint: `r` sets publicly_accessible, `subnetsOf` the DB subnet group, and
+   * `groupsOf` vpc_security_group_ids (the cluster, for Aurora).
+   */
+  private rds(r: Resource, subnetsOf: Resource, groupsOf: Resource, extraVia: string[] = []): Endpoint[] {
     let subnets: Known<string[]>;
-    let groupVia: string[] = [];
-    const groupName = r.values.db_subnet_group_name;
-    if (isNull(r, "db_subnet_group_name")) subnets = unknown(`${r.address} uses the default DB subnet group, which is not in this plan`);
+    let groupVia: string[] = [...extraVia];
+    const groupName = subnetsOf.values.db_subnet_group_name;
+    if (isNull(subnetsOf, "db_subnet_group_name")) subnets = unknown(`${subnetsOf.address} uses the default DB subnet group, which is not in this plan`);
     else {
       let group: Resource | undefined;
-      if (!isUnknown(r, ["db_subnet_group_name"]) && typeof groupName === "string") group = this.ofType("aws_db_subnet_group").find((g) => g.values.name === groupName);
-      else if (!r.otherRefs.has("db_subnet_group_name")) {
-        const refs = fromConfig(this.snap, r, "db_subnet_group_name", "aws_db_subnet_group");
+      if (!isUnknown(subnetsOf, ["db_subnet_group_name"]) && typeof groupName === "string") group = this.ofType("aws_db_subnet_group").find((g) => g.values.name === groupName);
+      else if (!subnetsOf.otherRefs.has("db_subnet_group_name")) {
+        const refs = fromConfig(this.snap, subnetsOf, "db_subnet_group_name", "aws_db_subnet_group");
         if (refs.length === 1 && refs[0]?.kind === "resource") group = this.get(refs[0].address);
       }
-      if (!group) subnets = unknown(`${r.address}: its DB subnet group is not in this plan`);
+      if (!group) subnets = unknown(`${subnetsOf.address}: its DB subnet group is not in this plan`);
       else {
-        groupVia = [group.address];
+        groupVia = [...groupVia, group.address];
         const refs = resolveRefs(this.snap, group, "subnet_ids", "aws_subnet");
         const bad = refs.find((x) => x.kind !== "resource");
         subnets = bad ? unknown(bad.kind === "unknown" ? bad.reason : `${group.address}: a subnet is not managed in this plan`) : known(refs.map((x) => (x as { address: string }).address));
@@ -1000,10 +1046,106 @@ export class ModelBuilder {
     }
     return subnets.value.map((sub) =>
       this.place(r, sub, publicIp, (vpc) => {
-        const g = this.groups(r, "vpc_security_group_ids", vpc);
+        const g = this.groups(groupsOf, "vpc_security_group_ids", vpc);
         return g === "empty" ? known([]) : g;
       }, "the result depends on the subnet that RDS chooses from the DB subnet group", groupVia),
     );
+  }
+
+  /**
+   * References in one attribute of a block (`network_configuration[0].subnets`). Known IDs
+   * resolve by value. Unknown ones come from the configuration of the block, which merges
+   * all its attributes, so only references of `types` count, and only for a single block.
+   */
+  private blockRefs(r: Resource, block: string, key: string, types: string[]): Ref[] {
+    const blocks = arr(r.values[block]);
+    const raw = blocks[0];
+    if (blocks.length !== 1 || !isObj(raw)) return [{ kind: "unknown", reason: `${r.address}: ${block} is not one block` }];
+    const listUnknown = isUnknown(r, [block, 0, key]);
+    const items = listUnknown ? [] : arr(raw[key]);
+    const out: Ref[] = [];
+    let pending = listUnknown;
+    for (const [i, v] of items.entries()) {
+      if (isUnknown(r, [block, 0, key, i]) || typeof v !== "string") pending = true;
+      else {
+        const a = this.snap.byId.get(v);
+        out.push(a ? { kind: "resource", address: a } : { kind: "external", id: v });
+      }
+    }
+    if (!pending) return out.toSorted((a, b) => cmp(JSON.stringify(a), JSON.stringify(b)));
+    if (r.otherRefs.has(block)) return [{ kind: "unknown", reason: `${r.address}: ${block}.${key} uses values that are unknown until apply` }];
+    const fromCfg = fromConfig(this.snap, r, block, types);
+    const known_ = new Set(out.flatMap((x) => (x.kind === "resource" ? [x.address] : [])));
+    const rest = fromCfg.filter((x) => !(x.kind === "resource" && known_.has(x.address)));
+    if (!rest.length || rest.some((x) => x.kind !== "resource") || (!listUnknown && rest.length !== items.length - out.length)) {
+      return [{ kind: "unknown", reason: `${r.address}: ${block}.${key} is unknown until apply and cannot be matched to resources` }];
+    }
+    return [...out, ...rest].toSorted((a, b) => cmp(JSON.stringify(a), JSON.stringify(b)));
+  }
+
+  /**
+   * ECS service with awsvpc networking: each task gets its own network interface in one
+   * of `network_configuration.subnets`, with its security groups. A public IPv4 address
+   * needs `assign_public_ip = true`, and only Fargate gives one: "When hosting tasks that
+   * use the awsvpc network mode on Amazon EC2 Linux instances, your task ENIs aren't given
+   * public IP addresses." Without security groups, the VPC's default group is used.
+   * https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task-networking-awsvpc.html
+   * https://docs.aws.amazon.com/AmazonECS/latest/APIReference/API_AwsVpcConfiguration.html
+   */
+  private ecsService(r: Resource): Endpoint[] {
+    // Without network_configuration the service uses bridge or host networking: the tasks
+    // share the container instance's interface, which is not modeled yet (a note says so).
+    if (!r.configured.has("network_configuration") && !arr(r.values.network_configuration).length) return [];
+    if (isUnknown(r, ["network_configuration"])) return [this.fail(r, `${r.address}: network_configuration is unknown until apply`)];
+    const subnetRefs = this.blockRefs(r, "network_configuration", "subnets", ["aws_subnet"]);
+    const bad = subnetRefs.find((x) => x.kind !== "resource");
+    if (bad) return [this.fail(r, bad.kind === "unknown" ? bad.reason : `${r.address}: a subnet is not managed in this plan`)];
+    if (!subnetRefs.length) return [this.fail(r, `${r.address} has no subnets`)];
+    const net = arr(r.values.network_configuration)[0] as Obj;
+    const publicIp = (): Known<string | undefined> => {
+      if (isUnknown(r, ["network_configuration", 0, "assign_public_ip"])) return unknown(`${r.address}: assign_public_ip is unknown until apply`);
+      if (net.assign_public_ip !== true) return known(undefined);
+      if (isUnknown(r, ["launch_type"]) || isUnknown(r, ["capacity_provider_strategy"])) return unknown(`${r.address}: the launch type is unknown until apply`);
+      const providers = arr(r.values.capacity_provider_strategy).map((x) => (isObj(x) ? String(x.capacity_provider) : ""));
+      const fargate = providers.length ? providers.every((x) => x === "FARGATE" || x === "FARGATE_SPOT") : r.values.launch_type === "FARGATE";
+      if (fargate) return known(`${r.address} runs on Fargate with assign_public_ip = true`);
+      if (!providers.length && (r.values.launch_type === "EC2" || r.values.launch_type === "EXTERNAL")) return known(undefined);
+      return unknown(`${r.address}: capacity providers ${providers.join(", ") || "(none)"} may not be Fargate`);
+    };
+    const groups = (vpc: string): Known<SecurityGroup[]> => {
+      if (isUnknown(r, ["network_configuration", 0, "security_groups"]) || arr(net.security_groups).length) {
+        return this.groupsOf(r, this.blockRefs(r, "network_configuration", "security_groups", ["aws_security_group", "aws_default_security_group"]), vpc);
+      }
+      return known([this.securityGroup(`default-sg:${vpc}`)]);
+    };
+    return subnetRefs.map((x) => this.place(r, (x as { address: string }).address, publicIp, groups, "the result depends on the subnet ECS places a task in"));
+  }
+
+  /**
+   * Classic Load Balancer in a VPC: a node in each of `subnets`, internet-facing unless
+   * `internal`. "If you use the AWS CLI or API create a load balancer in a nondefault
+   * VPC, but you don't specify a security group, your load balancer is automatically
+   * associated with the default security group for the VPC."
+   * https://docs.aws.amazon.com/elasticloadbalancing/latest/classic/elb-vpc-security-groups.html
+   */
+  private classicLoadBalancer(r: Resource): Endpoint[] {
+    if (!arr(r.values.subnets).length && !isUnknown(r, ["subnets"])) return [this.fail(r, `${r.address} uses availability_zones, not subnets: a load balancer outside a VPC in this plan is not modeled`)];
+    const refs = resolveRefs(this.snap, r, "subnets", "aws_subnet");
+    const bad = refs.find((x) => x.kind !== "resource");
+    if (bad) return [this.fail(r, bad.kind === "unknown" ? bad.reason : `${r.address}: a subnet is not managed in this plan`)];
+    // Unset, `internal` is computed: "By default, Elastic Load Balancing creates an
+    // Internet-facing load balancer."
+    // https://docs.aws.amazon.com/elasticloadbalancing/2012-06-01/APIReference/API_CreateLoadBalancer.html
+    const publicIp = (): Known<string | undefined> => {
+      if (isUnknown(r, ["internal"]) && r.configured.has("internal")) return unknown(`${r.address}: internal is unknown until apply`);
+      if (!isUnknown(r, ["internal"]) && r.values.internal === true) return known(undefined);
+      return known(isUnknown(r, ["internal"]) ? `${r.address} is internet-facing (internal is not set; the AWS default)` : `${r.address} is internet-facing (internal = false)`);
+    };
+    const groups = (vpc: string): Known<SecurityGroup[]> => {
+      const g = this.groups(r, "security_groups", vpc);
+      return g === "empty" ? known([]) : g;
+    };
+    return refs.map((x) => this.place(r, (x as { address: string }).address, publicIp, groups, "the result differs between the load balancer's subnets"));
   }
 
   /**

@@ -1,0 +1,108 @@
+{
+  "format": "0.2",
+  "summary": {
+    "added": 1,
+    "removed": 0,
+    "changed": 0,
+    "unchanged": 1,
+    "unknown": 0
+  },
+  "paths": [
+    {
+      "id": "internet->aws_elb.internal:tcp:443",
+      "from": "internet",
+      "to": "aws_elb.internal",
+      "toType": "aws_elb",
+      "protocol": "tcp",
+      "ports": "443",
+      "change": "unchanged",
+      "before": {
+        "verdict": "absent",
+        "sources": [],
+        "hops": [],
+        "reason": "the resource does not exist on this side of the plan"
+      },
+      "after": {
+        "verdict": "blocked",
+        "sources": [],
+        "hops": [
+          {
+            "hop": "public-ip",
+            "resource": "aws_elb.internal",
+            "decision": "deny",
+            "rule": "aws_elb.internal has no public IPv4 address",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/VPC_Internet_Gateway.html"
+          }
+        ],
+        "reason": "aws_elb.internal has no public IPv4 address"
+      }
+    },
+    {
+      "id": "internet->aws_elb.public:tcp:443",
+      "from": "internet",
+      "to": "aws_elb.public",
+      "toType": "aws_elb",
+      "protocol": "tcp",
+      "ports": "443",
+      "change": "added",
+      "before": {
+        "verdict": "absent",
+        "sources": [],
+        "hops": [],
+        "reason": "the resource does not exist on this side of the plan"
+      },
+      "after": {
+        "verdict": "allowed",
+        "sources": [
+          "internet"
+        ],
+        "hops": [
+          {
+            "hop": "public-ip",
+            "resource": "aws_elb.public",
+            "decision": "allow",
+            "rule": "aws_elb.public is internet-facing (internal is not set; the AWS default)",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/VPC_Internet_Gateway.html"
+          },
+          {
+            "hop": "internet-gateway",
+            "resource": "aws_internet_gateway.main",
+            "decision": "allow",
+            "rule": "aws_internet_gateway.main is attached to aws_vpc.main",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/VPC_Internet_Gateway.html"
+          },
+          {
+            "hop": "nacl-inbound",
+            "resource": "default NACL of aws_vpc.main",
+            "decision": "allow",
+            "rule": "default NACL of aws_vpc.main ingress rule 100: allow all traffic (AWS default)",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/nacl-rules.html"
+          },
+          {
+            "hop": "security-group",
+            "resource": "aws_security_group.web",
+            "decision": "allow",
+            "rule": "aws_security_group.web ingress tcp 443 from 0.0.0.0/0",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/security-group-rules.html"
+          },
+          {
+            "hop": "nacl-outbound",
+            "resource": "default NACL of aws_vpc.main",
+            "decision": "allow",
+            "rule": "default NACL of aws_vpc.main egress rule 100: allow all traffic (AWS default)",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/custom-network-acl.html#nacl-ephemeral-ports"
+          },
+          {
+            "hop": "route",
+            "resource": "aws_route_table.public",
+            "decision": "allow",
+            "rule": "aws_route_table.public route 0.0.0.0/0 -> aws_internet_gateway.main",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/route-tables-priority.html"
+          }
+        ],
+        "reason": ""
+      }
+    }
+  ],
+  "notes": []
+}

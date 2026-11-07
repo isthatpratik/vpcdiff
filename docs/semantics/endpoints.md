@@ -42,9 +42,50 @@ allow list.
 - For an Application Load Balancer, the engine reports the ports the security groups
   open; it does not narrow them to the listener ports.
 
+## Aurora cluster instance (`aws_rds_cluster_instance`)
+
+- **Security groups:** the cluster's `vpc_security_group_ids`. "In an Aurora DB cluster,
+  the VPC security group associated with the DB cluster is also associated with all of
+  the DB instances in the DB cluster."
+  Source: <https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/Overview.RDSSecurityGroups.html>
+- **Subnet:** the instance's `db_subnet_group_name`, else the cluster's. Every subnet of
+  the group is evaluated, as for RDS.
+- **Public address:** `publicly_accessible` on the instance.
+- **Cluster:** found by `cluster_identifier`, or by the configuration reference when the
+  value is unknown until apply. A cluster that is not in the plan gives `unknown`.
+
+## ECS service (`aws_ecs_service`)
+
+- Only services with `network_configuration` (awsvpc networking) are endpoints. Each
+  task gets its own network interface in one of `subnets`; every subnet is evaluated.
+  Source: <https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task-networking-awsvpc.html>
+- **Public address:** `assign_public_ip = true` on Fargate (`launch_type = "FARGATE"`,
+  or only `FARGATE` / `FARGATE_SPOT` capacity providers). On the EC2 or EXTERNAL launch
+  type: "your task ENIs aren't given public IP addresses." Other capacity providers give
+  `unknown`.
+- **Security groups:** `network_configuration.security_groups`; none means the VPC's
+  default group ("If you don't specify a security group, the default security group for
+  the VPC is used").
+  Source: <https://docs.aws.amazon.com/AmazonECS/latest/APIReference/API_AwsVpcConfiguration.html>
+- Services without `network_configuration` (bridge or host mode) share the container
+  instance's interface. They get a note and no path.
+
+## Classic Load Balancer (`aws_elb`)
+
+- **Subnets:** `subnets`; a node in each. A load balancer placed with
+  `availability_zones` only is outside a VPC in this plan and gives `unknown`.
+- **Public address:** internet-facing unless `internal = true`. Unset, `internal` is
+  computed; "By default, Elastic Load Balancing creates an Internet-facing load
+  balancer."
+  Source: <https://docs.aws.amazon.com/elasticloadbalancing/2012-06-01/APIReference/API_CreateLoadBalancer.html>
+- **Security groups:** `security_groups`; none means the VPC's default group ("your load
+  balancer is automatically associated with the default security group for the VPC").
+  Source: <https://docs.aws.amazon.com/elasticloadbalancing/latest/classic/elb-vpc-security-groups.html>
+- Like an Application Load Balancer, the engine reports the ports the groups open; it
+  does not narrow them to the listener ports.
+
 ## Not modeled yet
 
-Aurora (`aws_rds_cluster`, `aws_rds_cluster_instance`), ECS services with
-`assign_public_ip`, Classic Load Balancers (`aws_elb`), Gateway Load Balancers, and
-instances with `network_interface` blocks. They get a note, or an `unknown` path when a
-modeled hop depends on them.
+Gateway Load Balancers, ECS services in bridge or host mode, and instances with
+`network_interface` blocks. They get a note, or an `unknown` path when a modeled hop
+depends on them.

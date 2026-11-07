@@ -105,7 +105,10 @@ node packages/cli/dist/vpcdiff.mjs            # guided mode, in a terminal
 | Paths inside the VPC: endpoint to endpoint through a security group reference (`security_groups`, `source_security_group_id`, `referenced_security_group_id`, `self`) | supported in one VPC; other VPCs and routes through a middlebox are unknown |
 | `aws_db_instance` (endpoint; `publicly_accessible`, `aws_db_subnet_group`) | supported |
 | `aws_lb` (endpoint; internet-facing ALB and NLB, `aws_lb_listener` for NLBs without groups) | supported |
-| Aurora, ECS services, Classic and Gateway Load Balancers | noted |
+| `aws_rds_cluster_instance` (Aurora endpoint; groups and subnet group from `aws_rds_cluster`) | supported |
+| `aws_ecs_service` (endpoint with awsvpc `network_configuration`; public IP on Fargate only) | supported |
+| `aws_elb` (Classic Load Balancer endpoint in a VPC) | supported |
+| Gateway Load Balancers, ECS services in bridge or host mode | noted |
 | Prefix lists, VPN route propagation, network interface attachments, secondary VPC CIDRs | unknown |
 | NAT gateway, VPC peering, Transit Gateway, VPC endpoints, IPv6 | not yet; unknown or noted |
 
@@ -120,7 +123,7 @@ security review, and an updated support matrix.
    VPC peering, Transit Gateway, VPC endpoints, IPv6, and prefix lists.
 3. [OpenTofu support](https://github.com/isthatpratik/vpcdiff/issues/34): done. Every
    fixture is also planned with OpenTofu in CI, and the result must match byte for byte.
-4. [More endpoints](https://github.com/isthatpratik/vpcdiff/issues/35): Aurora, ECS
+4. [More endpoints](https://github.com/isthatpratik/vpcdiff/issues/35) (done): Aurora, ECS
    services, and Classic Load Balancers.
 5. [Azure and Google Cloud](https://github.com/isthatpratik/vpcdiff/issues/36), after v1,
    with an ADR first.

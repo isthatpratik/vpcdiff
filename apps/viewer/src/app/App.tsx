@@ -368,10 +368,10 @@ const TONE_BAR: Record<Tone, string> = { danger: "bg-litt-danger", success: "bg-
  * colors, so they are not used here (DESIGN.md, icons).
  */
 function TargetIcon({ type, className = "" }: { type: string; className?: string }) {
-  const Icon = type === "aws_db_instance" ? DatabaseIcon : type === "aws_lb" ? LayersIcon : BoxIcon;
+  const Icon = type === "aws_db_instance" || type === "aws_rds_cluster_instance" ? DatabaseIcon : type === "aws_lb" || type === "aws_elb" ? LayersIcon : BoxIcon;
   return <Icon aria-hidden="true" className={`shrink-0 text-litt-fg-subtle ${className}`} />;
 }
-const TYPE_NAME: Record<string, string> = { aws_instance: "EC2 instance", aws_db_instance: "RDS database", aws_lb: "Load balancer" };
+const TYPE_NAME: Record<string, string> = { aws_instance: "EC2 instance", aws_db_instance: "RDS database", aws_lb: "Load balancer", aws_rds_cluster_instance: "Aurora instance", aws_ecs_service: "ECS service", aws_elb: "Classic Load Balancer" };
 
 /** A word with a dotted underline that explains itself on hover or focus. */
 function Term({ children, help }: { children: ReactNode; help: string }) {
