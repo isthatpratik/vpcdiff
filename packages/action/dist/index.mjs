@@ -401,7 +401,7 @@ function peeringStep(table, at, peerCidr, peer, own, peerVpc) {
     if (target.kind === "drop" && target.peering) {
       if (!target.peering.ok) return fail("unknown", t.resource, target.peering.reason);
       via.add(target.peering.value);
-    } else if (target.kind === "drop") return fail("deny", t.resource, `${route.text}: ${target.why}`);
+    } else if (target.kind === "drop") return fail(equals(m, peerCidr) ? "deny" : "unknown", t.resource, `${route.text}: ${target.why}${equals(m, peerCidr) ? "" : `, for part of the subnet of ${peer}`}`);
     else if (target.kind === "unknown") return fail("unknown", t.resource, target.reason);
     else return fail("unknown", t.resource, `${route.text} sends traffic for the subnet of ${peer} to a ${target.kind === "other" ? target.text : target.kind}, which is not modeled for paths between VPCs`);
     remaining = subtract(remaining, m);
@@ -1406,7 +1406,8 @@ var ModelBuilder = class {
     return known(out.toSorted((x, y) => cmp(x.address, y.address)));
   }
   peeringActive(p) {
-    if (!isUnknown(p, ["auto_accept"]) && p.values.auto_accept === true) return known(`${p.address} auto_accept = true`);
+    const crossing = ["peer_region", "peer_owner_id"].some((k) => !isNull(p, k));
+    if (!crossing && !isUnknown(p, ["auto_accept"]) && p.values.auto_accept === true) return known(`${p.address} auto_accept = true`);
     if (!isUnknown(p, ["accept_status"]) && p.values.accept_status === "active") return known(`${p.address} accept_status = active`);
     for (const acc of this.ofType("aws_vpc_peering_connection_accepter")) {
       const id = acc.values.vpc_peering_connection_id;

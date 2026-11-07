@@ -127,7 +127,7 @@ function peeringStep(table: Known<RouteTable>, at: string, peerCidr: IntervalSet
     if (target.kind === "drop" && target.peering) {
       if (!target.peering.ok) return fail("unknown", t.resource, target.peering.reason);
       via.add(target.peering.value);
-    } else if (target.kind === "drop") return fail("deny", t.resource, `${route.text}: ${target.why}`);
+    } else if (target.kind === "drop") return fail(equals(m, peerCidr) ? "deny" : "unknown", t.resource, `${route.text}: ${target.why}${equals(m, peerCidr) ? "" : `, for part of the subnet of ${peer}`}`);
     else if (target.kind === "unknown") return fail("unknown", t.resource, target.reason);
     else return fail("unknown", t.resource, `${route.text} sends traffic for the subnet of ${peer} to a ${target.kind === "other" ? target.text : target.kind}, which is not modeled for paths between VPCs`);
     remaining = subtract(remaining, m);

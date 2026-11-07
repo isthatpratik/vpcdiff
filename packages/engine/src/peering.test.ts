@@ -44,6 +44,11 @@ describe("paths across a VPC peering connection", () => {
     expect(inside(peered({ pcx: { auto_accept: false } })).after.reason).toMatch(/not accepted in this plan/);
   });
 
+  it("does not trust auto_accept across Regions or accounts", () => {
+    expect(inside(peered({ pcx: { peer_region: "eu-west-1" } })).after.reason).toMatch(/not accepted in this plan/);
+    expect(inside(peered({ pcx: { peer_owner_id: "123456789012" } })).after.verdict).toBe("unknown");
+  });
+
   it("accepts through aws_vpc_peering_connection_accepter", () => {
     const acc = res("aws_vpc_peering_connection_accepter", "b", { id: "pcx-1", vpc_peering_connection_id: "pcx-1", auto_accept: true });
     expect(inside([...peered({ pcx: { auto_accept: false } }), acc]).after.verdict).toBe("allowed");

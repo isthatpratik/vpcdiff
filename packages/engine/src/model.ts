@@ -991,7 +991,10 @@ export class ModelBuilder {
   }
 
   private peeringActive(p: Resource): Known<string> {
-    if (!isUnknown(p, ["auto_accept"]) && p.values.auto_accept === true) return known(`${p.address} auto_accept = true`);
+    // auto_accept works only in one account and Region; across them an accepter must accept.
+    // https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/vpc_peering_connection
+    const crossing = ["peer_region", "peer_owner_id"].some((k) => !isNull(p, k));
+    if (!crossing && !isUnknown(p, ["auto_accept"]) && p.values.auto_accept === true) return known(`${p.address} auto_accept = true`);
     if (!isUnknown(p, ["accept_status"]) && p.values.accept_status === "active") return known(`${p.address} accept_status = active`);
     for (const acc of this.ofType("aws_vpc_peering_connection_accepter")) {
       const id = acc.values.vpc_peering_connection_id;
