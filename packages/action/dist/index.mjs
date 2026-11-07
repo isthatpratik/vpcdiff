@@ -903,11 +903,24 @@ var ModelBuilder = class {
           break;
         }
         case "aws_vpc_endpoint": {
-          if (isUnknown(r, ["vpc_endpoint_type"]) || String(r.values.vpc_endpoint_type ?? "Gateway") !== "Gateway") break;
-          if (isNull(r, "route_table_ids")) break;
+          if (isNull(r, "route_table_ids") || !isUnknown(r, ["route_table_ids"]) && !arr(r.values.route_table_ids).length) break;
+          if (isUnknown(r, ["vpc_endpoint_type"])) {
+            this.gatewayEndpoints.add(unknown(`${r.address}: vpc_endpoint_type is unknown until apply, so it may add routes to its route tables`), known(r.address), r.address);
+            break;
+          }
+          if (String(r.values.vpc_endpoint_type ?? "Gateway") !== "Gateway") break;
+          const ids = arr(r.values.route_table_ids);
+          if (!isUnknown(r, ["route_table_ids"]) && ids.every((v, i) => typeof v === "string" && !isUnknown(r, ["route_table_ids", i]))) {
+            for (const id of ids) {
+              const k = this.keyOfId(id);
+              this.gatewayEndpoints.add(k.ok && k.value === null ? unknown(`${r.address}: route table ${id} is not in this plan`) : k, known(r.address), r.address);
+            }
+            break;
+          }
           for (const ref of resolveRefs(this.snap, r, "route_table_ids", ["aws_route_table", "aws_default_route_table"])) {
             if (ref.kind === "unknown") this.gatewayEndpoints.add(unknown(ref.reason), known(r.address), r.address);
-            else if (ref.kind === "resource") this.gatewayEndpoints.add(this.canonical(ref.address), known(r.address), r.address);
+            else if (ref.kind === "external") this.gatewayEndpoints.add(unknown(`${r.address}: route table ${ref.id} is not in this plan`), known(r.address), r.address);
+            else this.gatewayEndpoints.add(this.canonical(ref.address), known(r.address), r.address);
           }
           break;
         }

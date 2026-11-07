@@ -19,8 +19,20 @@ describe("gateway endpoints", () => {
     expect(only(analyze(plan(network({}, [s3([]), assoc]))).paths).after.reason).toMatch(/gateway endpoint/);
   });
 
-  it("leaves other route tables alone", () => {
-    expect(only(analyze(plan(network({}, [s3(["rtb-other"])]))).paths).after.reason).toBe("");
+  it("returns unknown when a listed route table is outside the plan: it may be any table", () => {
+    expect(only(analyze(plan(network({}, [s3(["rtb-other"])]))).paths).after.verdict).toBe("unknown");
+  });
+
+  it("finds the VPC's main route table by its known ID", () => {
+    const vpc = res("aws_vpc", "main", { id: "vpc-1", cidr_block: "10.0.0.0/16", default_network_acl_id: "acl-1", default_route_table_id: "rtb-main", main_route_table_id: "rtb-main" });
+    const igwRoute = res("aws_default_route_table", "main", { id: "rtb-main", default_route_table_id: "rtb-main", route: [{ cidr_block: "0.0.0.0/0", gateway_id: "igw-1" }] });
+    const p = only(analyze(plan(network({ vpc, rt: null, assoc: null }, [igwRoute, s3(["rtb-main"])]))).paths);
+    expect(p.after.reason).toMatch(/gateway endpoint aws_vpc_endpoint.s3/);
+  });
+
+  it("makes its route tables unknown when the endpoint type is unknown", () => {
+    const e = { ...s3(["rtb-1"]), unknown: { vpc_endpoint_type: true }, config: { vpc_endpoint_type: ["var.type"] } };
+    expect(only(analyze(plan(network({}, [e]))).paths.filter((p) => p.to === "aws_instance.app")).after.verdict).toBe("unknown");
   });
 });
 
