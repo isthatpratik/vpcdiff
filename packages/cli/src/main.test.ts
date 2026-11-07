@@ -21,7 +21,7 @@ describe("vpcdiff CLI", () => {
 
   it("prints the engine JSON unchanged", () => {
     const r = cli(["--format", "json", fixture("sg-5432-opened")]);
-    expect(JSON.parse(r.out)).toMatchObject({ format: "0.1", summary: { added: 1 } });
+    expect(JSON.parse(r.out)).toMatchObject({ format: "0.2", summary: { added: 1 } });
   });
 
   it("prints Markdown with a summary table and hop details", () => {

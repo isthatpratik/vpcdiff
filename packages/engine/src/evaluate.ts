@@ -1,8 +1,8 @@
 import { ALL_IPV4, ALL_PORTS, cidrToSet, contains, equals, formatPorts, fromRanges, intersect, isEmpty, setToCidrs, subtract, union, EMPTY, type IntervalSet, type Range } from "./intervals.js";
 import type { Endpoint, NaclRule, RuleProtocol } from "./model.js";
-import type { Hop, HopKind, Outcome, Protocol } from "./types.js";
+import type { Hop, Outcome, Protocol } from "./types.js";
 
-const DOC: Record<HopKind, string> = {
+const DOC: Record<"public-ip" | "internet-gateway" | "nacl-inbound" | "security-group" | "nacl-outbound" | "route", string> = {
   "public-ip": "https://docs.aws.amazon.com/vpc/latest/userguide/VPC_Internet_Gateway.html",
   "internet-gateway": "https://docs.aws.amazon.com/vpc/latest/userguide/VPC_Internet_Gateway.html",
   "nacl-inbound": "https://docs.aws.amazon.com/vpc/latest/userguide/nacl-rules.html",
@@ -75,7 +75,7 @@ export function evaluate(ep: Endpoint | undefined, p: Protocol, ports: Range): O
   const hops: Hop[] = [];
   const universe = internetOf(ep);
   const portText = `${p}/${formatPorts([ports])}`;
-  const add = (hop: HopKind, resource: string, decision: Hop["decision"], rule: string) => hops.push({ hop, resource, decision, rule, doc: DOC[hop] });
+  const add = (hop: keyof typeof DOC, resource: string, decision: Hop["decision"], rule: string) => hops.push({ hop, resource, decision, rule, doc: DOC[hop] });
   // Sources dropped because a hop could not decide them. They are reported, never hidden.
   const undecided: string[] = [];
   const cidrList = (set: IntervalSet) => {
@@ -83,7 +83,7 @@ export function evaluate(ep: Endpoint | undefined, p: Protocol, ports: Range): O
     return list.length > 6 ? `${list.slice(0, 6).join(", ")} and ${list.length - 6} more` : list.join(", ");
   };
   const stop = (verdict: "blocked" | "unknown", reason: string): Outcome => ({ verdict, sources: [], hops, reason });
-  const unknownAt = (hop: HopKind, resource: string, reason: string) => {
+  const unknownAt = (hop: keyof typeof DOC, resource: string, reason: string) => {
     add(hop, resource, "unknown", reason);
     return stop("unknown", reason);
   };

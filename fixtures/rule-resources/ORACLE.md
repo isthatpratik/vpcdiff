@@ -69,3 +69,10 @@ This costs money. Check current prices first.
    a source address, that an address outside `198.51.100.0/24` is not reachable.
 3. Run `terraform destroy`.
 4. Record the analysis IDs, the date, and both results here, and change the status line.
+
+## Result format 0.2 (2026-11-07)
+
+The result format changed from `0.1` to `0.2` for paths inside the VPC (#32). In
+`expected.json` only the `format` field changed. The paths and notes are byte for byte
+the same as before: this plan has no security group rule that references a group of
+another endpoint, so it has no path inside the VPC.

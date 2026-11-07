@@ -67,6 +67,13 @@ export const HOP_HELP: Record<ColumnKey, string> = {
   target: "The resource the traffic is trying to reach.",
   "nacl-outbound": "Subnet firewall, outgoing. The reply must leave the subnet on an ephemeral port (1024 to 65535).",
   route: "Can the reply find its way back? The subnet's route table needs a route to the internet gateway.",
+  "source-security-group": "The source's own firewall, outgoing. A rule must allow the port to the target's group or subnet.",
+  "source-route": "Inside the VPC, traffic to the target's subnet must use the local route.",
+  "source-nacl-outbound": "The source subnet's firewall, outgoing. Skipped when both are in the same subnet.",
+  "target-nacl-inbound": "The target subnet's firewall, incoming. Skipped when both are in the same subnet.",
+  "target-nacl-outbound": "The target subnet's firewall for the reply, outgoing, on an ephemeral port (1024 to 65535).",
+  "source-nacl-inbound": "The source subnet's firewall for the reply, incoming, on an ephemeral port (1024 to 65535).",
+  "target-route": "Can the reply find its way back? The target's route table must use the local route to the source's subnet.",
 };
 
 /** Short definitions for each decision, for tooltips and the legend. */

@@ -20,6 +20,8 @@ export interface SgRule {
   groups: string[];
   /** Set when a referenced group cannot be resolved in this plan. */
   unresolved?: string;
+  /** The resource that defines the rule: the group, or a rule resource. */
+  resource: string;
   text: string;
 }
 
@@ -456,7 +458,7 @@ export class ModelBuilder {
 
   private rule(address: string, egress: boolean, protocol: RuleProtocol, ports: IntervalSet, ranges: IntervalSet, cidrs: string[], groups: { keys: Key[]; unresolved?: string }, portText: string): SgRule {
     const peers = [...cidrs, ...groups.keys.map(groupLabel), ...(groups.unresolved ? ["a security group that is unknown until apply"] : [])];
-    return { protocol, ports, sources: fromRanges(ranges), groups: groups.keys, ...(groups.unresolved ? { unresolved: groups.unresolved } : {}), text: `${address} ${egress ? "egress" : "ingress"} ${portText} ${egress ? "to" : "from"} ${peers.join(", ")}` };
+    return { protocol, ports, sources: fromRanges(ranges), groups: groups.keys, ...(groups.unresolved ? { unresolved: groups.unresolved } : {}), resource: address, text: `${address} ${egress ? "egress" : "ingress"} ${portText} ${egress ? "to" : "from"} ${peers.join(", ")}` };
   }
 
   private naclRuleOf(r: Resource): Known<{ egress: boolean; rule: NaclRule }> {
@@ -1070,7 +1072,7 @@ export class ModelBuilder {
       if (port === undefined || isUnknown(l, ["port"]) || isUnknown(l, ["protocol"])) return unknown(`${l.address}: port or protocol is unknown until apply`);
       const protocols: RuleProtocol[] = proto === "UDP" ? ["udp"] : proto === "TCP_UDP" ? ["tcp", "udp"] : ["tcp"];
       via.push(l.address);
-      for (const protocol of protocols) rules.push({ protocol, ports: [[port, port]], sources: ALL_IPV4, groups: [], text: `${l.address} listens on ${protocol} ${port} (${lb.address} has no security groups)` });
+      for (const protocol of protocols) rules.push({ protocol, ports: [[port, port]], sources: ALL_IPV4, groups: [], resource: l.address, text: `${l.address} listens on ${protocol} ${port} (${lb.address} has no security groups)` });
     }
     // With no security groups, the targets see the client's address, not the load
     // balancer's, so it is not modeled as the source of a path inside the VPC.

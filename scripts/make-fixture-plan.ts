@@ -127,6 +127,15 @@ function toState(before: Obj, schemas: Obj): Obj {
         if (key === "owner_id") return ACCOUNT;
         if (key === "tags_all") return {};
         if (type === "aws_security_group" && path.length === 1 && key === "egress") return [];
+        // Group IDs in an inline rule (`ingress[0].security_groups`): the security groups
+        // the block's expression references. Only one group per attribute is matched.
+        const groups = () => referencedResources(refs[path[0] as string]).filter((x) => x.startsWith("aws_security_group.")).map((x) => ids.get(x)).filter(Boolean) as string[];
+        if (key === "security_groups") return groups();
+        if (path[path.length - 2] === "security_groups") {
+          const g = groups();
+          if (g.length === 1) return g[0] as string;
+          throw new Error(`${address}: cannot fill ${path.join(".")}: the block references ${g.length} security groups`);
+        }
         if (key?.endsWith("_id") || key === "vpc_security_group_ids") {
           const targets = referencedResources(refs[path[0] as string]).map((a) => ids.get(a)).filter(Boolean) as string[];
           if (key === "vpc_security_group_ids") return targets;

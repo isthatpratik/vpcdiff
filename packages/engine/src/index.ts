@@ -1,4 +1,5 @@
 import { evaluate, exposedPorts, portCuts, segment } from "./evaluate.js";
+import { evaluateInternal, groupKeys, internalCuts, referencedPorts } from "./internal.js";
 import { formatPorts, union, type IntervalSet, type Range } from "./intervals.js";
 import { ModelBuilder, type Endpoint } from "./model.js";
 import { cmp, parsePlan, type Snapshot } from "./plan.js";
@@ -64,14 +65,26 @@ function endpointsOf(snap: Snapshot): Map<string, Endpoint[]> {
 /** One outcome for all placements of an endpoint; placements that disagree give unknown. */
 function evaluateAll(list: Endpoint[] | undefined, p: Protocol, ports: Range): Outcome {
   if (!list?.length) return evaluate(undefined, p, ports);
-  const outcomes = list.map((e) => evaluate(e, p, ports));
+  return combine(list.map((e) => evaluate(e, p, ports)), list.map((e) => (e.subnet.ok ? e.subnet.value : "unknown subnet")), list[0]?.placement);
+}
+
+/** A path inside the VPC for every pair of placements of the source and the target. */
+function evaluatePairs(from: Endpoint[] | undefined, to: Endpoint[] | undefined, p: Protocol, ports: Range): Outcome {
+  if (!from?.length || !to?.length) return evaluateInternal(undefined, undefined, p, ports);
+  const pairs = from.flatMap((a) => to.map((t) => [a, t] as const));
+  const where = (e: Endpoint) => (e.subnet.ok ? e.subnet.value : "unknown subnet");
+  const placement = [from[0]?.placement, to[0]?.placement].filter(Boolean).join("; ") || undefined;
+  return combine(pairs.map(([a, t]) => evaluateInternal(a, t, p, ports)), pairs.map(([a, t]) => `${where(a)} to ${where(t)}`), placement);
+}
+
+function combine(outcomes: Outcome[], labels: string[], placement: string | undefined): Outcome {
   const first = outcomes[0] as Outcome;
   // Placements that agree on the verdict and the sources give the same answer, even when
   // their explanations name different route tables or NACLs. The first placement explains it.
   const same = (o: Outcome) => o.verdict === first.verdict && JSON.stringify(o.sources) === JSON.stringify(first.sources) && o.reason === first.reason;
   if (outcomes.every(same) || (first.verdict === "blocked" && outcomes.every((o) => o.verdict === "blocked"))) return first;
-  const detail = list.map((e, i) => `${e.subnet.ok ? e.subnet.value : "unknown subnet"}: ${outcomes[i]?.verdict ?? "unknown"}`).join("; ");
-  return { verdict: "unknown", sources: [], hops: [], reason: `${list[0]?.placement ?? "the result differs between placements"} (${detail})` };
+  const detail = labels.map((l, i) => `${l}: ${outcomes[i]?.verdict ?? "unknown"}`).join("; ");
+  return { verdict: "unknown", sources: [], hops: [], reason: `${placement ?? "the result differs between placements"} (${detail})` };
 }
 
 /**
@@ -80,7 +93,7 @@ function evaluateAll(list: Endpoint[] | undefined, p: Protocol, ports: Range): O
  * https://developer.hashicorp.com/terraform/internals/json-format
  * https://developer.hashicorp.com/terraform/language/block/resource
  */
-function deleteFirst(list: Endpoint[] | undefined, snap: Snapshot): string[] {
+function deleteFirst(list: Endpoint[] | undefined, snap: Snapshot, internet = true): string[] {
   const out = new Set<string>();
   for (const e of list ?? []) {
     // The objects on the path and every resource that shaped them (rule resources,
@@ -89,7 +102,7 @@ function deleteFirst(list: Endpoint[] | undefined, snap: Snapshot): string[] {
     if (e.subnet.ok) onPath.push(e.subnet.value);
     if (e.vpc.ok) {
       onPath.push(e.vpc.value.address, ...(e.vpc.value.via ?? []));
-      if (e.vpc.value.igw.ok && e.vpc.value.igw.value) onPath.push(e.vpc.value.igw.value);
+      if (internet && e.vpc.value.igw.ok && e.vpc.value.igw.value) onPath.push(e.vpc.value.igw.value);
     }
     if (e.securityGroups.ok) for (const g of e.securityGroups.value) onPath.push(g.address, ...(g.via ?? []));
     if (e.nacl.ok) onPath.push(e.nacl.value.resource, ...(e.nacl.value.via ?? []));
@@ -130,36 +143,121 @@ export function analyze(plan: unknown): Result {
   const addresses = [...new Set([...epBefore.keys(), ...epAfter.keys()])].toSorted(cmp);
   const paths: Path[] = [];
 
+  // Internet to each endpoint.
   for (const address of addresses) {
     const b = epBefore.get(address);
     const a = epAfter.get(address);
-    for (const p of PROTOCOLS) {
-      const candidates = union(unionOf(b, (e) => exposedPorts(e, p)), unionOf(a, (e) => exposedPorts(e, p)));
-      let run: { ports: Range; before: Outcome; after: Outcome } | undefined;
-      const flush = () => {
-        if (!run) return;
-        const ports = formatPorts([run.ports]);
-        const risk = run.before.verdict === "allowed" && run.after.verdict === "allowed" ? deleteFirst(a, after) : [];
-        paths.push({ id: `internet->${address}:${p}:${ports}`, from: "internet", to: address, toType: (a ?? b)?.[0]?.type ?? "", protocol: p, ports, change: changeOf(run.before, run.after), before: run.before, after: run.after, ...(risk.length ? { outageRisk: risk } : {}) });
-        run = undefined;
-      };
-      for (const seg of segment(candidates, [...(b ?? []).flatMap(portCuts), ...(a ?? []).flatMap(portCuts)])) {
-        const ob = evaluateAll(b, p, seg);
-        const oa = evaluateAll(a, p, seg);
-        // Merge neighboring port ranges with the same outcome on both sides.
-        if (run && run.ports[1] + 1 === seg[0] && JSON.stringify([run.before, run.after]) === JSON.stringify([ob, oa])) run.ports = [run.ports[0], seg[1]];
-        else {
-          flush();
-          run = { ports: seg, before: ob, after: oa };
-        }
-      }
-      flush();
+    paths.push(
+      ...pathsOf({
+        id: `internet->${address}`,
+        from: "internet",
+        to: address,
+        toType: (a ?? b)?.[0]?.type ?? "",
+        candidates: (p) => union(unionOf(b, (e) => exposedPorts(e, p)), unionOf(a, (e) => exposedPorts(e, p))),
+        cuts: [...(b ?? []).flatMap(portCuts), ...(a ?? []).flatMap(portCuts)],
+        before: (p, seg) => evaluateAll(b, p, seg),
+        after: (p, seg) => evaluateAll(a, p, seg),
+        risk: () => deleteFirst(a, after),
+      }),
+    );
+  }
+
+  // Inside the VPC: from an endpoint to another whose security group references one of
+  // its groups, on either side of the plan (docs/semantics/internal-paths.md).
+  for (const from of addresses) {
+    for (const to of addresses) {
+      if (from === to) continue;
+      const fb = epBefore.get(from);
+      const fa = epAfter.get(from);
+      const tb = epBefore.get(to);
+      const ta = epAfter.get(to);
+      const refs = (p: Protocol) => union(pairPorts(fb, tb, p), pairPorts(fa, ta, p));
+      if (PROTOCOLS.every((p) => !refs(p).length)) continue;
+      paths.push(
+        ...pathsOf({
+          id: `${from}->${to}`,
+          from,
+          fromType: (fa ?? fb)?.[0]?.type ?? "",
+          to,
+          toType: (ta ?? tb)?.[0]?.type ?? "",
+          candidates: refs,
+          cuts: [...fb ?? [], ...fa ?? [], ...tb ?? [], ...ta ?? []].flatMap(internalCuts),
+          before: (p, seg) => evaluatePairs(fb, tb, p, seg),
+          after: (p, seg) => evaluatePairs(fa, ta, p, seg),
+          risk: () => [...new Set([...deleteFirst(fa, after, false), ...deleteFirst(ta, after, false)])].toSorted(cmp),
+        }),
+      );
     }
   }
 
   const summary: Record<Change, number> = { added: 0, removed: 0, changed: 0, unchanged: 0, unknown: 0 };
   for (const path of paths) summary[path.change]++;
-  return { format: RESULT_FORMAT, summary, paths, notes: notesFor(before, after) };
+  const notes = [...notesFor(before, after), ...unresolvedNotes([...epBefore.values(), ...epAfter.values()].flat())];
+  const unique = [...new Map(notes.map((n) => [n.resource, n])).values()].toSorted((x, y) => cmp(x.resource, y.resource));
+  return { format: RESULT_FORMAT, summary, paths, notes: unique };
+}
+
+/** Ports any placement of `t` opens to a group of any placement of `a`. */
+function pairPorts(a: Endpoint[] | undefined, t: Endpoint[] | undefined, p: Protocol): IntervalSet {
+  let out: IntervalSet = [];
+  for (const x of a ?? []) for (const y of t ?? []) out = union(out, referencedPorts(x, y, p));
+  return out;
+}
+
+/**
+ * Rules whose referenced group is unknown until apply. They can allow a path from any
+ * endpoint, so the engine says which paths it cannot list (ADR 0003).
+ */
+function unresolvedNotes(list: Endpoint[]): Note[] {
+  const out: Note[] = [];
+  for (const e of list) {
+    if (!groupKeys(e).ok || !e.securityGroups.ok) continue;
+    for (const g of e.securityGroups.value) {
+      if (!g.ingress.ok) continue;
+      for (const r of g.ingress.value) if (r.unresolved) out.push({ resource: r.resource, message: `${r.unresolved}; paths inside the VPC to ${e.address} from that group are not checked` });
+    }
+  }
+  return out;
+}
+
+interface PathSpec {
+  id: string;
+  from: string;
+  fromType?: string;
+  to: string;
+  toType: string;
+  candidates: (p: Protocol) => IntervalSet;
+  cuts: IntervalSet[];
+  before: (p: Protocol, seg: Range) => Outcome;
+  after: (p: Protocol, seg: Range) => Outcome;
+  risk: () => string[];
+}
+
+/** Paths for one source and target: per protocol, port ranges with the same outcome merged. */
+function pathsOf(spec: PathSpec): Path[] {
+  const out: Path[] = [];
+  for (const p of PROTOCOLS) {
+    let run: { ports: Range; before: Outcome; after: Outcome } | undefined;
+    const flush = () => {
+      if (!run) return;
+      const ports = formatPorts([run.ports]);
+      const risk = run.before.verdict === "allowed" && run.after.verdict === "allowed" ? spec.risk() : [];
+      out.push({ id: `${spec.id}:${p}:${ports}`, from: spec.from, ...(spec.fromType !== undefined ? { fromType: spec.fromType } : {}), to: spec.to, toType: spec.toType, protocol: p, ports, change: changeOf(run.before, run.after), before: run.before, after: run.after, ...(risk.length ? { outageRisk: risk } : {}) });
+      run = undefined;
+    };
+    for (const seg of segment(spec.candidates(p), spec.cuts)) {
+      const ob = spec.before(p, seg);
+      const oa = spec.after(p, seg);
+      // Merge neighboring port ranges with the same outcome on both sides.
+      if (run && run.ports[1] + 1 === seg[0] && JSON.stringify([run.before, run.after]) === JSON.stringify([ob, oa])) run.ports = [run.ports[0], seg[1]];
+      else {
+        flush();
+        run = { ports: seg, before: ob, after: oa };
+      }
+    }
+    flush();
+  }
+  return out;
 }
 
 /** The result as stable JSON text (same input, same bytes). */

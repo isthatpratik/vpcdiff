@@ -41,3 +41,10 @@ Reachability Analyzer shows the path as reachable before and after the apply. To
 risk, apply `before/`, then apply `after/` while probing tcp/443, and watch for failed
 connections or a `DependencyViolation` error on the group delete. This costs money;
 check current prices first.
+
+## Result format 0.2 (2026-11-07)
+
+The result format changed from `0.1` to `0.2` for paths inside the VPC (#32). In
+`expected.json` only the `format` field changed. The paths and notes are byte for byte
+the same as before: this plan has no security group rule that references a group of
+another endpoint, so it has no path inside the VPC.

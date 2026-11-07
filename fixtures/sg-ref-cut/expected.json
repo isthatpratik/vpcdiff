@@ -1,0 +1,123 @@
+{
+  "format": "0.2",
+  "summary": {
+    "added": 0,
+    "removed": 1,
+    "changed": 0,
+    "unchanged": 0,
+    "unknown": 0
+  },
+  "paths": [
+    {
+      "id": "aws_instance.app->aws_instance.db:tcp:5432",
+      "from": "aws_instance.app",
+      "fromType": "aws_instance",
+      "to": "aws_instance.db",
+      "toType": "aws_instance",
+      "protocol": "tcp",
+      "ports": "5432",
+      "change": "removed",
+      "before": {
+        "verdict": "allowed",
+        "sources": [
+          "aws_instance.app"
+        ],
+        "hops": [
+          {
+            "hop": "source-security-group",
+            "resource": "aws_security_group.app",
+            "decision": "allow",
+            "rule": "aws_security_group.app egress all traffic to 0.0.0.0/0",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/security-group-rules.html"
+          },
+          {
+            "hop": "source-route",
+            "resource": "main route table of aws_vpc.main",
+            "decision": "allow",
+            "rule": "main route table of aws_vpc.main local route",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/RouteTables.html"
+          },
+          {
+            "hop": "source-nacl-outbound",
+            "resource": "default NACL of aws_vpc.main",
+            "decision": "allow",
+            "rule": "default NACL of aws_vpc.main egress rule 100: allow all traffic (AWS default)",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/vpc-network-acls.html"
+          },
+          {
+            "hop": "target-nacl-inbound",
+            "resource": "default NACL of aws_vpc.main",
+            "decision": "allow",
+            "rule": "default NACL of aws_vpc.main ingress rule 100: allow all traffic (AWS default)",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/vpc-network-acls.html"
+          },
+          {
+            "hop": "security-group",
+            "resource": "aws_security_group.db",
+            "decision": "allow",
+            "rule": "aws_security_group.db ingress tcp 5432 from aws_security_group.app",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/security-group-rules.html"
+          },
+          {
+            "hop": "target-nacl-outbound",
+            "resource": "default NACL of aws_vpc.main",
+            "decision": "allow",
+            "rule": "default NACL of aws_vpc.main egress rule 100: allow all traffic (AWS default)",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/custom-network-acl.html#nacl-ephemeral-ports"
+          },
+          {
+            "hop": "source-nacl-inbound",
+            "resource": "default NACL of aws_vpc.main",
+            "decision": "allow",
+            "rule": "default NACL of aws_vpc.main ingress rule 100: allow all traffic (AWS default)",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/custom-network-acl.html#nacl-ephemeral-ports"
+          },
+          {
+            "hop": "target-route",
+            "resource": "main route table of aws_vpc.main",
+            "decision": "allow",
+            "rule": "main route table of aws_vpc.main local route",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/RouteTables.html"
+          }
+        ],
+        "reason": ""
+      },
+      "after": {
+        "verdict": "blocked",
+        "sources": [],
+        "hops": [
+          {
+            "hop": "source-security-group",
+            "resource": "aws_security_group.app",
+            "decision": "allow",
+            "rule": "aws_security_group.app egress all traffic to 0.0.0.0/0",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/security-group-rules.html"
+          },
+          {
+            "hop": "source-route",
+            "resource": "main route table of aws_vpc.main",
+            "decision": "allow",
+            "rule": "main route table of aws_vpc.main local route",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/RouteTables.html"
+          },
+          {
+            "hop": "source-nacl-outbound",
+            "resource": "default NACL of aws_vpc.main",
+            "decision": "allow",
+            "rule": "default NACL of aws_vpc.main egress rule 100: allow all traffic (AWS default)",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/vpc-network-acls.html"
+          },
+          {
+            "hop": "target-nacl-inbound",
+            "resource": "aws_network_acl.db",
+            "decision": "deny",
+            "rule": "aws_network_acl.db ingress rule 100: deny tcp 5432 from 10.4.1.0/24",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/vpc-network-acls.html"
+          }
+        ],
+        "reason": "aws_network_acl.db denies the request from the subnet of aws_instance.app"
+      }
+    }
+  ],
+  "notes": []
+}

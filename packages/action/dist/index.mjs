@@ -297,6 +297,162 @@ function portCuts(ep) {
   return cuts;
 }
 
+// ../engine/src/internal.ts
+var SG_DOC = "https://docs.aws.amazon.com/vpc/latest/userguide/security-group-rules.html";
+var NACL_DOC = "https://docs.aws.amazon.com/vpc/latest/userguide/vpc-network-acls.html";
+var ROUTE_DOC = "https://docs.aws.amazon.com/vpc/latest/userguide/RouteTables.html";
+var DOC2 = {
+  "source-security-group": SG_DOC,
+  "source-route": ROUTE_DOC,
+  "source-nacl-outbound": NACL_DOC,
+  "target-nacl-inbound": NACL_DOC,
+  "security-group": SG_DOC,
+  "target-nacl-outbound": "https://docs.aws.amazon.com/vpc/latest/userguide/custom-network-acl.html#nacl-ephemeral-ports",
+  "source-nacl-inbound": "https://docs.aws.amazon.com/vpc/latest/userguide/custom-network-acl.html#nacl-ephemeral-ports",
+  "target-route": ROUTE_DOC
+};
+var SAME_SUBNET = "same subnet: no network ACL applies";
+var protoMatches2 = (rule, p) => rule === "all" || rule === p;
+function groupKeys(ep) {
+  return ep.securityGroups.ok ? { ok: true, value: ep.securityGroups.value.map((g) => g.key) } : ep.securityGroups;
+}
+function sgStep(groups, dir, peerKeys, peerCidr, peer, p, ports) {
+  const names = groups.map((g) => g.address).join(", ") || "no security groups";
+  const allowing = [];
+  const doubt = [];
+  for (const g of groups) {
+    const rules = g[dir];
+    if (!rules.ok) return { decision: "unknown", resource: g.address, rule: rules.reason, reason: rules.reason };
+    for (const rule of rules.value) {
+      if (!protoMatches2(rule.protocol, p) || !contains(rule.ports, [ports])) continue;
+      if (rule.groups.some((k) => peerKeys.includes(k)) || contains(rule.sources, peerCidr)) allowing.push(rule.text);
+      else if (!isEmpty(intersect(rule.sources, peerCidr))) doubt.push(`${rule.text} covers only part of the subnet of ${peer}, and its address is not known before apply`);
+      else if (rule.unresolved) doubt.push(`${rule.text}: ${rule.unresolved}`);
+    }
+  }
+  const portText = `${p}/${formatPorts([ports])}`;
+  if (allowing.length) return { decision: "allow", resource: names, rule: allowing.join("; ") };
+  if (doubt.length) return { decision: "unknown", resource: names, rule: doubt.join("; "), reason: doubt.join("; ") };
+  const what = dir === "egress" ? `no egress rule of ${names} allows ${portText} to ${peer}` : `no ingress rule of ${names} allows ${portText} from ${peer}`;
+  return { decision: "deny", resource: names, rule: what, reason: what };
+}
+function routeStep(table, at, peerCidr, peer) {
+  if (!table.ok) return { decision: "unknown", resource: at, rule: table.reason, reason: table.reason };
+  const t = table.value;
+  if (!t.routes.ok) return { decision: "unknown", resource: t.resource, rule: t.routes.reason, reason: t.routes.reason };
+  const routes = t.routes.value.toSorted((a, b) => b.prefix - a.prefix);
+  let remaining = peerCidr;
+  let local = EMPTY;
+  const texts = [];
+  const elsewhere = [];
+  for (const [i, route] of routes.entries()) {
+    const m = intersect(remaining, route.cidr);
+    if (isEmpty(m)) continue;
+    if (routes.some((o, j) => j !== i && equals(o.cidr, route.cidr))) {
+      const why = `${t.resource} has more than one route for the same destination`;
+      return { decision: "unknown", resource: t.resource, rule: why, reason: why };
+    }
+    texts.push(route.text);
+    if (route.target.kind === "local") local = union(local, m);
+    else elsewhere.push(route.text);
+    remaining = subtract(remaining, m);
+  }
+  if (elsewhere.length) {
+    const why = `${elsewhere.join("; ")} sends traffic for the subnet of ${peer} away from the local route; paths through a middlebox are not modeled`;
+    return { decision: "unknown", resource: t.resource, rule: why, reason: why };
+  }
+  if (!isEmpty(remaining) || isEmpty(local)) {
+    const why = `${t.resource} has no route to the subnet of ${peer}`;
+    return { decision: "deny", resource: t.resource, rule: why, reason: why };
+  }
+  return { decision: "allow", resource: t.resource, rule: texts.join("; ") };
+}
+function naclStep(nacl, at, dir, peerCidr, peer, p, ports, ephemeral) {
+  if (!nacl.ok) return { decision: "unknown", resource: at, rule: nacl.reason, reason: nacl.reason };
+  const n = nacl.value;
+  const rules = n[dir];
+  if (!rules.ok) return { decision: "unknown", resource: n.resource, rule: rules.reason, reason: rules.reason };
+  const segs = ephemeral ? segment(EPHEMERAL, rules.value.map((r) => r.ports)) : [ports];
+  const texts = /* @__PURE__ */ new Set();
+  let full = 0;
+  let none = 0;
+  for (const seg of segs) {
+    const r = naclEval(rules.value, peerCidr, p, seg);
+    r.texts.forEach((t) => texts.add(t));
+    if (equals(r.allowed, peerCidr)) full++;
+    else if (isEmpty(r.allowed)) none++;
+  }
+  const rule = [...texts].join("; ");
+  const what = ephemeral ? "the response" : "the request";
+  if (full === segs.length) return { decision: "allow", resource: n.resource, rule };
+  if (none === segs.length) return { decision: "deny", resource: n.resource, rule, reason: `${n.resource} denies ${what} ${dir === "ingress" ? "from" : "to"} the subnet of ${peer}` };
+  const why = full + none === segs.length ? `${n.resource} allows the response only for some client ephemeral ports in ${formatPorts(EPHEMERAL)}; the result depends on the client's operating system` : `${n.resource} decides ${what} for only part of the subnet of ${peer}, and its address is not known before apply`;
+  return { decision: "unknown", resource: n.resource, rule, reason: why };
+}
+var absent2 = { verdict: "absent", sources: [], hops: [], reason: "the resource does not exist on this side of the plan" };
+function evaluateInternal(a, t, p, ports) {
+  if (!a || !t) return absent2;
+  const hops = [];
+  const run2 = (hop, s) => {
+    hops.push({ hop, resource: s.resource, decision: s.decision, rule: s.rule, doc: DOC2[hop] ?? SG_DOC });
+    if (s.decision === "deny") return { verdict: "blocked", sources: [], hops, reason: s.reason ?? s.rule };
+    if (s.decision === "unknown") return { verdict: "unknown", sources: [], hops, reason: s.reason ?? s.rule };
+    return void 0;
+  };
+  const fail = (hop, at2, reason) => run2(hop, { decision: "unknown", resource: at2, rule: reason, reason });
+  if (!a.securityGroups.ok) return fail("source-security-group", a.address, a.securityGroups.reason);
+  if (!t.securityGroups.ok) return fail("source-security-group", t.address, t.securityGroups.reason);
+  if (!a.subnetCidr.ok) return fail("source-security-group", a.address, a.subnetCidr.reason);
+  if (!t.subnetCidr.ok) return fail("source-security-group", t.address, t.subnetCidr.reason);
+  const aKeys = a.securityGroups.value.map((g) => g.key);
+  const tKeys = t.securityGroups.value.map((g) => g.key);
+  const aCidr = a.subnetCidr.value;
+  const tCidr = t.subnetCidr.value;
+  const out = run2("source-security-group", sgStep(a.securityGroups.value, "egress", tKeys, tCidr, t.address, p, ports));
+  if (out) return out;
+  if (!a.vpc.ok) return fail("source-route", a.address, a.vpc.reason);
+  if (!t.vpc.ok) return fail("source-route", t.address, t.vpc.reason);
+  if (a.vpc.value.address !== t.vpc.value.address) return fail("source-route", a.address, `${a.address} and ${t.address} are in different VPCs (${a.vpc.value.address}, ${t.vpc.value.address}); peering and Transit Gateway are not modeled yet`);
+  const r1 = run2("source-route", routeStep(a.routeTable, a.address, tCidr, t.address));
+  if (r1) return r1;
+  const same = a.subnet.ok && t.subnet.ok && a.subnet.value === t.subnet.value;
+  const at = (ep) => ep.subnet.ok ? ep.subnet.value : ep.address;
+  const skip = (ep) => ({ decision: "allow", resource: at(ep), rule: SAME_SUBNET });
+  const n3 = run2("source-nacl-outbound", same ? skip(a) : naclStep(a.nacl, at(a), "egress", tCidr, t.address, p, ports, false));
+  if (n3) return n3;
+  const n4 = run2("target-nacl-inbound", same ? skip(t) : naclStep(t.nacl, at(t), "ingress", aCidr, a.address, p, ports, false));
+  if (n4) return n4;
+  const sg = run2("security-group", sgStep(t.securityGroups.value, "ingress", aKeys, aCidr, a.address, p, ports));
+  if (sg) return sg;
+  const n6 = run2("target-nacl-outbound", same ? skip(t) : naclStep(t.nacl, at(t), "egress", aCidr, a.address, p, ports, true));
+  if (n6) return n6;
+  const n7 = run2("source-nacl-inbound", same ? skip(a) : naclStep(a.nacl, at(a), "ingress", tCidr, t.address, p, ports, true));
+  if (n7) return n7;
+  const r8 = run2("target-route", routeStep(t.routeTable, t.address, aCidr, a.address));
+  if (r8) return r8;
+  return { verdict: "allowed", sources: [a.address], hops, reason: "" };
+}
+function referencedPorts(a, t, p) {
+  const keys = groupKeys(a);
+  if (!keys.ok || !t.securityGroups.ok) return EMPTY;
+  let out = EMPTY;
+  for (const g of t.securityGroups.value) {
+    if (!g.ingress.ok) continue;
+    for (const rule of g.ingress.value) if (protoMatches2(rule.protocol, p) && rule.groups.some((k) => keys.value.includes(k))) out = union(out, rule.ports);
+  }
+  return out;
+}
+function internalCuts(ep) {
+  const cuts = [];
+  if (ep.securityGroups.ok) {
+    for (const g of ep.securityGroups.value) for (const dir of [g.ingress, g.egress]) if (dir.ok) cuts.push(...dir.value.map((r) => r.ports));
+  }
+  if (ep.nacl.ok) {
+    for (const dir of [ep.nacl.value.ingress, ep.nacl.value.egress]) if (dir.ok) cuts.push(...dir.value.map((r) => r.ports));
+  }
+  return cuts;
+}
+
 // ../engine/src/plan.ts
 var cmp = (a, b) => a < b ? -1 : a > b ? 1 : 0;
 var PlanError = class extends Error {
@@ -749,7 +905,7 @@ var ModelBuilder = class {
   }
   rule(address, egress, protocol, ports, ranges, cidrs, groups, portText) {
     const peers = [...cidrs, ...groups.keys.map(groupLabel), ...groups.unresolved ? ["a security group that is unknown until apply"] : []];
-    return { protocol, ports, sources: fromRanges(ranges), groups: groups.keys, ...groups.unresolved ? { unresolved: groups.unresolved } : {}, text: `${address} ${egress ? "egress" : "ingress"} ${portText} ${egress ? "to" : "from"} ${peers.join(", ")}` };
+    return { protocol, ports, sources: fromRanges(ranges), groups: groups.keys, ...groups.unresolved ? { unresolved: groups.unresolved } : {}, resource: address, text: `${address} ${egress ? "egress" : "ingress"} ${portText} ${egress ? "to" : "from"} ${peers.join(", ")}` };
   }
   naclRuleOf(r) {
     if (["egress", "rule_number", "protocol", "rule_action", "cidr_block", "from_port", "to_port"].some((f) => hasUnknown(r, [f]))) return unknown(`${r.address} has values that are unknown until apply`);
@@ -1295,14 +1451,14 @@ var ModelBuilder = class {
       if (port === void 0 || isUnknown(l, ["port"]) || isUnknown(l, ["protocol"])) return unknown(`${l.address}: port or protocol is unknown until apply`);
       const protocols = proto === "UDP" ? ["udp"] : proto === "TCP_UDP" ? ["tcp", "udp"] : ["tcp"];
       via.push(l.address);
-      for (const protocol of protocols) rules.push({ protocol, ports: [[port, port]], sources: ALL_IPV4, groups: [], text: `${l.address} listens on ${protocol} ${port} (${lb.address} has no security groups)` });
+      for (const protocol of protocols) rules.push({ protocol, ports: [[port, port]], sources: ALL_IPV4, groups: [], resource: l.address, text: `${l.address} listens on ${protocol} ${port} (${lb.address} has no security groups)` });
     }
     return known([{ address: `listeners of ${lb.address}`, key: `listeners:${lb.address}`, ingress: known(rules), egress: unknown(`${lb.address} has no security groups`), via }]);
   }
 };
 
 // ../engine/src/types.ts
-var RESULT_FORMAT = "0.1";
+var RESULT_FORMAT = "0.2";
 
 // ../engine/src/index.ts
 var PROTOCOLS = ["tcp", "udp"];
@@ -1351,21 +1507,30 @@ function endpointsOf(snap) {
 }
 function evaluateAll(list, p, ports) {
   if (!list?.length) return evaluate(void 0, p, ports);
-  const outcomes = list.map((e) => evaluate(e, p, ports));
+  return combine(list.map((e) => evaluate(e, p, ports)), list.map((e) => e.subnet.ok ? e.subnet.value : "unknown subnet"), list[0]?.placement);
+}
+function evaluatePairs(from, to, p, ports) {
+  if (!from?.length || !to?.length) return evaluateInternal(void 0, void 0, p, ports);
+  const pairs = from.flatMap((a) => to.map((t) => [a, t]));
+  const where = (e) => e.subnet.ok ? e.subnet.value : "unknown subnet";
+  const placement = [from[0]?.placement, to[0]?.placement].filter(Boolean).join("; ") || void 0;
+  return combine(pairs.map(([a, t]) => evaluateInternal(a, t, p, ports)), pairs.map(([a, t]) => `${where(a)} to ${where(t)}`), placement);
+}
+function combine(outcomes, labels, placement) {
   const first = outcomes[0];
   const same = (o) => o.verdict === first.verdict && JSON.stringify(o.sources) === JSON.stringify(first.sources) && o.reason === first.reason;
   if (outcomes.every(same) || first.verdict === "blocked" && outcomes.every((o) => o.verdict === "blocked")) return first;
-  const detail = list.map((e, i) => `${e.subnet.ok ? e.subnet.value : "unknown subnet"}: ${outcomes[i]?.verdict ?? "unknown"}`).join("; ");
-  return { verdict: "unknown", sources: [], hops: [], reason: `${list[0]?.placement ?? "the result differs between placements"} (${detail})` };
+  const detail = labels.map((l, i) => `${l}: ${outcomes[i]?.verdict ?? "unknown"}`).join("; ");
+  return { verdict: "unknown", sources: [], hops: [], reason: `${placement ?? "the result differs between placements"} (${detail})` };
 }
-function deleteFirst(list, snap) {
+function deleteFirst(list, snap, internet = true) {
   const out = /* @__PURE__ */ new Set();
   for (const e of list ?? []) {
     const onPath = [e.address, ...e.via ?? []];
     if (e.subnet.ok) onPath.push(e.subnet.value);
     if (e.vpc.ok) {
       onPath.push(e.vpc.value.address, ...e.vpc.value.via ?? []);
-      if (e.vpc.value.igw.ok && e.vpc.value.igw.value) onPath.push(e.vpc.value.igw.value);
+      if (internet && e.vpc.value.igw.ok && e.vpc.value.igw.value) onPath.push(e.vpc.value.igw.value);
     }
     if (e.securityGroups.ok) for (const g of e.securityGroups.value) onPath.push(g.address, ...g.via ?? []);
     if (e.nacl.ok) onPath.push(e.nacl.value.resource, ...e.nacl.value.via ?? []);
@@ -1398,31 +1563,90 @@ function analyze(plan) {
   for (const address of addresses) {
     const b = epBefore.get(address);
     const a = epAfter.get(address);
-    for (const p of PROTOCOLS) {
-      const candidates = union(unionOf(b, (e) => exposedPorts(e, p)), unionOf(a, (e) => exposedPorts(e, p)));
-      let run2;
-      const flush = () => {
-        if (!run2) return;
-        const ports = formatPorts([run2.ports]);
-        const risk = run2.before.verdict === "allowed" && run2.after.verdict === "allowed" ? deleteFirst(a, after) : [];
-        paths.push({ id: `internet->${address}:${p}:${ports}`, from: "internet", to: address, toType: (a ?? b)?.[0]?.type ?? "", protocol: p, ports, change: changeOf(run2.before, run2.after), before: run2.before, after: run2.after, ...risk.length ? { outageRisk: risk } : {} });
-        run2 = void 0;
-      };
-      for (const seg of segment(candidates, [...(b ?? []).flatMap(portCuts), ...(a ?? []).flatMap(portCuts)])) {
-        const ob = evaluateAll(b, p, seg);
-        const oa = evaluateAll(a, p, seg);
-        if (run2 && run2.ports[1] + 1 === seg[0] && JSON.stringify([run2.before, run2.after]) === JSON.stringify([ob, oa])) run2.ports = [run2.ports[0], seg[1]];
-        else {
-          flush();
-          run2 = { ports: seg, before: ob, after: oa };
-        }
-      }
-      flush();
+    paths.push(
+      ...pathsOf({
+        id: `internet->${address}`,
+        from: "internet",
+        to: address,
+        toType: (a ?? b)?.[0]?.type ?? "",
+        candidates: (p) => union(unionOf(b, (e) => exposedPorts(e, p)), unionOf(a, (e) => exposedPorts(e, p))),
+        cuts: [...(b ?? []).flatMap(portCuts), ...(a ?? []).flatMap(portCuts)],
+        before: (p, seg) => evaluateAll(b, p, seg),
+        after: (p, seg) => evaluateAll(a, p, seg),
+        risk: () => deleteFirst(a, after)
+      })
+    );
+  }
+  for (const from of addresses) {
+    for (const to of addresses) {
+      if (from === to) continue;
+      const fb = epBefore.get(from);
+      const fa = epAfter.get(from);
+      const tb = epBefore.get(to);
+      const ta = epAfter.get(to);
+      const refs = (p) => union(pairPorts(fb, tb, p), pairPorts(fa, ta, p));
+      if (PROTOCOLS.every((p) => !refs(p).length)) continue;
+      paths.push(
+        ...pathsOf({
+          id: `${from}->${to}`,
+          from,
+          fromType: (fa ?? fb)?.[0]?.type ?? "",
+          to,
+          toType: (ta ?? tb)?.[0]?.type ?? "",
+          candidates: refs,
+          cuts: [...fb ?? [], ...fa ?? [], ...tb ?? [], ...ta ?? []].flatMap(internalCuts),
+          before: (p, seg) => evaluatePairs(fb, tb, p, seg),
+          after: (p, seg) => evaluatePairs(fa, ta, p, seg),
+          risk: () => [.../* @__PURE__ */ new Set([...deleteFirst(fa, after, false), ...deleteFirst(ta, after, false)])].toSorted(cmp)
+        })
+      );
     }
   }
   const summary = { added: 0, removed: 0, changed: 0, unchanged: 0, unknown: 0 };
   for (const path of paths) summary[path.change]++;
-  return { format: RESULT_FORMAT, summary, paths, notes: notesFor(before, after) };
+  const notes = [...notesFor(before, after), ...unresolvedNotes([...epBefore.values(), ...epAfter.values()].flat())];
+  const unique = [...new Map(notes.map((n) => [n.resource, n])).values()].toSorted((x, y) => cmp(x.resource, y.resource));
+  return { format: RESULT_FORMAT, summary, paths, notes: unique };
+}
+function pairPorts(a, t, p) {
+  let out = [];
+  for (const x of a ?? []) for (const y of t ?? []) out = union(out, referencedPorts(x, y, p));
+  return out;
+}
+function unresolvedNotes(list) {
+  const out = [];
+  for (const e of list) {
+    if (!groupKeys(e).ok || !e.securityGroups.ok) continue;
+    for (const g of e.securityGroups.value) {
+      if (!g.ingress.ok) continue;
+      for (const r of g.ingress.value) if (r.unresolved) out.push({ resource: r.resource, message: `${r.unresolved}; paths inside the VPC to ${e.address} from that group are not checked` });
+    }
+  }
+  return out;
+}
+function pathsOf(spec) {
+  const out = [];
+  for (const p of PROTOCOLS) {
+    let run2;
+    const flush = () => {
+      if (!run2) return;
+      const ports = formatPorts([run2.ports]);
+      const risk = run2.before.verdict === "allowed" && run2.after.verdict === "allowed" ? spec.risk() : [];
+      out.push({ id: `${spec.id}:${p}:${ports}`, from: spec.from, ...spec.fromType !== void 0 ? { fromType: spec.fromType } : {}, to: spec.to, toType: spec.toType, protocol: p, ports, change: changeOf(run2.before, run2.after), before: run2.before, after: run2.after, ...risk.length ? { outageRisk: risk } : {} });
+      run2 = void 0;
+    };
+    for (const seg of segment(spec.candidates(p), spec.cuts)) {
+      const ob = spec.before(p, seg);
+      const oa = spec.after(p, seg);
+      if (run2 && run2.ports[1] + 1 === seg[0] && JSON.stringify([run2.before, run2.after]) === JSON.stringify([ob, oa])) run2.ports = [run2.ports[0], seg[1]];
+      else {
+        flush();
+        run2 = { ports: seg, before: ob, after: oa };
+      }
+    }
+    flush();
+  }
+  return out;
 }
 
 // ../cli/src/render.ts

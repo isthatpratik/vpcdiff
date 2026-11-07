@@ -1,5 +1,5 @@
 /** Version of the result format. Bump on any breaking change to these types. */
-export const RESULT_FORMAT = "0.1";
+export const RESULT_FORMAT = "0.2";
 
 export type Verdict = "allowed" | "blocked" | "unknown" | "absent";
 export type Decision = "allow" | "partial" | "deny" | "unknown";
@@ -12,7 +12,15 @@ export type HopKind =
   | "nacl-inbound"
   | "security-group"
   | "nacl-outbound"
-  | "route";
+  | "route"
+  // Paths inside the VPC (docs/semantics/internal-paths.md). Hop 5 is "security-group".
+  | "source-security-group"
+  | "source-route"
+  | "source-nacl-outbound"
+  | "target-nacl-inbound"
+  | "target-nacl-outbound"
+  | "source-nacl-inbound"
+  | "target-route";
 
 export interface Hop {
   hop: HopKind;
@@ -27,7 +35,10 @@ export interface Hop {
 
 export interface Outcome {
   verdict: Verdict;
-  /** Source addresses that reach the target, as CIDRs. "internet" means every public address. */
+  /**
+   * Source addresses that reach the target, as CIDRs. "internet" means every public
+   * address. For a path inside the VPC, the source endpoint's address.
+   */
   sources: string[];
   hops: Hop[];
   /**
@@ -39,7 +50,10 @@ export interface Outcome {
 
 export interface Path {
   id: string;
+  /** "internet", or the address of the source endpoint for a path inside the VPC. */
   from: string;
+  /** Resource type of the source endpoint. Absent for internet paths. */
+  fromType?: string;
   to: string;
   toType: string;
   protocol: Protocol;
