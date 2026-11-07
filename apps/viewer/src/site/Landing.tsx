@@ -33,7 +33,7 @@ const HOP_NAMES = ["Public IP", "Gateway", "NACL in", "Groups", "NACL out", "Rou
 /** The hops as a short path: squares on a line that fill in order. */
 function HopChain({ on }: { on: boolean }) {
   return (
-    <ol className="relative grid grid-cols-6" aria-label="The six hops, in the order traffic meets them">
+    <ol className="relative grid grid-cols-6 overflow-x-clip" aria-label="The six hops, in the order traffic meets them">
       {/* On phones the labels alternate above and below the line, so each one has two
           columns of room and stays on one line. */}
       {HOP_NAMES.map((h, i) => {

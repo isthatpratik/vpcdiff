@@ -34,11 +34,13 @@
 .hero-demo .ss-window[data-lights="grey"] .ss-window__dot {
   background: color-mix(in oklab, var(--litt-fg) 18%, transparent);
 }
+/* Phone layout: the window shows the whole diff, and the check card overlaps only the
+   window's bottom edge, so each reads on its own instead of one covering the other. */
 .hero-demo .hd-window--compact {
   left: 16px;
   top: 16px;
   width: 520px;
-  height: 330px;
+  height: 300px;
 }
 
 .hero-demo .hd-page {
@@ -156,7 +158,7 @@
 }
 .hero-demo .hd-satellite--compact {
   left: 16px;
-  top: 236px;
+  top: 286px;
   width: 326px;
 }
 .hero-demo .hd-card {

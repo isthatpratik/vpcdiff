@@ -288,9 +288,10 @@ export function PathField({ className = "" }: { className?: string }) {
   return (
     <>
     <svg ref={ref} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMin slice" className={`block h-full w-full ${className}`} aria-hidden="true">
-      {/* On phones the field is drawn at about half size, so hop labels are set larger to
-          render near 12 to 14 px; the plan caption is cropped out there, so it hides. */}
-      <style>{`@media (max-width: 640px) { .pf-caption { display: none } .pf-label { font-size: 25px } .pf-label-last { font-size: 28px } .pf-detail { font-size: 21px } }`}</style>
+      {/* On phones the field is drawn at about half size: hop names are set a little larger
+          to stay readable, and the grey detail lines and the plan caption hide, so the
+          small frame is not cluttered. */}
+      <style>{`@media (max-width: 640px) { .pf-caption, .pf-detail { display: none } .pf-label { font-size: 21px } .pf-label-last { font-size: 23px } }`}</style>
       <g ref={fieldRef}>
         <g ref={camRef}>
           <g ref={dotsRef}>
