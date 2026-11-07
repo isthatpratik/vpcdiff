@@ -14,6 +14,14 @@
    routes, then propagated routes).
    Source: <https://docs.aws.amazon.com/vpc/latest/userguide/route-tables-priority.html>
 
+## Secondary CIDR blocks (#93)
+
+A VPC can have more IPv4 blocks than its primary one (`aws_vpc_ipv4_cidr_block_association`).
+Each block gets its own local route with its own prefix length, so two adjacent blocks
+never merge into one route. Internet sources exclude every block. A block that comes from
+an IPAM pool has no CIDR before apply, and the VPC range is then `unknown`.
+Source: <https://docs.aws.amazon.com/vpc/latest/userguide/vpc-cidr-blocks.html>
+
 ## Terraform differences
 
 - On `aws_route_table`, "the default route, mapping the VPC's CIDR block to 'local',

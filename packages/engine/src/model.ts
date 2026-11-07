@@ -98,6 +98,8 @@ export interface Peering {
 export interface Vpc {
   address: string;
   cidrs: Known<IntervalSet>;
+  /** The IPv4 blocks (primary and secondary) as written; local routes use each one's own length. */
+  blocks?: string[];
   igw: Known<string | undefined>;
   peerings?: Known<Peering[]>;
   /** Whether the VPC has an IPv6 block, and the block when it is known before apply. */
@@ -218,8 +220,15 @@ function portSet(protocol: RuleProtocol, from: unknown, to: unknown): IntervalSe
 const describePorts = (protocol: RuleProtocol, from: unknown, to: unknown) =>
   protocol === "all" ? "all traffic" : `${protocol} ${from === to ? String(from) : `${String(from)}-${String(to)}`}`;
 
+/** One local route per VPC block, with the block's own prefix length (adjacent blocks must not merge). */
 const localRoutes = (vpc: Vpc, table: string, cidrs: IntervalSet): Route[] =>
-  cidrs.map((range) => ({ cidr: [range], prefix: 32 - Math.log2(range[1] - range[0] + 1), target: { kind: "local" }, text: `${table} local route` }));
+  vpc.blocks
+    ? vpc.blocks.flatMap((b) => {
+        const set = cidrToSet(b);
+        const prefix = cidrPrefixLength(b);
+        return set && prefix !== undefined ? [{ cidr: set, prefix, target: { kind: "local" as const }, text: vpc.blocks && vpc.blocks.length > 1 ? `${table} local route (${b})` : `${table} local route` }] : [];
+      })
+    : cidrs.map((range) => ({ cidr: [range], prefix: 32 - Math.log2(range[1] - range[0] + 1), target: { kind: "local" as const }, text: `${table} local route` }));
 
 /** Rules attached to one target key, plus a reason if some rule's target is unknown. */
 class Index<T> {
@@ -270,6 +279,10 @@ export class ModelBuilder {
   private readonly igwAttach = new Index<string>();
   /** Route table key to the gateway VPC endpoints associated with it. */
   private readonly gatewayEndpoints = new Index<string>();
+  /** Network interface address to the Elastic IPs associated with it. */
+  private readonly eniEips = new Index<string>();
+  /** Network interface address to security group keys added by aws_network_interface_sg_attachment. */
+  private readonly eniGroups = new Index<Key>();
   /** Prefix list address to aws_ec2_managed_prefix_list_entry CIDRs. */
   private readonly plEntries = new Index<string>();
 
@@ -474,13 +487,23 @@ export class ModelBuilder {
           // https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/elastic-ip-addresses-eip.html
           // The instance wins; a network interface alone is not modeled. After apply, an EIP on
           // an instance also shows the instance's network interface.
-          if (isNull(r, "instance") && !isNull(r, "network_interface")) this.eips.add(unknown(`${r.address} is associated with a network interface, which is not modeled yet`), known(r.address), r.address);
+          if (isNull(r, "instance") && !isNull(r, "network_interface")) this.eniEip(r, "network_interface");
           else this.eips.add(this.optionalRefTo(r, "instance", "aws_instance"), known(r.address), r.address);
           break;
         }
         case "aws_eip_association": {
-          if (isNull(r, "instance_id") && !isNull(r, "network_interface_id")) this.eips.add(unknown(`${r.address} is associated with a network interface, which is not modeled yet`), known(r.address), r.address);
+          if (isNull(r, "instance_id") && !isNull(r, "network_interface_id")) this.eniEip(r, "network_interface_id");
           else this.eips.add(this.optionalRefTo(r, "instance_id", "aws_instance"), known(r.address), r.address);
+          break;
+        }
+        case "aws_network_interface_sg_attachment": {
+          // https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/network_interface_sg_attachment
+          // An attachment to an interface that is not an aws_network_interface in the plan
+          // (an instance's own interface) still makes that instance unknown, through `touched`.
+          const eni = this.refTo(r, "network_interface_id", "aws_network_interface");
+          if (!eni.ok) break;
+          const g = this.target(r, "security_group_id");
+          this.eniGroups.add(known(eni.value), g.ok && g.value !== null ? known(g.value) : unknown(g.ok ? `${r.address}: security_group_id is outside this plan` : g.reason), r.address);
           break;
         }
         case "aws_vpc_endpoint": {
@@ -528,6 +551,18 @@ export class ModelBuilder {
         }
       }
     }
+  }
+
+  /**
+   * An Elastic IP on a network interface in the plan. One on an interface that is not
+   * an `aws_network_interface` here (an instance's own interface, by
+   * `primary_network_interface_id`) cannot be matched to an instance, so every instance
+   * is unknown.
+   */
+  private eniEip(r: Resource, attr: string): void {
+    const eni = this.refTo(r, attr, "aws_network_interface");
+    if (eni.ok) this.eniEips.add(known(eni.value), known(r.address), r.address);
+    else this.eips.add(unknown(`${r.address} is associated with a network interface that is not an aws_network_interface in this plan (${eni.reason})`), known(r.address), r.address);
   }
 
   private addSgRule(r: Resource, item: Known<SgRule | null>, egress: boolean): void {
@@ -724,7 +759,20 @@ export class ModelBuilder {
       const v = this.refTo(a, "vpc_id", "aws_vpc");
       return !v.ok || v.value === address;
     });
-    const cidrs: Known<IntervalSet> = isUnknown(r, ["cidr_block"]) || !set ? unknown(`${address}: cidr_block is unknown`) : extra.length ? unknown(`${address} has secondary CIDR blocks, which are not modeled yet`) : known(set);
+    // Secondary blocks join the VPC range. An IPAM-allocated block has no CIDR before apply.
+    // https://docs.aws.amazon.com/vpc/latest/userguide/vpc-cidr-blocks.html
+    const blocks: string[] = cidr ? [cidr] : [];
+    let cidrs: Known<IntervalSet> = isUnknown(r, ["cidr_block"]) || !set ? unknown(`${address}: cidr_block is unknown`) : known(set);
+    for (const a of extra) {
+      const c = str(a.values.cidr_block);
+      const s2 = c && !isUnknown(a, ["cidr_block"]) ? cidrToSet(c) : undefined;
+      if (!c || !s2) {
+        cidrs = unknown(`${a.address}: cidr_block is unknown until apply (an IPAM pool or a computed value), so the VPC range is not known`);
+        break;
+      }
+      blocks.push(c);
+      if (cidrs.ok) cidrs = known(fromRanges([...cidrs.value, ...s2]));
+    }
 
     // An internet gateway must be attached to the VPC.
     // https://docs.aws.amazon.com/vpc/latest/userguide/VPC_Internet_Gateway.html
@@ -738,7 +786,7 @@ export class ModelBuilder {
     if (!attached.ok) return known({ address, cidrs, igw: unknown(attached.reason) });
     attached.value.forEach((g) => igws.add(g));
     const igw: Known<string | undefined> = igws.size > 1 ? unknown(`${address} has ${igws.size} internet gateways in the plan`) : known([...igws][0]);
-    return known({ address, cidrs, igw, peerings: this.peeringsOf(address), ipv6: this.vpcIpv6(r), via: this.igwAttach.sources(address) });
+    return known({ address, cidrs, ...(blocks.length && cidrs.ok ? { blocks } : {}), igw, peerings: this.peeringsOf(address), ipv6: this.vpcIpv6(r), via: [...this.igwAttach.sources(address), ...extra.map((a) => a.address)].toSorted(cmp) });
   }
 
   /**
@@ -1243,7 +1291,8 @@ export class ModelBuilder {
   private instance(r: Resource): Endpoint {
     const touched = this.touched(r.address, UNMODELED_INSTANCE);
     if (touched) return this.fail(r, touched);
-    if (arr(r.values.network_interface).length) return this.fail(r, `${r.address}: network_interface blocks are not modeled yet`);
+    const nics = arr(r.values.network_interface);
+    if (nics.length) return this.instanceWithInterface(r, nics);
     const subnet = this.refTo(r, "subnet_id", "aws_subnet");
     if (!subnet.ok) return this.fail(r, subnet.reason);
 
@@ -1286,6 +1335,55 @@ export class ModelBuilder {
       const g = this.groups(r, "vpc_security_group_ids", vpc);
       return g === "empty" ? known([]) : g;
     }, undefined, this.eips.sources(r.address), publicIp6);
+  }
+
+  /**
+   * An instance launched with an existing network interface (a `network_interface` block).
+   * The interface decides the subnet and the security groups; "The public IP address can
+   * only be assigned to a network interface for eth0, and can only be assigned to a new
+   * network interface, not an existing one", so a public IPv4 address comes only from an
+   * Elastic IP on the interface. Only the primary interface (device index 0) is modeled.
+   * https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_InstanceNetworkInterfaceSpecification.html
+   */
+  private instanceWithInterface(r: Resource, nics: unknown[]): Endpoint {
+    const nic = nics[0];
+    if (nics.length > 1) return this.fail(r, `${r.address} has more than one network interface; paths through secondary interfaces are not modeled yet`);
+    if (!isObj(nic) || hasUnknown(r, ["network_interface", 0, "device_index"]) || num(nic.device_index) !== 0) return this.fail(r, `${r.address}: only the primary network interface (device_index 0) is modeled`);
+    const id = nic.network_interface_id;
+    let eni: Resource | undefined;
+    if (!isUnknown(r, ["network_interface", 0, "network_interface_id"]) && typeof id === "string") {
+      const a = this.snap.byId.get(id);
+      eni = a ? this.get(a) : undefined;
+      if (!eni) return this.fail(r, `${r.address}: network interface ${id} is not in this plan`);
+    } else {
+      const refs = r.otherRefs.has("network_interface") ? [] : fromConfig(this.snap, r, "network_interface", "aws_network_interface");
+      const one = refs.length === 1 && refs[0]?.kind === "resource" ? this.get(refs[0].address) : undefined;
+      if (!one) return this.fail(r, `${r.address}: its network interface is unknown until apply and cannot be matched to one aws_network_interface`);
+      eni = one;
+    }
+    const e = eni;
+    const subnet = this.refTo(e, "subnet_id", "aws_subnet");
+    if (!subnet.ok) return this.fail(r, subnet.reason);
+    const publicIp = (): Known<string | undefined> => {
+      const eips = this.eniEips.get(e.address);
+      if (!eips.ok) return unknown(eips.reason);
+      return known(eips.value.length ? `${eips.value.toSorted(cmp).join(", ")} is associated with ${e.address}` : undefined);
+    };
+    const publicIp6 = (): Known<string | undefined> => {
+      if ((isUnknown(e, ["ipv6_address_count"]) && e.configured.has("ipv6_address_count")) || (isUnknown(e, ["ipv6_addresses"]) && e.configured.has("ipv6_addresses"))) return unknown(`${e.address}: its IPv6 addresses are unknown until apply`);
+      const count = e.values.ipv6_address_count;
+      return (typeof count === "number" && count > 0) || arr(e.values.ipv6_addresses).length ? known(`${e.address} has IPv6 addresses`) : known(undefined);
+    };
+    const groups = (vpc: string): Known<SecurityGroup[]> => {
+      const own = this.groups(e, "security_groups", vpc, false);
+      const extra = this.eniGroups.get(e.address);
+      if (own !== "empty" && !own.ok) return own;
+      if (!extra.ok) return unknown(extra.reason);
+      const mine = own === "empty" ? [] : own.value;
+      const keys = [...new Set([...mine.map((g) => g.key), ...extra.value])].toSorted(cmp);
+      return known(keys.length ? keys.map((k) => mine.find((g) => g.key === k) ?? this.securityGroup(k)) : [this.securityGroup(`default-sg:${vpc}`)]);
+    };
+    return this.place(r, subnet.value, publicIp, groups, undefined, [e.address, ...this.eniEips.sources(e.address), ...this.eniGroups.sources(e.address)], publicIp6);
   }
 
   /**

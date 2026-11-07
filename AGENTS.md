@@ -40,6 +40,11 @@ The maintainer decides what an agent may do without asking. The current scope:
 
 - No new runtime dependency without an ADR.
 - No secrets, real AWS account IDs, or real plans in the repository. Use synthetic fixtures only.
+- Nothing real, ever. An agent never uses the maintainer's cloud profiles, saved logins, or
+  accounts (AWS, Azure, Google Cloud). Every Terraform or OpenTofu run goes through
+  `scripts/sandbox-env.ts`: an empty home, no inherited cloud variables, fake credentials.
+  `fixtures/sandbox.test.ts` enforces it. A Reachability Analyzer run uses a throwaway
+  account that the maintainer names for that run, never their own.
 - The web viewer never sends plan data off the device.
 
 ## Definition of done

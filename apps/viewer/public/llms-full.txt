@@ -111,7 +111,9 @@ node packages/cli/dist/vpcdiff.mjs            # guided mode, in a terminal
 | Gateway Load Balancers, ECS services in bridge or host mode | noted |
 | Customer-managed prefix lists in the plan (`aws_ec2_managed_prefix_list`, `aws_ec2_managed_prefix_list_entry`) in rules and routes | supported |
 | Prefix lists outside the plan (AWS-managed) | undecided sources; unknown when nothing else decides |
-| VPN route propagation, network interface attachments, secondary VPC CIDRs | unknown |
+| Secondary VPC CIDR blocks (`aws_vpc_ipv4_cidr_block_association`) | supported (an IPAM-allocated block is unknown) |
+| Instances with a `network_interface` block, `aws_network_interface`, `aws_network_interface_sg_attachment`, Elastic IPs on an interface | supported for the primary interface; more than one is unknown |
+| VPN route propagation, `aws_network_interface_attachment` | unknown |
 | Response routes to a NAT gateway, a VPC peering connection, or a blackhole | supported (they block internet paths) |
 | Transit Gateway, VPN gateway, middlebox network interfaces | unknown (routing continues outside the plan) |
 | `aws_vpc_endpoint` Interface (target inside the VPC) and Gateway (prefix list route; its addresses undecided) | supported |

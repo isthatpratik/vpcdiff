@@ -14,6 +14,25 @@ allow list.
 - **Allow rules:** the groups in `vpc_security_group_ids`; an empty list means the VPC's
   default group.
 
+### An instance with an existing network interface (#93)
+
+An `aws_instance` with a `network_interface` block uses an `aws_network_interface` that
+already exists.
+
+- **Subnet and groups:** the interface's `subnet_id`, and its `security_groups` plus any
+  `aws_network_interface_sg_attachment`. No groups at all means the VPC's default group.
+- **Public IPv4 address:** only from an Elastic IP on the interface (`aws_eip` or
+  `aws_eip_association` with the interface). "The public IP address can only be assigned
+  to a network interface for eth0, and can only be assigned to a new network interface,
+  not an existing one", so neither `associate_public_ip_address` nor the subnet's
+  `map_public_ip_on_launch` gives one.
+  Source: <https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_InstanceNetworkInterfaceSpecification.html>
+- **IPv6:** the interface's `ipv6_address_count` or `ipv6_addresses`.
+- Only the primary interface (`device_index = 0`) is modeled. More than one interface, an
+  interface outside the plan, or one that cannot be matched gives `unknown`. An Elastic IP
+  on an instance's own interface (`primary_network_interface_id`) keeps every instance
+  that could own it `unknown`.
+
 ## RDS DB instance (`aws_db_instance`)
 
 - **Subnet:** "Amazon RDS chooses a subnet and an IP address within that subnet group to

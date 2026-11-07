@@ -47,7 +47,8 @@ interface ConfigInfo {
   otherRefs: Set<string>;
 }
 
-const RESOURCE_REF = /^aws_\w+\.[\w-]+(?:\[[^\]]+\])?(?:\.|$)/;
+// Resource types of the clouds the engine reads: aws_, google_, azurerm_ (ADR 0011).
+const RESOURCE_REF = /^(?:aws|google|azurerm)_\w+\.[\w-]+(?:\[[^\]]+\])?(?:\.|$)/;
 
 /** Collects resource references per top-level attribute from the configuration section. */
 function configRefs(plan: Obj): Map<string, ConfigInfo> {
@@ -62,7 +63,7 @@ function configRefs(plan: Obj): Map<string, ConfigInfo> {
         const found = new Set<string>();
         const full = new Set<string>();
         collect(expr, (ref) => {
-          const m = /^(aws_\w+\.[\w-]+(?:\[[^\]]+\])?)$/.exec(ref);
+          const m = /^((?:aws|google|azurerm)_\w+\.[\w-]+(?:\[[^\]]+\])?)$/.exec(ref);
           if (m) found.add(prefix + (m[1] as string));
           if (RESOURCE_REF.test(ref)) full.add(prefix + ref);
           else info.otherRefs.add(attr);
@@ -189,7 +190,7 @@ export function resolveRefs(snap: Snapshot, r: Resource, attr: string, targetTyp
 }
 
 // The resource part may end with an attribute (`aws_vpc.main.default_route_table_id`).
-const ADDRESS = /^(.*?)(aws_\w+\.[\w-]+(?:\[[^\]]+\])?(?:\.\w+)?)$/;
+const ADDRESS = /^(.*?)((?:aws|google|azurerm)_\w+\.[\w-]+(?:\[[^\]]+\])?(?:\.\w+)?)$/;
 
 /**
  * Configuration references have the module path without instance keys. A reference

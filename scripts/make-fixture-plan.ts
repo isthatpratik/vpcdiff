@@ -16,9 +16,11 @@
 // produces a real update plan, and no AWS API is called.
 
 import { execFileSync } from "node:child_process";
-import { cpSync, mkdirSync, mkdtempSync, readdirSync, writeFileSync, existsSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { cpSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { sandboxEnv } from "./sandbox-env.ts";
 
 type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
 type Obj = { [key: string]: Json };
@@ -59,18 +61,48 @@ const KINDS: Record<string, [string, string]> = {
 
 const cache = join(tmpdir(), TOFU ? "vpcdiff-tofu-plugin-cache" : "vpcdiff-tf-plugin-cache");
 mkdirSync(cache, { recursive: true });
-const env = { ...process.env, TF_PLUGIN_CACHE_DIR: cache, TF_IN_AUTOMATION: "1", CHECKPOINT_DISABLE: "1" };
+// Never the caller's environment: no profile, login, or credential can reach the run.
+const env = sandboxEnv({ TF_PLUGIN_CACHE_DIR: cache });
 
 function tf(cwd: string, args: string[]): string {
   return execFileSync(BIN, args, { cwd, env, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
 }
 
+// Provider settings for a plan that never reaches a real account. They live here, not in
+// the fixture's main.tf, so a fixture never holds a token, even a fake one (the guard test
+// in fixtures/sandbox.test.ts checks that).
+const GOOGLE_OVERRIDE = `provider "google" {
+  project      = "demo-project"
+  region       = "us-central1"
+  access_token = "fake-token-for-planning"
+}
+`;
+
+/** The override file for the clouds a configuration uses. */
+function overrideFor(configDir: string): string {
+  const text = readdirSync(configDir).filter((f) => f.endsWith(".tf")).map((f) => readFileSync(join(configDir, f), "utf8")).join("\n");
+  return [PROVIDER_OVERRIDE, /hashicorp\/google\b/.test(text) ? GOOGLE_OVERRIDE : ""].join("\n");
+}
+
+/**
+ * A lock file kept from the first verified install of a set of providers. With it,
+ * `init` uses the plugin cache and still checks the provider's hash, instead of
+ * downloading the provider again for every fixture.
+ */
+function lockPath(configDir: string): string {
+  const providers = readdirSync(configDir).filter((f) => f.endsWith(".tf")).map((f) => readFileSync(join(configDir, f), "utf8")).join("\n").match(/required_providers\s*\{[^}]*\}/g) ?? [];
+  return join(cache, `lock-${createHash("sha256").update(providers.join("|")).digest("hex").slice(0, 16)}.hcl`);
+}
+
 function plan(configDir: string, state?: Obj): { plan: Obj; dir: string } {
   const dir = mkdtempSync(join(tmpdir(), "vpcdiff-fixture-"));
   for (const f of readdirSync(configDir)) if (f.endsWith(".tf")) cpSync(join(configDir, f), join(dir, f));
-  writeFileSync(join(dir, "fixture_override.tf"), PROVIDER_OVERRIDE);
+  writeFileSync(join(dir, "fixture_override.tf"), overrideFor(configDir));
   if (state) writeFileSync(join(dir, "terraform.tfstate"), JSON.stringify(state, null, 2));
+  const lock = lockPath(configDir);
+  if (existsSync(lock)) cpSync(lock, join(dir, ".terraform.lock.hcl"));
   tf(dir, ["init", "-input=false", "-no-color"]);
+  if (!existsSync(lock) && existsSync(join(dir, ".terraform.lock.hcl"))) cpSync(join(dir, ".terraform.lock.hcl"), lock);
   tf(dir, ["plan", "-input=false", "-no-color", "-refresh=false", "-out=tfplan"]);
   return { plan: JSON.parse(tf(dir, ["show", "-json", "tfplan"])) as Obj, dir };
 }
