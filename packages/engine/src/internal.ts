@@ -77,7 +77,10 @@ function routeStep(table: Known<RouteTable>, at: string, peerCidr: IntervalSet, 
     }
     texts.push(route.text);
     if (route.target.kind === "local") local = union(local, m);
-    else elsewhere.push(route.text);
+    else if (route.target.kind === "drop" && route.target.text === "blackhole") {
+      const why = `${route.text}: ${route.target.why}`;
+      return { decision: "deny", resource: t.resource, rule: why, reason: why };
+    } else elsewhere.push(route.text);
     remaining = subtract(remaining, m);
   }
   if (elsewhere.length) {
