@@ -70,7 +70,13 @@ Returns `unknown` with a reason:
 
 - A winning route whose target routes on outside the plan: transit gateway, network
   interface (a middlebox), VPN gateway, VPC endpoint, carrier or local gateway.
-- Prefix list destinations, and IPv6 routes (skipped for IPv4 traffic).
+- IPv6 routes (skipped for IPv4 traffic).
+
+Prefix list destinations (#33): a customer-managed list in the plan gives one route per
+entry, each with its own prefix length. A list outside the plan (for example the
+AWS-managed list that a gateway endpoint adds for S3) cannot be expanded: responses to
+its addresses are undecided, and the rest of the path is still decided. If no other route
+decides, the result is `unknown`.
 - Route propagation from a virtual private gateway (`propagating_vgws`,
   `aws_vpn_gateway_route_propagation`).
 - Two routes with the same prefix length that match (the tie rules are not modeled yet).

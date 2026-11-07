@@ -42,6 +42,8 @@ const MODELED = new Set([
   "aws_lb",
   "aws_lb_listener",
   "aws_nat_gateway",
+  "aws_ec2_managed_prefix_list",
+  "aws_ec2_managed_prefix_list_entry",
   "aws_rds_cluster",
   "aws_rds_cluster_instance",
   "aws_ecs_service",

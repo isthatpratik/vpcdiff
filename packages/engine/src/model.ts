@@ -20,6 +20,8 @@ export interface SgRule {
   groups: string[];
   /** Set when a referenced group cannot be resolved in this plan. */
   unresolved?: string;
+  /** Set when a prefix list of the rule cannot be expanded: its addresses are undecided. */
+  listUnresolved?: string;
   /** The resource that defines the rule: the group, or a rule resource. */
   resource: string;
   text: string;
@@ -64,6 +66,8 @@ export interface Route {
   prefix: number;
   target: RouteTarget;
   text: string;
+  /** Set when the destination is a prefix list that cannot be expanded; `cidr` is then empty. */
+  listUnresolved?: string;
 }
 
 export interface RouteTable {
@@ -130,6 +134,15 @@ const dropOf = (key: string): RouteTarget | undefined => {
   const d = DROP[key];
   return d ? { kind: "drop", ...d } : undefined;
 };
+
+/** Prefix list entries, expanded: the union and one CIDR per entry (for routes). */
+interface Lists {
+  set: IntervalSet;
+  entries: { cidr: string; set: IntervalSet }[];
+  names: string[];
+  unresolved?: string;
+}
+const NO_LISTS: Lists = { set: [], entries: [], names: [] };
 
 /** How a group key reads in a rule: its address, or the VPC's default group. */
 export const groupLabel = (key: string): string => (key.startsWith("default-sg:") ? `default security group of ${key.slice("default-sg:".length)}` : key);
@@ -228,6 +241,8 @@ export class ModelBuilder {
   private readonly eips = new Index<string>();
   /** VPC address to internet gateways attached by aws_internet_gateway_attachment. */
   private readonly igwAttach = new Index<string>();
+  /** Prefix list address to aws_ec2_managed_prefix_list_entry CIDRs. */
+  private readonly plEntries = new Index<string>();
 
   /** Unmodeled resources whose target cannot be resolved: they may change anything of their kind. */
   private readonly touchesAnything: Resource[] = [];
@@ -383,24 +398,28 @@ export class ModelBuilder {
           }
           const egress = r.values.type === "egress";
           const groups = this.ruleGroups(r, "source_security_group_id", r.values.self === true);
-          this.addSgRule(r, this.sgRuleOf(r, egress, r.values.protocol, r.values.from_port, r.values.to_port, arr(r.values.cidr_blocks).map(String), arr(r.values.prefix_list_ids).length > 0, groups, ["protocol", "from_port", "to_port", "cidr_blocks", "prefix_list_ids", "self"]), egress);
+          const lists = isNull(r, "prefix_list_ids") || (!isUnknown(r, ["prefix_list_ids"]) && !arr(r.values.prefix_list_ids).length) ? NO_LISTS : this.listsOf(resolveRefs(this.snap, r, "prefix_list_ids", "aws_ec2_managed_prefix_list"));
+          this.addSgRule(r, this.sgRuleOf(r, egress, r.values.protocol, r.values.from_port, r.values.to_port, arr(r.values.cidr_blocks).map(String), lists, groups, ["protocol", "from_port", "to_port", "cidr_blocks", "self"]), egress);
           break;
         }
         case "aws_vpc_security_group_ingress_rule": {
           // https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/vpc_security_group_ingress_rule
           const cidr = str(r.values.cidr_ipv4);
-          this.addSgRule(r, this.sgRuleOf(r, false, r.values.ip_protocol, r.values.from_port, r.values.to_port, cidr ? [cidr] : [], !!str(r.values.prefix_list_id), this.ruleGroups(r, "referenced_security_group_id", false), ["ip_protocol", "from_port", "to_port", "cidr_ipv4", "prefix_list_id"]), false);
+          this.addSgRule(r, this.sgRuleOf(r, false, r.values.ip_protocol, r.values.from_port, r.values.to_port, cidr ? [cidr] : [], this.ruleList(r), this.ruleGroups(r, "referenced_security_group_id", false), ["ip_protocol", "from_port", "to_port", "cidr_ipv4"]), false);
           break;
         }
         case "aws_vpc_security_group_egress_rule": {
           // https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/vpc_security_group_egress_rule
           const cidr = str(r.values.cidr_ipv4);
-          this.addSgRule(r, this.sgRuleOf(r, true, r.values.ip_protocol, r.values.from_port, r.values.to_port, cidr ? [cidr] : [], !!str(r.values.prefix_list_id), this.ruleGroups(r, "referenced_security_group_id", false), ["ip_protocol", "from_port", "to_port", "cidr_ipv4", "prefix_list_id"]), true);
+          this.addSgRule(r, this.sgRuleOf(r, true, r.values.ip_protocol, r.values.from_port, r.values.to_port, cidr ? [cidr] : [], this.ruleList(r), this.ruleGroups(r, "referenced_security_group_id", false), ["ip_protocol", "from_port", "to_port", "cidr_ipv4"]), true);
           break;
         }
         case "aws_route": {
           // https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/route
-          this.routes.add(this.target(r, "route_table_id"), this.routeOf(r), r.address);
+          const key = this.target(r, "route_table_id");
+          const list = this.routeOf(r);
+          if (!list.ok) this.routes.add(key, list, r.address);
+          else for (const route of list.value) this.routes.add(key, known(route), r.address);
           break;
         }
         case "aws_network_acl_rule": {
@@ -434,6 +453,12 @@ export class ModelBuilder {
           else this.eips.add(this.optionalRefTo(r, "instance_id", "aws_instance"), known(r.address), r.address);
           break;
         }
+        case "aws_ec2_managed_prefix_list_entry": {
+          // https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/ec2_managed_prefix_list_entry
+          const cidr = str(r.values.cidr);
+          this.plEntries.add(this.optionalRefTo(r, "prefix_list_id", "aws_ec2_managed_prefix_list"), isUnknown(r, ["cidr"]) || !cidr ? unknown(`${r.address}: cidr is unknown until apply`) : known(cidr), r.address);
+          break;
+        }
         case "aws_internet_gateway_attachment": {
           const igw = this.refTo(r, "internet_gateway_id", "aws_internet_gateway");
           this.igwAttach.add(this.optionalRefTo(r, "vpc_id", "aws_vpc"), igw, r.address);
@@ -462,22 +487,82 @@ export class ModelBuilder {
     return { keys: [...new Set(keys)].toSorted(cmp), ...(reasons.length ? { unresolved: reasons.join("; ") } : {}) };
   }
 
-  private sgRuleOf(r: Resource, egress: boolean, protocolValue: unknown, from: unknown, to: unknown, cidrs: string[], prefixList: boolean, groups: { keys: Key[]; unresolved?: string }, fields: string[]): Known<SgRule | null> {
+  /**
+   * A customer-managed prefix list in the plan, expanded to its IPv4 CIDRs: inline
+   * `entry` blocks and aws_ec2_managed_prefix_list_entry resources. A list of the IPv6
+   * family has no IPv4 addresses.
+   * https://docs.aws.amazon.com/vpc/latest/userguide/managed-prefix-lists.html
+   */
+  private prefixList(address: string): Known<{ cidr: string; set: IntervalSet }[]> {
+    const r = this.get(address);
+    if (!r || r.type !== "aws_ec2_managed_prefix_list") return unknown(`${address} is not a prefix list in this plan`);
+    if (isUnknown(r, ["address_family"])) return unknown(`${address}: address_family is unknown until apply`);
+    if (String(r.values.address_family) === "IPv6") return known([]);
+    if (isUnknown(r, ["entry"])) {
+      if (r.configured.has("entry")) return unknown(`${address}: entry is unknown until apply`);
+    } else if (arr(r.values.entry).some((_, i) => hasUnknown(r, ["entry", i, "cidr"]))) return unknown(`${address}: an entry is unknown until apply`);
+    const cidrs = isUnknown(r, ["entry"]) ? [] : arr(r.values.entry).map((e) => (isObj(e) ? str(e.cidr) : undefined));
+    const extra = this.plEntries.get(address);
+    if (!extra.ok) return unknown(extra.reason);
+    const out: { cidr: string; set: IntervalSet }[] = [];
+    for (const c of [...cidrs, ...extra.value]) {
+      const set = c ? cidrToSet(c) : undefined;
+      if (!c || !set) return unknown(`${address} has an entry the engine cannot read`);
+      out.push({ cidr: c, set });
+    }
+    return known(out.toSorted((a, b) => cmp(a.cidr, b.cidr)));
+  }
+
+  /** Prefix lists from references: expanded when in the plan, else a reason (AWS-managed lists cannot be expanded offline). */
+  private listsOf(refs: Ref[]): Lists {
+    const out: Lists = { set: [], entries: [], names: [] };
+    const reasons: string[] = [];
+    for (const ref of refs) {
+      if (ref.kind === "unknown") reasons.push(ref.reason);
+      else if (ref.kind === "external") {
+        out.names.push(ref.id);
+        reasons.push(`prefix list ${ref.id} is not in this plan (for example one that AWS manages), so its addresses cannot be expanded offline`);
+      } else {
+        out.names.push(ref.address);
+        const l = this.prefixList(ref.address);
+        if (!l.ok) reasons.push(l.reason);
+        else for (const e of l.value) out.entries.push(e);
+      }
+    }
+    out.set = fromRanges(out.entries.flatMap((e) => e.set));
+    return reasons.length ? { ...out, unresolved: reasons.join("; ") } : out;
+  }
+
+  /** `prefix_list_id` on aws_vpc_security_group_ingress_rule and _egress_rule. */
+  private ruleList(r: Resource): Lists {
+    return isNull(r, "prefix_list_id") ? NO_LISTS : this.listsOf(resolveRefs(this.snap, r, "prefix_list_id", "aws_ec2_managed_prefix_list"));
+  }
+
+  /** Prefix list IDs inside a block (`ingress[0].prefix_list_ids`): known IDs only. */
+  private blockLists(r: Resource, path: (string | number)[], ids: unknown): Lists {
+    if (isUnknown(r, path)) return { ...NO_LISTS, unresolved: `${r.address}: ${path.join(".")} is unknown until apply` };
+    const refs: Ref[] = arr(ids).map((id, j): Ref => {
+      if (isUnknown(r, [...path, j]) || typeof id !== "string") return { kind: "unknown", reason: `${r.address}: a prefix list ID is unknown until apply` };
+      const a = this.snap.byId.get(id);
+      return a ? { kind: "resource", address: a } : { kind: "external", id };
+    });
+    return this.listsOf(refs);
+  }
+
+  private sgRuleOf(r: Resource, egress: boolean, protocolValue: unknown, from: unknown, to: unknown, cidrs: string[], lists: Lists, groups: { keys: Key[]; unresolved?: string }, fields: string[]): Known<SgRule | null> {
     if (fields.some((f) => hasUnknown(r, [f]))) return unknown(`${r.address} has values that are unknown until apply`);
-    // Prefix lists can contain public ranges; the engine cannot expand them offline.
-    if (prefixList) return unknown(`${r.address} uses a prefix list, which is not modeled yet`);
-    if (!cidrs.length && !groups.keys.length && !groups.unresolved) return known(null); // IPv6 only.
+    if (!cidrs.length && !lists.names.length && !lists.unresolved && !groups.keys.length && !groups.unresolved) return known(null); // IPv6 only.
     const protocol = normalizeProtocol(protocolValue);
     if (protocol === "other") return known(null); // ICMP and others never match TCP or UDP traffic.
     const ports = portSet(protocol, from, to);
     const sets = cidrs.map((c) => cidrToSet(c));
     if (!ports || sets.some((s) => !s)) return unknown(`${r.address} has a value the engine cannot read`);
-    return known(this.rule(r.address, egress, protocol, ports, (sets as IntervalSet[]).flat(), cidrs, groups, describePorts(protocol, from, to)));
+    return known(this.rule(r.address, egress, protocol, ports, (sets as IntervalSet[]).flat(), cidrs, groups, describePorts(protocol, from, to), lists));
   }
 
-  private rule(address: string, egress: boolean, protocol: RuleProtocol, ports: IntervalSet, ranges: IntervalSet, cidrs: string[], groups: { keys: Key[]; unresolved?: string }, portText: string): SgRule {
-    const peers = [...cidrs, ...groups.keys.map(groupLabel), ...(groups.unresolved ? ["a security group that is unknown until apply"] : [])];
-    return { protocol, ports, sources: fromRanges(ranges), groups: groups.keys, ...(groups.unresolved ? { unresolved: groups.unresolved } : {}), resource: address, text: `${address} ${egress ? "egress" : "ingress"} ${portText} ${egress ? "to" : "from"} ${peers.join(", ")}` };
+  private rule(address: string, egress: boolean, protocol: RuleProtocol, ports: IntervalSet, ranges: IntervalSet, cidrs: string[], groups: { keys: Key[]; unresolved?: string }, portText: string, lists: Lists = NO_LISTS): SgRule {
+    const peers = [...cidrs, ...lists.names.map((n) => `prefix list ${n}`), ...(lists.unresolved && !lists.names.length ? ["a prefix list that is unknown until apply"] : []), ...groups.keys.map(groupLabel), ...(groups.unresolved ? ["a security group that is unknown until apply"] : [])];
+    return { protocol, ports, sources: fromRanges([...ranges, ...lists.set]), groups: groups.keys, ...(groups.unresolved ? { unresolved: groups.unresolved } : {}), ...(lists.unresolved ? { listUnresolved: lists.unresolved } : {}), resource: address, text: `${address} ${egress ? "egress" : "ingress"} ${portText} ${egress ? "to" : "from"} ${peers.join(", ")}` };
   }
 
   private naclRuleOf(r: Resource): Known<{ egress: boolean; rule: NaclRule }> {
@@ -507,16 +592,28 @@ export class ModelBuilder {
     return { kind: "other", text: t.replace(/^aws_/, "").replaceAll("_", " ") };
   }
 
-  private routeOf(r: Resource): Known<Route> {
+  /**
+   * Routes for a prefix list destination: one per entry, each with its own length, so
+   * longest prefix match works per entry. A list that cannot be expanded gives one route
+   * with no CIDR and a reason. Static routes win ties over prefix list routes; the engine
+   * reports a tie as unknown instead.
+   * https://docs.aws.amazon.com/vpc/latest/userguide/route-tables-priority.html
+   */
+  private listRoutes(lists: Lists, target: RouteTarget, label: string): Route[] {
+    const to = target.kind === "igw" ? target.address : target.kind === "other" || target.kind === "drop" ? target.text : target.kind;
+    const out: Route[] = lists.entries.map((e) => ({ cidr: e.set, prefix: cidrPrefixLength(e.cidr) ?? 0, target, text: `${label} ${e.cidr} (prefix list ${lists.names.join(", ")}) -> ${to}` }));
+    if (lists.unresolved) out.push({ cidr: [], prefix: 0, target, text: `${label} prefix list ${lists.names.join(", ") || "(unknown)"} -> ${to}`, listUnresolved: lists.unresolved });
+    return out;
+  }
+
+  private routeOf(r: Resource): Known<Route[]> {
     if (hasUnknown(r, ["destination_cidr_block"])) return unknown(`${r.address}: destination is unknown until apply`);
     const cidr = str(r.values.destination_cidr_block);
-    if (!cidr) {
-      if (str(r.values.destination_prefix_list_id) || isUnknown(r, ["destination_prefix_list_id"])) return unknown(`${r.address} uses a prefix list, which is not modeled yet`);
-      return known({ cidr: [], prefix: 0, target: { kind: "local" }, text: `${r.address} (IPv6)` });
-    }
-    const set = cidrToSet(cidr);
-    const prefix = cidrPrefixLength(cidr);
-    if (!set || prefix === undefined) return unknown(`${r.address}: destination ${cidr} cannot be read`);
+    const listed = !cidr && (str(r.values.destination_prefix_list_id) || (isUnknown(r, ["destination_prefix_list_id"]) && r.configured.has("destination_prefix_list_id")));
+    if (!cidr && !listed) return known([{ cidr: [], prefix: 0, target: { kind: "local" }, text: `${r.address} (IPv6)` }]);
+    const set = cidr ? cidrToSet(cidr) : [];
+    const prefix = cidr ? cidrPrefixLength(cidr) : 0;
+    if (!set || prefix === undefined) return unknown(`${r.address}: destination ${cidr ?? ""} cannot be read`);
     let target: RouteTarget;
     if (r.values.gateway_id === "local") target = { kind: "local" };
     else if (!isNull(r, "gateway_id")) {
@@ -532,8 +629,9 @@ export class ModelBuilder {
     // A route whose target was deleted keeps its entry with state "blackhole".
     // https://docs.aws.amazon.com/vpc/latest/userguide/RouteTables.html
     if (!isUnknown(r, ["state"]) && r.values.state === "blackhole") target = { kind: "drop", ...BLACKHOLE };
+    if (listed) return known(this.listRoutes(this.listsOf(resolveRefs(this.snap, r, "destination_prefix_list_id", "aws_ec2_managed_prefix_list")), target, r.address));
     const to = target.kind === "igw" ? target.address : target.kind === "other" || target.kind === "drop" ? target.text : target.kind;
-    return known({ cidr: set, prefix, target, text: `${r.address} ${cidr} -> ${to}` });
+    return known([{ cidr: set, prefix, target, text: `${r.address} ${cidr} -> ${to}` }]);
   }
 
   vpc(address: string): Known<Vpc> {
@@ -615,17 +713,17 @@ export class ModelBuilder {
     for (const [i, raw] of blocks.entries()) {
       if (!isObj(raw)) continue;
       // Unknown group IDs are resolved below; any other unknown value makes the list unknown.
-      if (["protocol", "from_port", "to_port", "cidr_blocks", "prefix_list_ids", "self"].some((f) => hasUnknown(r, [dir, i, f]))) return unknown(`${address}: ${dir} rule ${i} has values that are unknown until apply`);
+      if (["protocol", "from_port", "to_port", "cidr_blocks", "self"].some((f) => hasUnknown(r, [dir, i, f]))) return unknown(`${address}: ${dir} rule ${i} has values that are unknown until apply`);
       const protocol = normalizeProtocol(raw.protocol);
       if (protocol === "other") continue; // ICMP and others never match TCP or UDP traffic.
       const ports = portSet(protocol, raw.from_port, raw.to_port);
       const cidrs = arr(raw.cidr_blocks).map(String);
-      if (arr(raw.prefix_list_ids).length) return unknown(`${address}: ${dir} rule ${i} uses a prefix list, which is not modeled yet`);
+      const lists = arr(raw.prefix_list_ids).length || isUnknown(r, [dir, i, "prefix_list_ids"]) ? this.blockLists(r, [dir, i, "prefix_list_ids"], raw.prefix_list_ids) : NO_LISTS;
       const sets = cidrs.map((c) => cidrToSet(c));
       if (!ports || sets.some((s) => !s)) return unknown(`${address}: ${dir} rule ${i} has a value the engine cannot read`);
       const groups = this.inlineGroups(r, dir, i, blocks, key);
-      if (!cidrs.length && !groups.keys.length && !groups.unresolved) continue; // IPv6 only.
-      rules.push(this.rule(address, dir === "egress", protocol, ports, (sets as IntervalSet[]).flat(), cidrs, groups, describePorts(protocol, raw.from_port, raw.to_port)));
+      if (!cidrs.length && !lists.names.length && !lists.unresolved && !groups.keys.length && !groups.unresolved) continue; // IPv6 only.
+      rules.push(this.rule(address, dir === "egress", protocol, ports, (sets as IntervalSet[]).flat(), cidrs, groups, describePorts(protocol, raw.from_port, raw.to_port), lists));
     }
     return known([...rules, ...extra.value]);
   }
@@ -820,8 +918,9 @@ export class ModelBuilder {
       if (isUnknown(r, ["route", i, "cidr_block"])) return unknown(`${r.address}: route ${i} destination is unknown until apply`);
       const cidr = str(raw.cidr_block);
       if (!cidr) {
-        if (str(raw.destination_prefix_list_id)) return unknown(`${r.address}: route ${i} uses a prefix list, which is not modeled yet`);
-        continue; // IPv6 route.
+        const pl = isUnknown(r, ["route", i, "destination_prefix_list_id"]) || str(raw.destination_prefix_list_id);
+        if (pl) routes.push(...this.listRoutes(this.blockLists(r, ["route", i, "destination_prefix_list_id"], [raw.destination_prefix_list_id]), this.routeTarget(r, raw, ["route", i], unknownGateways, knownGateways), `${r.address} route`));
+        continue; // Else an IPv6 route.
       }
       const set = cidrToSet(cidr);
       const prefix = cidrPrefixLength(cidr);
@@ -861,7 +960,7 @@ export class ModelBuilder {
     if (!vpc.cidrs.ok) return { resource, routes: unknown(vpc.cidrs.reason) };
     // Every route table has a local route for the VPC CIDR.
     // https://docs.aws.amazon.com/vpc/latest/userguide/RouteTables.html
-    return { resource, routes: known([...localRoutes(vpc, resource, vpc.cidrs.value), ...base.value, ...extra.value.filter((x) => x.cidr.length)]) };
+    return { resource, routes: known([...localRoutes(vpc, resource, vpc.cidrs.value), ...base.value, ...extra.value.filter((x) => x.cidr.length || x.listUnresolved)]) };
   }
 
   /**

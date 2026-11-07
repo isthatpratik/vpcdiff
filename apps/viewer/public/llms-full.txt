@@ -109,7 +109,9 @@ node packages/cli/dist/vpcdiff.mjs            # guided mode, in a terminal
 | `aws_ecs_service` (endpoint with awsvpc `network_configuration`; public IP on Fargate only) | supported |
 | `aws_elb` (Classic Load Balancer endpoint in a VPC) | supported |
 | Gateway Load Balancers, ECS services in bridge or host mode | noted |
-| Prefix lists, VPN route propagation, network interface attachments, secondary VPC CIDRs | unknown |
+| Customer-managed prefix lists in the plan (`aws_ec2_managed_prefix_list`, `aws_ec2_managed_prefix_list_entry`) in rules and routes | supported |
+| Prefix lists outside the plan (AWS-managed) | undecided sources; unknown when nothing else decides |
+| VPN route propagation, network interface attachments, secondary VPC CIDRs | unknown |
 | Response routes to a NAT gateway, a VPC peering connection, or a blackhole | supported (they block internet paths) |
 | Transit Gateway, VPN gateway, middlebox network interfaces | unknown (routing continues outside the plan) |
 | VPC endpoints, IPv6 | not yet; unknown or noted |

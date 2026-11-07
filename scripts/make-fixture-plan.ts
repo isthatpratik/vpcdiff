@@ -53,6 +53,7 @@ const KINDS: Record<string, [string, string]> = {
   aws_security_group: ["sg", "security-group"],
   aws_network_acl: ["acl", "network-acl"],
   aws_instance: ["i", "instance"],
+  aws_ec2_managed_prefix_list: ["pl", "prefix-list"],
 };
 
 const cache = join(tmpdir(), TOFU ? "vpcdiff-tofu-plugin-cache" : "vpcdiff-tf-plugin-cache");
@@ -139,12 +140,15 @@ function toState(before: Obj, schemas: Obj): Obj {
         if (type === "aws_security_group" && path.length === 1 && key === "egress") return [];
         // Group IDs in an inline rule (`ingress[0].security_groups`): the security groups
         // the block's expression references. Only one group per attribute is matched.
-        const groups = () => referencedResources(refs[path[0] as string]).filter((x) => x.startsWith("aws_security_group.")).map((x) => ids.get(x)).filter(Boolean) as string[];
-        if (key === "security_groups") return groups();
-        if (path[path.length - 2] === "security_groups") {
-          const g = groups();
+        // The same for prefix list IDs (`ingress[0].prefix_list_ids`).
+        const KIND: Record<string, string> = { security_groups: "aws_security_group.", prefix_list_ids: "aws_ec2_managed_prefix_list." };
+        const listOf = (attr: string) => referencedResources(refs[path[0] as string]).filter((x) => x.startsWith(KIND[attr] as string)).map((x) => ids.get(x)).filter(Boolean) as string[];
+        if (key && KIND[key]) return listOf(key);
+        const parent = path[path.length - 2];
+        if (parent && KIND[parent]) {
+          const g = listOf(parent);
           if (g.length === 1) return g[0] as string;
-          throw new Error(`${address}: cannot fill ${path.join(".")}: the block references ${g.length} security groups`);
+          throw new Error(`${address}: cannot fill ${path.join(".")}: the block references ${g.length} resources of that kind`);
         }
         if (key?.endsWith("_id") || key === "vpc_security_group_ids") {
           const targets = referencedResources(refs[path[0] as string]).map((a) => ids.get(a)).filter(Boolean) as string[];

@@ -131,16 +131,21 @@ export function evaluate(ep: Endpoint | undefined, p: Protocol, ports: Range): O
   const sgNames = groups.map((g) => g.address).join(", ");
   let sgAllowed: IntervalSet = EMPTY;
   const sgTexts: string[] = [];
+  // Rules with a prefix list that cannot be expanded may allow more sources: undecided.
+  const sgDoubt: string[] = [];
   for (const g of groups) {
     if (!g.ingress.ok) return unknownAt("security-group", g.address, g.ingress.reason);
     for (const rule of g.ingress.value) {
       if (!protoMatches(rule.protocol, p) || !contains(rule.ports, [ports])) continue;
+      if (rule.listUnresolved) sgDoubt.push(`${rule.text}: ${rule.listUnresolved}`);
       if (isEmpty(intersect(rule.sources, sources))) continue;
       sgAllowed = union(sgAllowed, rule.sources);
       sgTexts.push(rule.text);
     }
   }
   const afterSg = intersect(sources, sgAllowed);
+  if (isEmpty(afterSg) && sgDoubt.length) return unknownAt("security-group", sgNames, sgDoubt.join("; "));
+  if (sgDoubt.length && !equals(afterSg, sources)) undecided.push(`sources in ${sgDoubt.join("; ")}`);
   if (isEmpty(afterSg)) {
     add("security-group", sgNames, "deny", `no ingress rule of ${sgNames} allows ${portText} from the internet`);
     return stop("blocked", `no ingress rule of ${sgNames} allows ${portText} from the internet`);
@@ -188,6 +193,8 @@ export function evaluate(ep: Endpoint | undefined, p: Protocol, ports: Range): O
   const routeTexts: string[] = [];
   const unresolvedReasons: string[] = [];
   const dropped: string[] = [];
+  // Prefix list routes that cannot be expanded may match some sources first.
+  const listDoubt = routes.filter((r) => r.listUnresolved).map((r) => `${r.text}: ${r.listUnresolved}`);
   for (const [i, route] of routes.entries()) {
     const m = intersect(remaining, route.cidr);
     if (isEmpty(m)) continue;
@@ -206,12 +213,13 @@ export function evaluate(ep: Endpoint | undefined, p: Protocol, ports: Range): O
     remaining = subtract(remaining, m);
   }
   if (isEmpty(viaIgw)) {
-    if (!isEmpty(unresolved)) return unknownAt("route", table.resource, unresolvedReasons.join("; "));
+    if (!isEmpty(unresolved) || listDoubt.length) return unknownAt("route", table.resource, [...unresolvedReasons, ...listDoubt].join("; "));
     const why = dropped.length ? dropped.join("; ") : routeTexts.length ? routeTexts.join("; ") : `${table.resource} has no route to the internet`;
     add("route", table.resource, "deny", why);
     return stop("blocked", `the response cannot return to the internet: ${why}`);
   }
   if (!isEmpty(unresolved)) undecided.push(`responses to ${cidrList(unresolved)} cannot be decided: ${unresolvedReasons.join("; ")}`);
+  if (listDoubt.length) undecided.push(`responses to addresses in a prefix list may use another route: ${listDoubt.join("; ")}`);
   add("route", table.resource, equals(viaIgw, sources) ? "allow" : "partial", routeTexts.join("; "));
 
   return { verdict: "allowed", sources: equals(viaIgw, universe) ? ["internet"] : setToCidrs(viaIgw), hops, reason: undecided.join("; ") };
@@ -230,7 +238,7 @@ export function exposedPorts(ep: Endpoint | undefined, p: Protocol): IntervalSet
   for (const g of ep.securityGroups.value) {
     if (!g.ingress.ok) continue;
     for (const rule of g.ingress.value) {
-      if (protoMatches(rule.protocol, p) && !isEmpty(intersect(rule.sources, universe))) out = union(out, rule.ports);
+      if (protoMatches(rule.protocol, p) && (rule.listUnresolved || !isEmpty(intersect(rule.sources, universe)))) out = union(out, rule.ports);
     }
   }
   return out;

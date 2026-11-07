@@ -23,7 +23,8 @@ const DOC: Partial<Record<HopKind, string>> = {
 /** "We evaluate the network ACL rules when traffic enters and leaves the subnet, not as it is routed within a subnet." */
 const SAME_SUBNET = "same subnet: no network ACL applies";
 
-type Step = { decision: Hop["decision"]; resource: string; rule: string; reason?: string };
+/** `doubt`: on an allowing step, what it could not decide (reported in the path's reason). */
+type Step = { decision: Hop["decision"]; resource: string; rule: string; reason?: string; doubt?: string };
 
 const protoMatches = (rule: string, p: Protocol) => rule === "all" || rule === p;
 
@@ -48,6 +49,7 @@ function sgStep(groups: SecurityGroup[], dir: "ingress" | "egress", peerKeys: st
       if (rule.groups.some((k) => peerKeys.includes(k)) || contains(rule.sources, peerCidr)) allowing.push(rule.text);
       else if (!isEmpty(intersect(rule.sources, peerCidr))) doubt.push(`${rule.text} covers only part of the subnet of ${peer}, and its address is not known before apply`);
       else if (rule.unresolved) doubt.push(`${rule.text}: ${rule.unresolved}`);
+      else if (rule.listUnresolved) doubt.push(`${rule.text}: ${rule.listUnresolved}`);
     }
   }
   const portText = `${p}/${formatPorts([ports])}`;
@@ -64,6 +66,7 @@ function routeStep(table: Known<RouteTable>, at: string, peerCidr: IntervalSet, 
   if (!t.routes.ok) return { decision: "unknown", resource: t.resource, rule: t.routes.reason, reason: t.routes.reason };
   // Longest prefix match. https://docs.aws.amazon.com/vpc/latest/userguide/route-tables-priority.html
   const routes = t.routes.value.toSorted((a, b) => b.prefix - a.prefix);
+  const listDoubt = routes.filter((r) => r.listUnresolved).map((r) => `${r.text}: ${r.listUnresolved}`);
   let remaining = peerCidr;
   let local: IntervalSet = EMPTY;
   const texts: string[] = [];
@@ -91,7 +94,7 @@ function routeStep(table: Known<RouteTable>, at: string, peerCidr: IntervalSet, 
     const why = `${t.resource} has no route to the subnet of ${peer}`;
     return { decision: "deny", resource: t.resource, rule: why, reason: why };
   }
-  return { decision: "allow", resource: t.resource, rule: texts.join("; ") };
+  return { decision: "allow", resource: t.resource, rule: texts.join("; "), ...(listDoubt.length ? { doubt: `traffic to the subnet of ${peer} may match a prefix list route instead: ${listDoubt.join("; ")}` } : {}) };
 }
 
 /** One direction of a NACL for the whole peer subnet. `ephemeral`: the response to the client's port. */
@@ -124,7 +127,9 @@ const absent: Outcome = { verdict: "absent", sources: [], hops: [], reason: "the
 export function evaluateInternal(a: Endpoint | undefined, t: Endpoint | undefined, p: Protocol, ports: Range): Outcome {
   if (!a || !t) return absent;
   const hops: Hop[] = [];
+  const doubts: string[] = [];
   const run = (hop: HopKind, s: Step): Outcome | undefined => {
+    if (s.doubt) doubts.push(s.doubt);
     hops.push({ hop, resource: s.resource, decision: s.decision, rule: s.rule, doc: DOC[hop] ?? SG_DOC });
     if (s.decision === "deny") return { verdict: "blocked", sources: [], hops, reason: s.reason ?? s.rule };
     if (s.decision === "unknown") return { verdict: "unknown", sources: [], hops, reason: s.reason ?? s.rule };
@@ -175,7 +180,7 @@ export function evaluateInternal(a: Endpoint | undefined, t: Endpoint | undefine
   const r8 = run("target-route", routeStep(t.routeTable, t.address, aCidr, a.address));
   if (r8) return r8;
 
-  return { verdict: "allowed", sources: [a.address], hops, reason: "" };
+  return { verdict: "allowed", sources: [a.address], hops, reason: doubts.join("; ") };
 }
 
 /** Ports a target's ingress rules open to a group of the source. */

@@ -199,16 +199,20 @@ function evaluate(ep, p, ports) {
   const sgNames = groups.map((g) => g.address).join(", ");
   let sgAllowed = EMPTY;
   const sgTexts = [];
+  const sgDoubt = [];
   for (const g of groups) {
     if (!g.ingress.ok) return unknownAt("security-group", g.address, g.ingress.reason);
     for (const rule of g.ingress.value) {
       if (!protoMatches(rule.protocol, p) || !contains(rule.ports, [ports])) continue;
+      if (rule.listUnresolved) sgDoubt.push(`${rule.text}: ${rule.listUnresolved}`);
       if (isEmpty(intersect(rule.sources, sources))) continue;
       sgAllowed = union(sgAllowed, rule.sources);
       sgTexts.push(rule.text);
     }
   }
   const afterSg = intersect(sources, sgAllowed);
+  if (isEmpty(afterSg) && sgDoubt.length) return unknownAt("security-group", sgNames, sgDoubt.join("; "));
+  if (sgDoubt.length && !equals(afterSg, sources)) undecided.push(`sources in ${sgDoubt.join("; ")}`);
   if (isEmpty(afterSg)) {
     add("security-group", sgNames, "deny", `no ingress rule of ${sgNames} allows ${portText} from the internet`);
     return stop("blocked", `no ingress rule of ${sgNames} allows ${portText} from the internet`);
@@ -250,6 +254,7 @@ function evaluate(ep, p, ports) {
   const routeTexts = [];
   const unresolvedReasons = [];
   const dropped = [];
+  const listDoubt = routes.filter((r) => r.listUnresolved).map((r) => `${r.text}: ${r.listUnresolved}`);
   for (const [i, route] of routes.entries()) {
     const m = intersect(remaining, route.cidr);
     if (isEmpty(m)) continue;
@@ -268,12 +273,13 @@ function evaluate(ep, p, ports) {
     remaining = subtract(remaining, m);
   }
   if (isEmpty(viaIgw)) {
-    if (!isEmpty(unresolved)) return unknownAt("route", table.resource, unresolvedReasons.join("; "));
+    if (!isEmpty(unresolved) || listDoubt.length) return unknownAt("route", table.resource, [...unresolvedReasons, ...listDoubt].join("; "));
     const why = dropped.length ? dropped.join("; ") : routeTexts.length ? routeTexts.join("; ") : `${table.resource} has no route to the internet`;
     add("route", table.resource, "deny", why);
     return stop("blocked", `the response cannot return to the internet: ${why}`);
   }
   if (!isEmpty(unresolved)) undecided.push(`responses to ${cidrList(unresolved)} cannot be decided: ${unresolvedReasons.join("; ")}`);
+  if (listDoubt.length) undecided.push(`responses to addresses in a prefix list may use another route: ${listDoubt.join("; ")}`);
   add("route", table.resource, equals(viaIgw, sources) ? "allow" : "partial", routeTexts.join("; "));
   return { verdict: "allowed", sources: equals(viaIgw, universe) ? ["internet"] : setToCidrs(viaIgw), hops, reason: undecided.join("; ") };
 }
@@ -285,7 +291,7 @@ function exposedPorts(ep, p) {
   for (const g of ep.securityGroups.value) {
     if (!g.ingress.ok) continue;
     for (const rule of g.ingress.value) {
-      if (protoMatches(rule.protocol, p) && !isEmpty(intersect(rule.sources, universe))) out = union(out, rule.ports);
+      if (protoMatches(rule.protocol, p) && (rule.listUnresolved || !isEmpty(intersect(rule.sources, universe)))) out = union(out, rule.ports);
     }
   }
   return out;
@@ -331,6 +337,7 @@ function sgStep(groups, dir, peerKeys, peerCidr, peer, p, ports) {
       if (rule.groups.some((k) => peerKeys.includes(k)) || contains(rule.sources, peerCidr)) allowing.push(rule.text);
       else if (!isEmpty(intersect(rule.sources, peerCidr))) doubt.push(`${rule.text} covers only part of the subnet of ${peer}, and its address is not known before apply`);
       else if (rule.unresolved) doubt.push(`${rule.text}: ${rule.unresolved}`);
+      else if (rule.listUnresolved) doubt.push(`${rule.text}: ${rule.listUnresolved}`);
     }
   }
   const portText = `${p}/${formatPorts([ports])}`;
@@ -344,6 +351,7 @@ function routeStep(table, at, peerCidr, peer) {
   const t = table.value;
   if (!t.routes.ok) return { decision: "unknown", resource: t.resource, rule: t.routes.reason, reason: t.routes.reason };
   const routes = t.routes.value.toSorted((a, b) => b.prefix - a.prefix);
+  const listDoubt = routes.filter((r) => r.listUnresolved).map((r) => `${r.text}: ${r.listUnresolved}`);
   let remaining = peerCidr;
   let local = EMPTY;
   const texts = [];
@@ -371,7 +379,7 @@ function routeStep(table, at, peerCidr, peer) {
     const why = `${t.resource} has no route to the subnet of ${peer}`;
     return { decision: "deny", resource: t.resource, rule: why, reason: why };
   }
-  return { decision: "allow", resource: t.resource, rule: texts.join("; ") };
+  return { decision: "allow", resource: t.resource, rule: texts.join("; "), ...listDoubt.length ? { doubt: `traffic to the subnet of ${peer} may match a prefix list route instead: ${listDoubt.join("; ")}` } : {} };
 }
 function naclStep(nacl, at, dir, peerCidr, peer, p, ports, ephemeral) {
   if (!nacl.ok) return { decision: "unknown", resource: at, rule: nacl.reason, reason: nacl.reason };
@@ -399,7 +407,9 @@ var absent2 = { verdict: "absent", sources: [], hops: [], reason: "the resource 
 function evaluateInternal(a, t, p, ports) {
   if (!a || !t) return absent2;
   const hops = [];
+  const doubts = [];
   const run2 = (hop, s) => {
+    if (s.doubt) doubts.push(s.doubt);
     hops.push({ hop, resource: s.resource, decision: s.decision, rule: s.rule, doc: DOC2[hop] ?? SG_DOC });
     if (s.decision === "deny") return { verdict: "blocked", sources: [], hops, reason: s.reason ?? s.rule };
     if (s.decision === "unknown") return { verdict: "unknown", sources: [], hops, reason: s.reason ?? s.rule };
@@ -436,7 +446,7 @@ function evaluateInternal(a, t, p, ports) {
   if (n7) return n7;
   const r8 = run2("target-route", routeStep(t.routeTable, t.address, aCidr, a.address));
   if (r8) return r8;
-  return { verdict: "allowed", sources: [a.address], hops, reason: "" };
+  return { verdict: "allowed", sources: [a.address], hops, reason: doubts.join("; ") };
 }
 function referencedPorts(a, t, p) {
   const keys = groupKeys(a);
@@ -631,6 +641,7 @@ var dropOf = (key) => {
   const d = DROP[key];
   return d ? { kind: "drop", ...d } : void 0;
 };
+var NO_LISTS = { set: [], entries: [], names: [] };
 var groupLabel = (key) => key.startsWith("default-sg:") ? `default security group of ${key.slice("default-sg:".length)}` : key;
 var fullRefsHasAttr = (refs, ref) => refs.some((o) => o.startsWith(`${ref}.`));
 function subnetCidrOf(s) {
@@ -720,6 +731,8 @@ var ModelBuilder = class {
   eips = new Index();
   /** VPC address to internet gateways attached by aws_internet_gateway_attachment. */
   igwAttach = new Index();
+  /** Prefix list address to aws_ec2_managed_prefix_list_entry CIDRs. */
+  plEntries = new Index();
   /** Unmodeled resources whose target cannot be resolved: they may change anything of their kind. */
   touchesAnything = [];
   /** Reason why `address` is unknown because an unmodeled resource of `types` changes it. */
@@ -838,21 +851,25 @@ var ModelBuilder = class {
           }
           const egress = r.values.type === "egress";
           const groups = this.ruleGroups(r, "source_security_group_id", r.values.self === true);
-          this.addSgRule(r, this.sgRuleOf(r, egress, r.values.protocol, r.values.from_port, r.values.to_port, arr(r.values.cidr_blocks).map(String), arr(r.values.prefix_list_ids).length > 0, groups, ["protocol", "from_port", "to_port", "cidr_blocks", "prefix_list_ids", "self"]), egress);
+          const lists = isNull(r, "prefix_list_ids") || !isUnknown(r, ["prefix_list_ids"]) && !arr(r.values.prefix_list_ids).length ? NO_LISTS : this.listsOf(resolveRefs(this.snap, r, "prefix_list_ids", "aws_ec2_managed_prefix_list"));
+          this.addSgRule(r, this.sgRuleOf(r, egress, r.values.protocol, r.values.from_port, r.values.to_port, arr(r.values.cidr_blocks).map(String), lists, groups, ["protocol", "from_port", "to_port", "cidr_blocks", "self"]), egress);
           break;
         }
         case "aws_vpc_security_group_ingress_rule": {
           const cidr = str(r.values.cidr_ipv4);
-          this.addSgRule(r, this.sgRuleOf(r, false, r.values.ip_protocol, r.values.from_port, r.values.to_port, cidr ? [cidr] : [], !!str(r.values.prefix_list_id), this.ruleGroups(r, "referenced_security_group_id", false), ["ip_protocol", "from_port", "to_port", "cidr_ipv4", "prefix_list_id"]), false);
+          this.addSgRule(r, this.sgRuleOf(r, false, r.values.ip_protocol, r.values.from_port, r.values.to_port, cidr ? [cidr] : [], this.ruleList(r), this.ruleGroups(r, "referenced_security_group_id", false), ["ip_protocol", "from_port", "to_port", "cidr_ipv4"]), false);
           break;
         }
         case "aws_vpc_security_group_egress_rule": {
           const cidr = str(r.values.cidr_ipv4);
-          this.addSgRule(r, this.sgRuleOf(r, true, r.values.ip_protocol, r.values.from_port, r.values.to_port, cidr ? [cidr] : [], !!str(r.values.prefix_list_id), this.ruleGroups(r, "referenced_security_group_id", false), ["ip_protocol", "from_port", "to_port", "cidr_ipv4", "prefix_list_id"]), true);
+          this.addSgRule(r, this.sgRuleOf(r, true, r.values.ip_protocol, r.values.from_port, r.values.to_port, cidr ? [cidr] : [], this.ruleList(r), this.ruleGroups(r, "referenced_security_group_id", false), ["ip_protocol", "from_port", "to_port", "cidr_ipv4"]), true);
           break;
         }
         case "aws_route": {
-          this.routes.add(this.target(r, "route_table_id"), this.routeOf(r), r.address);
+          const key = this.target(r, "route_table_id");
+          const list = this.routeOf(r);
+          if (!list.ok) this.routes.add(key, list, r.address);
+          else for (const route of list.value) this.routes.add(key, known(route), r.address);
           break;
         }
         case "aws_network_acl_rule": {
@@ -882,6 +899,11 @@ var ModelBuilder = class {
           else this.eips.add(this.optionalRefTo(r, "instance_id", "aws_instance"), known(r.address), r.address);
           break;
         }
+        case "aws_ec2_managed_prefix_list_entry": {
+          const cidr = str(r.values.cidr);
+          this.plEntries.add(this.optionalRefTo(r, "prefix_list_id", "aws_ec2_managed_prefix_list"), isUnknown(r, ["cidr"]) || !cidr ? unknown(`${r.address}: cidr is unknown until apply`) : known(cidr), r.address);
+          break;
+        }
         case "aws_internet_gateway_attachment": {
           const igw = this.refTo(r, "internet_gateway_id", "aws_internet_gateway");
           this.igwAttach.add(this.optionalRefTo(r, "vpc_id", "aws_vpc"), igw, r.address);
@@ -907,20 +929,77 @@ var ModelBuilder = class {
     take(this.target(r, attr));
     return { keys: [...new Set(keys)].toSorted(cmp), ...reasons.length ? { unresolved: reasons.join("; ") } : {} };
   }
-  sgRuleOf(r, egress, protocolValue, from, to, cidrs, prefixList, groups, fields) {
+  /**
+   * A customer-managed prefix list in the plan, expanded to its IPv4 CIDRs: inline
+   * `entry` blocks and aws_ec2_managed_prefix_list_entry resources. A list of the IPv6
+   * family has no IPv4 addresses.
+   * https://docs.aws.amazon.com/vpc/latest/userguide/managed-prefix-lists.html
+   */
+  prefixList(address) {
+    const r = this.get(address);
+    if (!r || r.type !== "aws_ec2_managed_prefix_list") return unknown(`${address} is not a prefix list in this plan`);
+    if (isUnknown(r, ["address_family"])) return unknown(`${address}: address_family is unknown until apply`);
+    if (String(r.values.address_family) === "IPv6") return known([]);
+    if (isUnknown(r, ["entry"])) {
+      if (r.configured.has("entry")) return unknown(`${address}: entry is unknown until apply`);
+    } else if (arr(r.values.entry).some((_, i) => hasUnknown(r, ["entry", i, "cidr"]))) return unknown(`${address}: an entry is unknown until apply`);
+    const cidrs = isUnknown(r, ["entry"]) ? [] : arr(r.values.entry).map((e) => isObj(e) ? str(e.cidr) : void 0);
+    const extra = this.plEntries.get(address);
+    if (!extra.ok) return unknown(extra.reason);
+    const out = [];
+    for (const c of [...cidrs, ...extra.value]) {
+      const set = c ? cidrToSet(c) : void 0;
+      if (!c || !set) return unknown(`${address} has an entry the engine cannot read`);
+      out.push({ cidr: c, set });
+    }
+    return known(out.toSorted((a, b) => cmp(a.cidr, b.cidr)));
+  }
+  /** Prefix lists from references: expanded when in the plan, else a reason (AWS-managed lists cannot be expanded offline). */
+  listsOf(refs) {
+    const out = { set: [], entries: [], names: [] };
+    const reasons = [];
+    for (const ref of refs) {
+      if (ref.kind === "unknown") reasons.push(ref.reason);
+      else if (ref.kind === "external") {
+        out.names.push(ref.id);
+        reasons.push(`prefix list ${ref.id} is not in this plan (for example one that AWS manages), so its addresses cannot be expanded offline`);
+      } else {
+        out.names.push(ref.address);
+        const l = this.prefixList(ref.address);
+        if (!l.ok) reasons.push(l.reason);
+        else for (const e of l.value) out.entries.push(e);
+      }
+    }
+    out.set = fromRanges(out.entries.flatMap((e) => e.set));
+    return reasons.length ? { ...out, unresolved: reasons.join("; ") } : out;
+  }
+  /** `prefix_list_id` on aws_vpc_security_group_ingress_rule and _egress_rule. */
+  ruleList(r) {
+    return isNull(r, "prefix_list_id") ? NO_LISTS : this.listsOf(resolveRefs(this.snap, r, "prefix_list_id", "aws_ec2_managed_prefix_list"));
+  }
+  /** Prefix list IDs inside a block (`ingress[0].prefix_list_ids`): known IDs only. */
+  blockLists(r, path, ids) {
+    if (isUnknown(r, path)) return { ...NO_LISTS, unresolved: `${r.address}: ${path.join(".")} is unknown until apply` };
+    const refs = arr(ids).map((id, j) => {
+      if (isUnknown(r, [...path, j]) || typeof id !== "string") return { kind: "unknown", reason: `${r.address}: a prefix list ID is unknown until apply` };
+      const a = this.snap.byId.get(id);
+      return a ? { kind: "resource", address: a } : { kind: "external", id };
+    });
+    return this.listsOf(refs);
+  }
+  sgRuleOf(r, egress, protocolValue, from, to, cidrs, lists, groups, fields) {
     if (fields.some((f) => hasUnknown(r, [f]))) return unknown(`${r.address} has values that are unknown until apply`);
-    if (prefixList) return unknown(`${r.address} uses a prefix list, which is not modeled yet`);
-    if (!cidrs.length && !groups.keys.length && !groups.unresolved) return known(null);
+    if (!cidrs.length && !lists.names.length && !lists.unresolved && !groups.keys.length && !groups.unresolved) return known(null);
     const protocol = normalizeProtocol(protocolValue);
     if (protocol === "other") return known(null);
     const ports = portSet(protocol, from, to);
     const sets = cidrs.map((c) => cidrToSet(c));
     if (!ports || sets.some((s) => !s)) return unknown(`${r.address} has a value the engine cannot read`);
-    return known(this.rule(r.address, egress, protocol, ports, sets.flat(), cidrs, groups, describePorts(protocol, from, to)));
+    return known(this.rule(r.address, egress, protocol, ports, sets.flat(), cidrs, groups, describePorts(protocol, from, to), lists));
   }
-  rule(address, egress, protocol, ports, ranges, cidrs, groups, portText) {
-    const peers = [...cidrs, ...groups.keys.map(groupLabel), ...groups.unresolved ? ["a security group that is unknown until apply"] : []];
-    return { protocol, ports, sources: fromRanges(ranges), groups: groups.keys, ...groups.unresolved ? { unresolved: groups.unresolved } : {}, resource: address, text: `${address} ${egress ? "egress" : "ingress"} ${portText} ${egress ? "to" : "from"} ${peers.join(", ")}` };
+  rule(address, egress, protocol, ports, ranges, cidrs, groups, portText, lists = NO_LISTS) {
+    const peers = [...cidrs, ...lists.names.map((n) => `prefix list ${n}`), ...lists.unresolved && !lists.names.length ? ["a prefix list that is unknown until apply"] : [], ...groups.keys.map(groupLabel), ...groups.unresolved ? ["a security group that is unknown until apply"] : []];
+    return { protocol, ports, sources: fromRanges([...ranges, ...lists.set]), groups: groups.keys, ...groups.unresolved ? { unresolved: groups.unresolved } : {}, ...lists.unresolved ? { listUnresolved: lists.unresolved } : {}, resource: address, text: `${address} ${egress ? "egress" : "ingress"} ${portText} ${egress ? "to" : "from"} ${peers.join(", ")}` };
   }
   naclRuleOf(r) {
     if (["egress", "rule_number", "protocol", "rule_action", "cidr_block", "from_port", "to_port"].some((f) => hasUnknown(r, [f]))) return unknown(`${r.address} has values that are unknown until apply`);
@@ -945,16 +1024,27 @@ var ModelBuilder = class {
     if (t === "aws_nat_gateway") return dropOf("nat_gateway_id");
     return { kind: "other", text: t.replace(/^aws_/, "").replaceAll("_", " ") };
   }
+  /**
+   * Routes for a prefix list destination: one per entry, each with its own length, so
+   * longest prefix match works per entry. A list that cannot be expanded gives one route
+   * with no CIDR and a reason. Static routes win ties over prefix list routes; the engine
+   * reports a tie as unknown instead.
+   * https://docs.aws.amazon.com/vpc/latest/userguide/route-tables-priority.html
+   */
+  listRoutes(lists, target, label) {
+    const to = target.kind === "igw" ? target.address : target.kind === "other" || target.kind === "drop" ? target.text : target.kind;
+    const out = lists.entries.map((e) => ({ cidr: e.set, prefix: cidrPrefixLength(e.cidr) ?? 0, target, text: `${label} ${e.cidr} (prefix list ${lists.names.join(", ")}) -> ${to}` }));
+    if (lists.unresolved) out.push({ cidr: [], prefix: 0, target, text: `${label} prefix list ${lists.names.join(", ") || "(unknown)"} -> ${to}`, listUnresolved: lists.unresolved });
+    return out;
+  }
   routeOf(r) {
     if (hasUnknown(r, ["destination_cidr_block"])) return unknown(`${r.address}: destination is unknown until apply`);
     const cidr = str(r.values.destination_cidr_block);
-    if (!cidr) {
-      if (str(r.values.destination_prefix_list_id) || isUnknown(r, ["destination_prefix_list_id"])) return unknown(`${r.address} uses a prefix list, which is not modeled yet`);
-      return known({ cidr: [], prefix: 0, target: { kind: "local" }, text: `${r.address} (IPv6)` });
-    }
-    const set = cidrToSet(cidr);
-    const prefix = cidrPrefixLength(cidr);
-    if (!set || prefix === void 0) return unknown(`${r.address}: destination ${cidr} cannot be read`);
+    const listed = !cidr && (str(r.values.destination_prefix_list_id) || isUnknown(r, ["destination_prefix_list_id"]) && r.configured.has("destination_prefix_list_id"));
+    if (!cidr && !listed) return known([{ cidr: [], prefix: 0, target: { kind: "local" }, text: `${r.address} (IPv6)` }]);
+    const set = cidr ? cidrToSet(cidr) : [];
+    const prefix = cidr ? cidrPrefixLength(cidr) : 0;
+    if (!set || prefix === void 0) return unknown(`${r.address}: destination ${cidr ?? ""} cannot be read`);
     let target;
     if (r.values.gateway_id === "local") target = { kind: "local" };
     else if (!isNull(r, "gateway_id")) {
@@ -968,8 +1058,9 @@ var ModelBuilder = class {
       target = other ? dropOf(other) ?? { kind: "other", text: other.replace(/_id$|_arn$/, "").replaceAll("_", " ") } : { kind: "unknown", reason: `${r.address} has no target the engine can read` };
     }
     if (!isUnknown(r, ["state"]) && r.values.state === "blackhole") target = { kind: "drop", ...BLACKHOLE };
+    if (listed) return known(this.listRoutes(this.listsOf(resolveRefs(this.snap, r, "destination_prefix_list_id", "aws_ec2_managed_prefix_list")), target, r.address));
     const to = target.kind === "igw" ? target.address : target.kind === "other" || target.kind === "drop" ? target.text : target.kind;
-    return known({ cidr: set, prefix, target, text: `${r.address} ${cidr} -> ${to}` });
+    return known([{ cidr: set, prefix, target, text: `${r.address} ${cidr} -> ${to}` }]);
   }
   vpc(address) {
     const r = this.get(address);
@@ -1035,17 +1126,17 @@ var ModelBuilder = class {
     const rules = [];
     for (const [i, raw] of blocks.entries()) {
       if (!isObj(raw)) continue;
-      if (["protocol", "from_port", "to_port", "cidr_blocks", "prefix_list_ids", "self"].some((f) => hasUnknown(r, [dir, i, f]))) return unknown(`${address}: ${dir} rule ${i} has values that are unknown until apply`);
+      if (["protocol", "from_port", "to_port", "cidr_blocks", "self"].some((f) => hasUnknown(r, [dir, i, f]))) return unknown(`${address}: ${dir} rule ${i} has values that are unknown until apply`);
       const protocol = normalizeProtocol(raw.protocol);
       if (protocol === "other") continue;
       const ports = portSet(protocol, raw.from_port, raw.to_port);
       const cidrs = arr(raw.cidr_blocks).map(String);
-      if (arr(raw.prefix_list_ids).length) return unknown(`${address}: ${dir} rule ${i} uses a prefix list, which is not modeled yet`);
+      const lists = arr(raw.prefix_list_ids).length || isUnknown(r, [dir, i, "prefix_list_ids"]) ? this.blockLists(r, [dir, i, "prefix_list_ids"], raw.prefix_list_ids) : NO_LISTS;
       const sets = cidrs.map((c) => cidrToSet(c));
       if (!ports || sets.some((s) => !s)) return unknown(`${address}: ${dir} rule ${i} has a value the engine cannot read`);
       const groups = this.inlineGroups(r, dir, i, blocks, key);
-      if (!cidrs.length && !groups.keys.length && !groups.unresolved) continue;
-      rules.push(this.rule(address, dir === "egress", protocol, ports, sets.flat(), cidrs, groups, describePorts(protocol, raw.from_port, raw.to_port)));
+      if (!cidrs.length && !lists.names.length && !lists.unresolved && !groups.keys.length && !groups.unresolved) continue;
+      rules.push(this.rule(address, dir === "egress", protocol, ports, sets.flat(), cidrs, groups, describePorts(protocol, raw.from_port, raw.to_port), lists));
     }
     return known([...rules, ...extra.value]);
   }
@@ -1222,7 +1313,8 @@ var ModelBuilder = class {
       if (isUnknown(r, ["route", i, "cidr_block"])) return unknown(`${r.address}: route ${i} destination is unknown until apply`);
       const cidr = str(raw.cidr_block);
       if (!cidr) {
-        if (str(raw.destination_prefix_list_id)) return unknown(`${r.address}: route ${i} uses a prefix list, which is not modeled yet`);
+        const pl = isUnknown(r, ["route", i, "destination_prefix_list_id"]) || str(raw.destination_prefix_list_id);
+        if (pl) routes.push(...this.listRoutes(this.blockLists(r, ["route", i, "destination_prefix_list_id"], [raw.destination_prefix_list_id]), this.routeTarget(r, raw, ["route", i], unknownGateways, knownGateways), `${r.address} route`));
         continue;
       }
       const set = cidrToSet(cidr);
@@ -1258,7 +1350,7 @@ var ModelBuilder = class {
     const extra = this.routes.get(key);
     if (!extra.ok) return { resource, routes: extra };
     if (!vpc.cidrs.ok) return { resource, routes: unknown(vpc.cidrs.reason) };
-    return { resource, routes: known([...localRoutes(vpc, resource, vpc.cidrs.value), ...base.value, ...extra.value.filter((x) => x.cidr.length)]) };
+    return { resource, routes: known([...localRoutes(vpc, resource, vpc.cidrs.value), ...base.value, ...extra.value.filter((x) => x.cidr.length || x.listUnresolved)]) };
   }
   /**
    * The route table of a subnet: an explicit association, else the VPC's main route table.
@@ -1645,6 +1737,8 @@ var MODELED = /* @__PURE__ */ new Set([
   "aws_lb",
   "aws_lb_listener",
   "aws_nat_gateway",
+  "aws_ec2_managed_prefix_list",
+  "aws_ec2_managed_prefix_list_entry",
   "aws_rds_cluster",
   "aws_rds_cluster_instance",
   "aws_ecs_service",

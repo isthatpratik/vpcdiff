@@ -73,6 +73,18 @@ Returns `unknown` with a reason:
 
 - A rule resource whose target group cannot be resolved. Then every group is unknown,
   because the rule could belong to any of them.
-- A source that is a prefix list. It can contain public ranges that the engine cannot
-  expand offline.
+- A source that is a prefix list outside the plan (for example one that AWS manages),
+  when no other rule allows the port. When another rule allows some sources, the path
+  stays decided and the list's sources are reported as undecided.
 - Any rule value that is unknown in the plan (`after_unknown`).
+
+## Prefix lists (#33)
+
+- A rule can name a managed prefix list (`prefix_list_ids`, `prefix_list_id`). It
+  allows the list's entries.
+  Source: <https://docs.aws.amazon.com/vpc/latest/userguide/managed-prefix-lists.html>
+- A customer-managed list in the plan (`aws_ec2_managed_prefix_list` with inline `entry`
+  blocks and `aws_ec2_managed_prefix_list_entry` resources) is expanded to its IPv4
+  CIDRs. A list of the IPv6 family has no IPv4 entries.
+- A list outside the plan, such as an AWS-managed list, cannot be expanded offline. Its
+  addresses are undecided: never counted as allowed or blocked.
