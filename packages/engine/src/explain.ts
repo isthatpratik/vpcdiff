@@ -51,9 +51,9 @@ export function portLabel(path: Pick<Path, "protocol" | "ports">): string {
  * path only (not a host firewall or whether a service listens), and IPv4 only, so the
  * words say what the network allows, not who can log in.
  */
-export function whoText(sources: string[]): string {
+export function whoText(sources: string[], family?: "ipv6"): string {
   if (!sources.length) return "nobody";
-  if (sources.length === 1 && sources[0] === "internet") return "any public IPv4 address";
+  if (sources.length === 1 && sources[0] === "internet") return family === "ipv6" ? "any public IPv6 address" : "any public IPv4 address";
   return sources.join(", ");
 }
 
@@ -191,7 +191,7 @@ function baseVerdict(path: Path): Verdict {
     return {
       tone: "danger",
       title: path.after.sources.includes("internet") ? "Opened to the internet" : "Opened to some addresses",
-      body: `After this plan, the network lets ${whoText(path.after.sources)} reach ${path.to} on ${port}.`,
+      body: `After this plan, the network lets ${whoText(path.after.sources, path.family)} reach ${path.to} on ${port}.`,
       ...(cause ? { cause } : {}),
       action:
         path.after.sources.includes("internet")
@@ -215,7 +215,7 @@ function baseVerdict(path: Path): Verdict {
     return {
       tone: "warning",
       title: "Reachable from different sources",
-      body: `${path.to} stays reachable on ${port}. Before: ${whoText(path.before.sources)}. After: ${whoText(path.after.sources)}.`,
+      body: `${path.to} stays reachable on ${port}. Before: ${whoText(path.before.sources, path.family)}. After: ${whoText(path.after.sources, path.family)}.`,
       ...(cause ? { cause } : {}),
       action: "Check that the new source ranges are the ones you mean to allow.",
     };
@@ -246,7 +246,7 @@ function baseVerdict(path: Path): Verdict {
     return { tone: "neutral", title: "New, and not reachable", body: `This plan creates ${path.to}, and ${from} cannot reach it on ${port}${at ? `: it is blocked at the ${at}` : ""}.`, ...(cause ? { cause } : {}) };
   }
   if (path.after.verdict === "allowed") {
-    return { tone: "neutral", title: "No change", body: `${path.to} is reachable on ${port} from ${whoText(path.after.sources)}, before and after this plan.` };
+    return { tone: "neutral", title: "No change", body: `${path.to} is reachable on ${port} from ${whoText(path.after.sources, path.family)}, before and after this plan.` };
   }
   const at = stoppedAt(path, "after");
   return { tone: "neutral", title: "Stays blocked", body: `${from === "the internet" ? "The internet" : from} cannot reach ${path.to} on ${port}, before or after this plan${at ? `: it is blocked at the ${at}` : ""}.` };
@@ -315,7 +315,9 @@ export function planVerdict(result: Result): PlanVerdict {
   const cutInside = count((p) => p.change === "removed" && !isInternet(p));
   if (opened) {
     const wide = count((p) => p.change === "added" && p.after.sources.includes("internet"));
-    return { tone: "danger", title: "Fix before merge", detail: wide ? `${plural(wide, "path opens", "paths open")} to any public IPv4 address` : `${plural(opened, "path opens", "paths open")} to some addresses` };
+    const families = new Set(result.paths.filter((p) => p.change === "added" && p.after.sources.includes("internet")).map((p) => p.family ?? "ipv4"));
+    const any = families.size === 1 && families.has("ipv6") ? "any public IPv6 address" : families.size === 1 ? "any public IPv4 address" : "any public address";
+    return { tone: "danger", title: "Fix before merge", detail: wide ? `${plural(wide, "path opens", "paths open")} to ${any}` : `${plural(opened, "path opens", "paths open")} to some addresses` };
   }
   if (s.unknown) return { tone: "warning", title: "Check by hand", detail: `vpcdiff could not decide ${plural(s.unknown, "path", "paths")}` };
   if (risky || s.changed || openedInside || cutInside) {
@@ -339,7 +341,7 @@ function headline(path: Path): string {
 /** One path as Markdown, to paste into a pull request comment. */
 export function pathMarkdown(path: Path): string {
   const v = verdictOf(path);
-  const lines = [`**${headline(path)}** · ${isInternet(path) ? "internet" : mdCode(path.from)} → ${mdCode(path.to)} ${portLabel(path)}`, "", mdText(v.body)];
+  const lines = [`**${headline(path)}** · ${isInternet(path) ? (path.family === "ipv6" ? "internet (IPv6)" : "internet") : mdCode(path.from)} → ${mdCode(path.to)} ${portLabel(path)}`, "", mdText(v.body)];
   if (v.doubt) lines.push("", `**Partly undecided:** ${mdText(v.doubt)}`);
   if (v.cause && v.cause.rule) lines.push("", `Decided at the ${v.cause.hop} hop: ${mdCode(v.cause.rule)}`);
   if (v.action) lines.push("", mdText(v.action));
@@ -348,7 +350,7 @@ export function pathMarkdown(path: Path): string {
 }
 
 /** What the engine checks, for the scope line in the viewer and the Markdown. */
-export const SCOPE = "IPv4 paths from the internet and inside the VPC";
+export const SCOPE = "paths from the internet (IPv4 and IPv6) and inside the VPC (IPv4)";
 
 /**
  * The whole plan as Markdown: the counts, the scope, every path that changes or carries a

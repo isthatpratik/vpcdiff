@@ -668,7 +668,8 @@ function PathCard({ path, open, onToggle }: { path: Path; open: boolean; onToggl
             </span>
             <span className="flex min-w-0 flex-wrap items-center gap-x-2 pl-6 font-litt-mono text-litt-caption text-litt-fg-muted sm:pl-0">
               <span>{portLabel(path)}</span>
-              {inside ? <span className="font-sans text-litt-fg-subtle">inside the VPC</span> : src.length > 0 && <span className="text-litt-fg-subtle">from {src.includes("internet") ? "0.0.0.0/0" : src.join(", ")}</span>}
+              {path.family === "ipv6" && <span className="rounded-[4px] border border-litt-line px-1.5 font-sans text-litt-fg-muted">IPv6</span>}
+              {inside ? <span className="font-sans text-litt-fg-subtle">inside the VPC</span> : src.length > 0 && <span className="text-litt-fg-subtle">from {src.includes("internet") ? (path.family === "ipv6" ? "::/0" : "0.0.0.0/0") : src.join(", ")}</span>}
             </span>
           </span>
           <span className="hidden shrink-0 text-litt-caption text-litt-fg-subtle md:inline">{changeWords(path)}</span>

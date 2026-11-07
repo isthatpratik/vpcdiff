@@ -54,6 +54,8 @@ export interface Path {
   from: string;
   /** Resource type of the source endpoint. Absent for internet paths. */
   fromType?: string;
+  /** "ipv6" for an IPv6 path from the internet; absent for IPv4. */
+  family?: "ipv6";
   to: string;
   toType: string;
   protocol: Protocol;

@@ -187,7 +187,7 @@ reported as `unknown` with a reason, never as allowed or blocked by guess.
 | Response routes to a NAT gateway, a VPC peering connection, or a blackhole | supported (they block internet paths) |
 | Transit Gateway, VPN gateway, middlebox network interfaces | unknown (routing continues outside the plan) |
 | `aws_vpc_endpoint` Interface (target inside the VPC) and Gateway (prefix list route; its addresses undecided) | supported |
-| IPv6 | not yet; unknown or noted |
+| IPv6 from the internet to EC2 instances and dual-stack load balancers; egress-only internet gateways | supported (paths inside the VPC are IPv4 only) |
 
 Paths evaluated: from the internet to each endpoint, for every TCP and UDP port that one
 of its security groups opens to a public address.

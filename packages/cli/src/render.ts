@@ -46,7 +46,7 @@ export function renderText(result: Result, opts: RenderOptions): string {
   const paths = visiblePaths(result, opts);
   if (!paths.length) lines.push("", "No reachability changes.");
   for (const p of paths) {
-    lines.push("", `${LABEL[p.change].padEnd(9)} ${p.from} -> ${p.to}  ${p.protocol}/${p.ports}`);
+    lines.push("", `${LABEL[p.change].padEnd(9)} ${p.from}${p.family === "ipv6" ? " (IPv6)" : ""} -> ${p.to}  ${p.protocol}/${p.ports}`);
     lines.push(`  before: ${outcomeLine(p.before)}`, `  after:  ${outcomeLine(p.after)}`);
     if (p.outageRisk) lines.push(`  ${riskLine(p)}`);
     const explain = p.after.verdict === "absent" ? p.before : p.after;
@@ -68,7 +68,7 @@ export function renderMarkdown(result: Result, opts: RenderOptions): string {
   if (!paths.length) lines.push("No reachability changes.", "");
   else {
     lines.push("| | Path | Port | Before | After |", "|---|---|---|---|---|");
-    for (const p of paths) lines.push(`| ${ICON[p.change]} ${p.change}${p.outageRisk ? " ⚠️" : ""} | ${p.from === "internet" ? "internet" : `\`${p.from}\``} → \`${p.to}\` | ${p.protocol}/${p.ports} | ${md(outcomeLine(p.before))} | ${md(outcomeLine(p.after))} |`);
+    for (const p of paths) lines.push(`| ${ICON[p.change]} ${p.change}${p.outageRisk ? " ⚠️" : ""} | ${p.from === "internet" ? (p.family === "ipv6" ? "internet (IPv6)" : "internet") : `\`${p.from}\``} → \`${p.to}\` | ${p.protocol}/${p.ports} | ${md(outcomeLine(p.before))} | ${md(outcomeLine(p.after))} |`);
     lines.push("");
     for (const p of paths.filter((x) => x.outageRisk)) lines.push(`> ⚠️ ${p.from === "internet" ? "" : `\`${p.from}\` → `}\`${p.to}\` ${p.protocol}/${p.ports}: ${md(riskLine(p))}`, "");
     for (const p of paths) {

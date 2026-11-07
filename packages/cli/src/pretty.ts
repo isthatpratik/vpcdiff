@@ -34,7 +34,7 @@ export function prettyPath(c: Colors, path: Path, full = false): string[] {
   const differs = oneSide ? cols.map(() => false) : rowsDiffer(lanes);
   const lines = [
     `${tone(c, v.tone, "●")} ${tone(c, v.tone, v.title)}`,
-    `  ${isInternet(path) ? "" : `${c.bold(path.from)} ${c.dim("→")} `}${c.bold(path.to)}  ${c.dim(portLabel(path))}  ${c.dim(changeWords(path))}`,
+    `  ${isInternet(path) ? "" : `${c.bold(path.from)} ${c.dim("→")} `}${c.bold(path.to)}  ${c.dim(portLabel(path))}${path.family === "ipv6" ? `  ${c.dim("IPv6")}` : ""}  ${c.dim(changeWords(path))}`,
     `  ${v.body}`,
   ];
   if (v.doubt) lines.push(`  ${c.yellow("Partly undecided:")} ${v.doubt}`);

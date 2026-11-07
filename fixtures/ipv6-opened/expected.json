@@ -1,0 +1,220 @@
+{
+  "format": "0.2",
+  "summary": {
+    "added": 1,
+    "removed": 0,
+    "changed": 0,
+    "unchanged": 1,
+    "unknown": 0
+  },
+  "paths": [
+    {
+      "id": "internet->aws_instance.web:tcp:443",
+      "from": "internet",
+      "to": "aws_instance.web",
+      "toType": "aws_instance",
+      "protocol": "tcp",
+      "ports": "443",
+      "change": "unchanged",
+      "before": {
+        "verdict": "allowed",
+        "sources": [
+          "internet"
+        ],
+        "hops": [
+          {
+            "hop": "public-ip",
+            "resource": "aws_instance.web",
+            "decision": "allow",
+            "rule": "aws_instance.web associate_public_ip_address = true",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/VPC_Internet_Gateway.html"
+          },
+          {
+            "hop": "internet-gateway",
+            "resource": "aws_internet_gateway.main",
+            "decision": "allow",
+            "rule": "aws_internet_gateway.main is attached to aws_vpc.main",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/VPC_Internet_Gateway.html"
+          },
+          {
+            "hop": "nacl-inbound",
+            "resource": "default NACL of aws_vpc.main",
+            "decision": "allow",
+            "rule": "default NACL of aws_vpc.main ingress rule 100: allow all traffic (AWS default)",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/nacl-rules.html"
+          },
+          {
+            "hop": "security-group",
+            "resource": "aws_security_group.web",
+            "decision": "allow",
+            "rule": "aws_security_group.web ingress tcp 443 from 0.0.0.0/0",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/security-group-rules.html"
+          },
+          {
+            "hop": "nacl-outbound",
+            "resource": "default NACL of aws_vpc.main",
+            "decision": "allow",
+            "rule": "default NACL of aws_vpc.main egress rule 100: allow all traffic (AWS default)",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/custom-network-acl.html#nacl-ephemeral-ports"
+          },
+          {
+            "hop": "route",
+            "resource": "aws_route_table.public",
+            "decision": "allow",
+            "rule": "aws_route_table.public route 0.0.0.0/0 -> aws_internet_gateway.main",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/route-tables-priority.html"
+          }
+        ],
+        "reason": ""
+      },
+      "after": {
+        "verdict": "allowed",
+        "sources": [
+          "internet"
+        ],
+        "hops": [
+          {
+            "hop": "public-ip",
+            "resource": "aws_instance.web",
+            "decision": "allow",
+            "rule": "aws_instance.web associate_public_ip_address = true",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/VPC_Internet_Gateway.html"
+          },
+          {
+            "hop": "internet-gateway",
+            "resource": "aws_internet_gateway.main",
+            "decision": "allow",
+            "rule": "aws_internet_gateway.main is attached to aws_vpc.main",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/VPC_Internet_Gateway.html"
+          },
+          {
+            "hop": "nacl-inbound",
+            "resource": "default NACL of aws_vpc.main",
+            "decision": "allow",
+            "rule": "default NACL of aws_vpc.main ingress rule 100: allow all traffic (AWS default)",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/nacl-rules.html"
+          },
+          {
+            "hop": "security-group",
+            "resource": "aws_security_group.web",
+            "decision": "allow",
+            "rule": "aws_security_group.web ingress tcp 443 from 0.0.0.0/0",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/security-group-rules.html"
+          },
+          {
+            "hop": "nacl-outbound",
+            "resource": "default NACL of aws_vpc.main",
+            "decision": "allow",
+            "rule": "default NACL of aws_vpc.main egress rule 100: allow all traffic (AWS default)",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/custom-network-acl.html#nacl-ephemeral-ports"
+          },
+          {
+            "hop": "route",
+            "resource": "aws_route_table.public",
+            "decision": "allow",
+            "rule": "aws_route_table.public route 0.0.0.0/0 -> aws_internet_gateway.main",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/route-tables-priority.html"
+          }
+        ],
+        "reason": ""
+      }
+    },
+    {
+      "id": "internet6->aws_instance.web:tcp:443",
+      "from": "internet",
+      "family": "ipv6",
+      "to": "aws_instance.web",
+      "toType": "aws_instance",
+      "protocol": "tcp",
+      "ports": "443",
+      "change": "added",
+      "before": {
+        "verdict": "blocked",
+        "sources": [],
+        "hops": [
+          {
+            "hop": "public-ip",
+            "resource": "aws_instance.web",
+            "decision": "allow",
+            "rule": "aws_instance.web ipv6_address_count = 1",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/vpc-ip-addressing.html"
+          },
+          {
+            "hop": "internet-gateway",
+            "resource": "aws_internet_gateway.main",
+            "decision": "allow",
+            "rule": "aws_internet_gateway.main is attached to aws_vpc.main",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/VPC_Internet_Gateway.html"
+          },
+          {
+            "hop": "nacl-inbound",
+            "resource": "default NACL of aws_vpc.main",
+            "decision": "allow",
+            "rule": "default NACL of aws_vpc.main ingress rule 101: allow all IPv6 traffic (AWS default)",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/nacl-rules.html"
+          },
+          {
+            "hop": "security-group",
+            "resource": "aws_security_group.web",
+            "decision": "deny",
+            "rule": "no ingress rule of aws_security_group.web allows tcp/443 from the IPv6 internet",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/security-group-rules.html"
+          }
+        ],
+        "reason": "no ingress rule of aws_security_group.web allows tcp/443 from the IPv6 internet"
+      },
+      "after": {
+        "verdict": "allowed",
+        "sources": [
+          "internet"
+        ],
+        "hops": [
+          {
+            "hop": "public-ip",
+            "resource": "aws_instance.web",
+            "decision": "allow",
+            "rule": "aws_instance.web ipv6_address_count = 1",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/vpc-ip-addressing.html"
+          },
+          {
+            "hop": "internet-gateway",
+            "resource": "aws_internet_gateway.main",
+            "decision": "allow",
+            "rule": "aws_internet_gateway.main is attached to aws_vpc.main",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/VPC_Internet_Gateway.html"
+          },
+          {
+            "hop": "nacl-inbound",
+            "resource": "default NACL of aws_vpc.main",
+            "decision": "allow",
+            "rule": "default NACL of aws_vpc.main ingress rule 101: allow all IPv6 traffic (AWS default)",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/nacl-rules.html"
+          },
+          {
+            "hop": "security-group",
+            "resource": "aws_security_group.web",
+            "decision": "allow",
+            "rule": "aws_security_group.web ingress tcp 443 from ::/0",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/security-group-rules.html"
+          },
+          {
+            "hop": "nacl-outbound",
+            "resource": "default NACL of aws_vpc.main",
+            "decision": "allow",
+            "rule": "default NACL of aws_vpc.main egress rule 101: allow all IPv6 traffic (AWS default)",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/custom-network-acl.html#nacl-ephemeral-ports"
+          },
+          {
+            "hop": "route",
+            "resource": "aws_route_table.public",
+            "decision": "allow",
+            "rule": "aws_route_table.public route ::/0 -> aws_internet_gateway.main",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/route-tables-priority.html"
+          }
+        ],
+        "reason": ""
+      }
+    }
+  ],
+  "notes": []
+}

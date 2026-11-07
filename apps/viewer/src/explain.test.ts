@@ -128,7 +128,7 @@ describe("trust", () => {
 
   it("puts the scope, the notes, and a reproducible footer in the plan summary", () => {
     const md = planMarkdown("plan.json", resultOf("sg-5432-opened"), { version: "0.1.0", sha256: "abcdef0123456789ffff" });
-    expect(md).toContain("Scope: IPv4 paths from the internet and inside the VPC.");
+    expect(md).toContain("Scope: paths from the internet (IPv4 and IPv6) and inside the VPC (IPv4).");
     expect(md).toContain("<sub>vpcdiff 0.1.0 · plan sha256 abcdef0123456789</sub>");
   });
 });

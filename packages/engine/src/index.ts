@@ -1,4 +1,5 @@
 import { evaluate, exposedPorts, portCuts, segment } from "./evaluate.js";
+import { evaluate6, exposedPorts6 } from "./evaluate6.js";
 import { evaluateInternal, internalCuts, referencedPorts } from "./internal.js";
 import { formatPorts, union, type IntervalSet, type Range } from "./intervals.js";
 import { ModelBuilder, type Endpoint } from "./model.js";
@@ -78,6 +79,12 @@ function endpointsOf(snap: Snapshot): Map<string, Endpoint[]> {
 function evaluateAll(list: Endpoint[] | undefined, p: Protocol, ports: Range): Outcome {
   if (!list?.length) return evaluate(undefined, p, ports);
   return combine(list.map((e) => evaluate(e, p, ports)), list.map((e) => (e.subnet.ok ? e.subnet.value : "unknown subnet")), list[0]?.placement);
+}
+
+/** IPv6 from the internet for all placements of an endpoint. */
+function evaluateAll6(list: Endpoint[] | undefined, p: Protocol, ports: Range): Outcome {
+  if (!list?.length) return evaluate6(undefined, p, ports);
+  return combine(list.map((e) => evaluate6(e, p, ports)), list.map((e) => (e.subnet.ok ? e.subnet.value : "unknown subnet")), list[0]?.placement);
 }
 
 /** A path inside the VPC for every pair of placements of the source and the target. */
@@ -184,6 +191,27 @@ export function analyze(plan: unknown): Result {
     );
   }
 
+  // IPv6 from the internet to each endpoint with an IPv6 address (docs/semantics/ipv6.md).
+  for (const address of addresses) {
+    const b = epBefore.get(address);
+    const a = epAfter.get(address);
+    const ports6 = (list: Endpoint[] | undefined, p: Protocol): IntervalSet => (list ?? []).reduce<IntervalSet>((acc, e) => union(acc, exposedPorts6(e, p).map(({ lo, hi }) => [lo, hi] as const)), []);
+    paths.push(
+      ...pathsOf({
+        id: `internet6->${address}`,
+        from: "internet",
+        family: "ipv6",
+        to: address,
+        toType: (a ?? b)?.[0]?.type ?? "",
+        candidates: (p) => union(ports6(b, p), ports6(a, p)),
+        cuts: [...(b ?? []).flatMap(portCuts), ...(a ?? []).flatMap(portCuts)],
+        before: (p, seg) => evaluateAll6(b, p, seg),
+        after: (p, seg) => evaluateAll6(a, p, seg),
+        risk: () => deleteFirst(a, after),
+      }),
+    );
+  }
+
   // Inside the VPC: from an endpoint to another whose security group references one of
   // its groups, on either side of the plan (docs/semantics/internal-paths.md).
   for (const from of addresses) {
@@ -258,6 +286,7 @@ function unresolvedNotes(list: Endpoint[]): Note[] {
 interface PathSpec {
   id: string;
   from: string;
+  family?: "ipv6";
   fromType?: string;
   to: string;
   toType: string;
@@ -277,7 +306,7 @@ function pathsOf(spec: PathSpec): Path[] {
       if (!run) return;
       const ports = formatPorts([run.ports]);
       const risk = run.before.verdict === "allowed" && run.after.verdict === "allowed" ? spec.risk() : [];
-      out.push({ id: `${spec.id}:${p}:${ports}`, from: spec.from, ...(spec.fromType !== undefined ? { fromType: spec.fromType } : {}), to: spec.to, toType: spec.toType, protocol: p, ports, change: changeOf(run.before, run.after), before: run.before, after: run.after, ...(risk.length ? { outageRisk: risk } : {}) });
+      out.push({ id: `${spec.id}:${p}:${ports}`, from: spec.from, ...(spec.fromType !== undefined ? { fromType: spec.fromType } : {}), ...(spec.family ? { family: spec.family } : {}), to: spec.to, toType: spec.toType, protocol: p, ports, change: changeOf(run.before, run.after), before: run.before, after: run.after, ...(risk.length ? { outageRisk: risk } : {}) });
       run = undefined;
     };
     for (const seg of segment(spec.candidates(p), spec.cuts)) {

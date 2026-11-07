@@ -307,11 +307,274 @@ function portCuts(ep) {
   return cuts;
 }
 
+// ../engine/src/intervals6.ts
+var EMPTY6 = [];
+var IPV6_MAX = (1n << 128n) - 1n;
+var max = (a, b) => a > b ? a : b;
+var min = (a, b) => a < b ? a : b;
+function fromRanges6(ranges) {
+  const sorted = ranges.filter(([lo, hi]) => lo <= hi).toSorted((a, b) => a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : a[1] < b[1] ? -1 : a[1] > b[1] ? 1 : 0);
+  const out = [];
+  for (const [lo, hi] of sorted) {
+    const last = out[out.length - 1];
+    if (last && lo <= last[1] + 1n) last[1] = max(last[1], hi);
+    else out.push([lo, hi]);
+  }
+  return out;
+}
+var union6 = (a, b) => fromRanges6([...a, ...b]);
+function intersect6(a, b) {
+  const out = [];
+  let i = 0;
+  let j = 0;
+  while (i < a.length && j < b.length) {
+    const [alo, ahi] = a[i];
+    const [blo, bhi] = b[j];
+    const lo = max(alo, blo);
+    const hi = min(ahi, bhi);
+    if (lo <= hi) out.push([lo, hi]);
+    if (ahi < bhi) i++;
+    else j++;
+  }
+  return out;
+}
+function subtract6(a, b) {
+  const out = [];
+  for (const [lo, hi] of a) {
+    let start = lo;
+    for (const [blo, bhi] of b) {
+      if (bhi < start || blo > hi) continue;
+      if (blo > start) out.push([start, blo - 1n]);
+      start = bhi + 1n;
+      if (start > hi) break;
+    }
+    if (start <= hi) out.push([start, hi]);
+  }
+  return out;
+}
+var isEmpty6 = (a) => a.length === 0;
+var equals6 = (a, b) => a.length === b.length && a.every(([lo, hi], i) => lo === b[i]?.[0] && hi === b[i]?.[1]);
+function parseIpv6(text) {
+  const t = text.trim().toLowerCase();
+  if (!/^[0-9a-f:]+$/.test(t) || t.split("::").length > 2) return void 0;
+  const [head = "", tail] = t.split("::");
+  const left = head ? head.split(":") : [];
+  const right = tail ? tail.split(":") : [];
+  const fill = tail === void 0 ? 0 : 8 - left.length - right.length;
+  if (fill < 0 || tail === void 0 && left.length !== 8) return void 0;
+  const groups = [...left, ...Array(fill).fill("0"), ...right];
+  if (groups.length !== 8 || groups.some((g) => !/^[0-9a-f]{1,4}$/.test(g))) return void 0;
+  return groups.reduce((n, g) => n << 16n | BigInt(Number.parseInt(g, 16)), 0n);
+}
+function formatIpv6(n) {
+  const groups = Array.from({ length: 8 }, (_, i) => Number(n >> BigInt(112 - i * 16) & 0xffffn));
+  let best = [-1, 0];
+  for (let i = 0; i < 8; ) {
+    if (groups[i] !== 0) {
+      i++;
+      continue;
+    }
+    let j = i;
+    while (j < 8 && groups[j] === 0) j++;
+    if (j - i > best[1] && j - i > 1) best = [i, j - i];
+    i = j;
+  }
+  const hex = groups.map((g) => g.toString(16));
+  const [at, len] = best;
+  if (at < 0) return hex.join(":");
+  return `${hex.slice(0, at).join(":")}::${hex.slice(at + len).join(":")}`;
+}
+function cidr6ToSet(cidr) {
+  const m = /^([0-9a-fA-F:]+)\/(\d{1,3})$/.exec(cidr.trim());
+  if (!m) return void 0;
+  const addr = parseIpv6(m[1]);
+  const len = Number(m[2]);
+  if (addr === void 0 || len > 128) return void 0;
+  const size = 1n << BigInt(128 - len);
+  const lo = addr / size * size;
+  return [[lo, lo + size - 1n]];
+}
+var prefixLength6 = (cidr) => cidr6ToSet(cidr) ? Number(cidr.split("/")[1]) : void 0;
+function set6ToCidrs(set) {
+  const out = [];
+  for (const [lo, hi] of set) {
+    let start = lo;
+    while (start <= hi) {
+      let bits = 0;
+      while (bits < 128 && start % (1n << BigInt(bits + 1)) === 0n && start + (1n << BigInt(bits + 1)) - 1n <= hi) bits++;
+      out.push(`${formatIpv6(start)}/${128 - bits}`);
+      start += 1n << BigInt(bits);
+    }
+  }
+  return out;
+}
+
+// ../engine/src/evaluate6.ts
+var DOC2 = {
+  "public-ip": "https://docs.aws.amazon.com/vpc/latest/userguide/vpc-ip-addressing.html",
+  "internet-gateway": "https://docs.aws.amazon.com/vpc/latest/userguide/VPC_Internet_Gateway.html",
+  "nacl-inbound": "https://docs.aws.amazon.com/vpc/latest/userguide/nacl-rules.html",
+  "security-group": "https://docs.aws.amazon.com/vpc/latest/userguide/security-group-rules.html",
+  "nacl-outbound": "https://docs.aws.amazon.com/vpc/latest/userguide/custom-network-acl.html#nacl-ephemeral-ports",
+  route: "https://docs.aws.amazon.com/vpc/latest/userguide/route-tables-priority.html"
+};
+var GLOBAL_UNICAST = cidr6ToSet("2000::/3");
+function internet6Of(ep) {
+  const own = ep.vpc.ok && ep.vpc.value.ipv6?.ok ? ep.vpc.value.ipv6.value?.cidrs : void 0;
+  return own ? subtract6(GLOBAL_UNICAST, own) : GLOBAL_UNICAST;
+}
+var protoMatches2 = (rule, p) => rule === "all" || rule === p;
+function naclEval6(rules, addrs, p, ports) {
+  let remaining = addrs;
+  let allowed = EMPTY6;
+  const texts = [];
+  for (const rule of rules) {
+    if (!rule.cidr6 || !protoMatches2(rule.protocol, p) || !contains(rule.ports, [ports])) continue;
+    const m = intersect6(remaining, rule.cidr6);
+    if (isEmpty6(m)) continue;
+    if (rule.allow) allowed = union6(allowed, m);
+    texts.push(rule.text);
+    remaining = subtract6(remaining, m);
+  }
+  if (!isEmpty6(remaining)) texts.push("rule *: deny all IPv6 traffic (implicit)");
+  return { allowed, texts };
+}
+var absent2 = { verdict: "absent", sources: [], hops: [], reason: "the resource does not exist on this side of the plan" };
+function evaluate6(ep, p, ports) {
+  if (!ep) return absent2;
+  const hops = [];
+  const universe = internet6Of(ep);
+  const portText = `${p}/${ports[0] === ports[1] ? ports[0] : `${ports[0]}-${ports[1]}`}`;
+  const add = (hop, resource, decision, rule) => hops.push({ hop, resource, decision, rule, doc: DOC2[hop] });
+  const stop = (verdict, reason) => ({ verdict, sources: [], hops, reason });
+  const unknownAt = (hop, resource, reason) => {
+    add(hop, resource, "unknown", reason);
+    return stop("unknown", reason);
+  };
+  const undecided = [];
+  const ip = ep.publicIp6 ?? { ok: true, value: void 0 };
+  if (!ip.ok) return unknownAt("public-ip", ep.address, ip.reason);
+  if (!ip.value) {
+    add("public-ip", ep.address, "deny", `${ep.address} has no IPv6 address`);
+    return stop("blocked", `${ep.address} has no IPv6 address`);
+  }
+  add("public-ip", ep.address, "allow", ip.value);
+  if (!ep.vpc.ok) return unknownAt("internet-gateway", ep.address, ep.vpc.reason);
+  const vpc = ep.vpc.value;
+  if (!vpc.igw.ok) return unknownAt("internet-gateway", vpc.address, vpc.igw.reason);
+  if (!vpc.igw.value) {
+    add("internet-gateway", vpc.address, "deny", `no internet gateway is attached to ${vpc.address}`);
+    return stop("blocked", `no internet gateway is attached to ${vpc.address}`);
+  }
+  const igw = vpc.igw.value;
+  add("internet-gateway", igw, "allow", `${igw} is attached to ${vpc.address}`);
+  if (!ep.nacl.ok) return unknownAt("nacl-inbound", ep.address, ep.nacl.reason);
+  const nacl = ep.nacl.value;
+  if (!nacl.ingress.ok) return unknownAt("nacl-inbound", nacl.resource, nacl.ingress.reason);
+  const inbound = naclEval6(nacl.ingress.value, universe, p, ports);
+  let sources = inbound.allowed;
+  if (isEmpty6(sources)) {
+    add("nacl-inbound", nacl.resource, "deny", inbound.texts.join("; "));
+    return stop("blocked", `${nacl.resource} denies ${portText} from the IPv6 internet`);
+  }
+  add("nacl-inbound", nacl.resource, equals6(sources, universe) ? "allow" : "partial", inbound.texts.join("; "));
+  if (!ep.securityGroups.ok) return unknownAt("security-group", ep.address, ep.securityGroups.reason);
+  const groups = ep.securityGroups.value;
+  const names = groups.map((g) => g.address).join(", ");
+  let allowed = EMPTY6;
+  const texts = [];
+  for (const g of groups) {
+    if (!g.ingress.ok) return unknownAt("security-group", g.address, g.ingress.reason);
+    for (const rule of g.ingress.value) {
+      if (!rule.sources6 || !protoMatches2(rule.protocol, p) || !contains(rule.ports, [ports])) continue;
+      if (isEmpty6(intersect6(rule.sources6, sources))) continue;
+      allowed = union6(allowed, rule.sources6);
+      texts.push(rule.text);
+    }
+  }
+  const afterSg = intersect6(sources, allowed);
+  if (isEmpty6(afterSg)) {
+    add("security-group", names, "deny", `no ingress rule of ${names} allows ${portText} from the IPv6 internet`);
+    return stop("blocked", `no ingress rule of ${names} allows ${portText} from the IPv6 internet`);
+  }
+  add("security-group", names, equals6(afterSg, sources) ? "allow" : "partial", texts.join("; "));
+  sources = afterSg;
+  if (!nacl.egress.ok) return unknownAt("nacl-outbound", nacl.resource, nacl.egress.reason);
+  let full = sources;
+  let some = EMPTY6;
+  const outTexts = /* @__PURE__ */ new Set();
+  for (const seg of segment(EPHEMERAL, nacl.egress.value.map((r) => r.ports))) {
+    const r = naclEval6(nacl.egress.value, sources, p, seg);
+    full = intersect6(full, r.allowed);
+    some = union6(some, r.allowed);
+    r.texts.forEach((t) => outTexts.add(t));
+  }
+  const outText = [...outTexts].join("; ");
+  if (isEmpty6(some)) {
+    add("nacl-outbound", nacl.resource, "deny", outText);
+    return stop("blocked", `${nacl.resource} denies the IPv6 response to the client's ephemeral ports`);
+  }
+  if (isEmpty6(full)) {
+    add("nacl-outbound", nacl.resource, "unknown", outText);
+    return stop("unknown", `${nacl.resource} allows the IPv6 response only for some client ephemeral ports; the result depends on the client's operating system`);
+  }
+  if (!isEmpty6(subtract6(some, full))) undecided.push("some IPv6 responses are allowed only for some client ephemeral ports");
+  add("nacl-outbound", nacl.resource, equals6(full, sources) ? "allow" : "partial", outText);
+  sources = full;
+  if (!ep.routeTable.ok) return unknownAt("route", ep.address, ep.routeTable.reason);
+  const table = ep.routeTable.value;
+  if (!table.routes.ok) return unknownAt("route", table.resource, table.routes.reason);
+  const routes = table.routes.value.filter((r) => r.cidr6).toSorted((a, b) => b.prefix - a.prefix);
+  let remaining = sources;
+  let viaIgw = EMPTY6;
+  let unresolved = EMPTY6;
+  const routeTexts = [];
+  const reasons = [];
+  const dropped = [];
+  for (const route of routes) {
+    const m = intersect6(remaining, route.cidr6);
+    if (isEmpty6(m)) continue;
+    routeTexts.push(route.text);
+    if (route.target.kind === "igw" && route.target.address === igw) viaIgw = union6(viaIgw, m);
+    else if (route.target.kind === "drop") dropped.push(`${route.text}: ${route.target.why}`);
+    else if (route.target.kind === "unknown") {
+      unresolved = union6(unresolved, m);
+      reasons.push(route.target.reason);
+    } else if (route.target.kind !== "local") {
+      unresolved = union6(unresolved, m);
+      reasons.push(`${route.text}: IPv6 responses through a ${route.target.kind === "other" ? route.target.text : route.target.kind} are not modeled yet`);
+    }
+    remaining = subtract6(remaining, m);
+  }
+  if (isEmpty6(viaIgw)) {
+    if (!isEmpty6(unresolved)) return unknownAt("route", table.resource, reasons.join("; "));
+    const why = dropped.length ? dropped.join("; ") : routeTexts.length ? routeTexts.join("; ") : `${table.resource} has no IPv6 route to the internet`;
+    add("route", table.resource, "deny", why);
+    return stop("blocked", `the IPv6 response cannot return to the internet: ${why}`);
+  }
+  if (!isEmpty6(unresolved)) undecided.push(`IPv6 responses to ${set6ToCidrs(unresolved).slice(0, 6).join(", ")} cannot be decided: ${reasons.join("; ")}`);
+  add("route", table.resource, equals6(viaIgw, sources) ? "allow" : "partial", routeTexts.join("; "));
+  return { verdict: "allowed", sources: equals6(viaIgw, universe) ? ["internet"] : set6ToCidrs(viaIgw), hops, reason: undecided.join("; ") };
+}
+function exposedPorts6(ep, p) {
+  if (!ep || !ep.publicIp6 || ep.publicIp6.ok && !ep.publicIp6.value) return [];
+  if (!ep.securityGroups.ok) return [{ lo: 0, hi: 65535 }];
+  const universe = internet6Of(ep);
+  const out = [];
+  for (const g of ep.securityGroups.value) {
+    if (!g.ingress.ok) return [{ lo: 0, hi: 65535 }];
+    for (const rule of g.ingress.value) {
+      if (rule.sources6 && protoMatches2(rule.protocol, p) && !isEmpty6(intersect6(rule.sources6, universe))) for (const [lo, hi] of rule.ports) out.push({ lo, hi });
+    }
+  }
+  return out;
+}
+
 // ../engine/src/internal.ts
 var SG_DOC = "https://docs.aws.amazon.com/vpc/latest/userguide/security-group-rules.html";
 var NACL_DOC = "https://docs.aws.amazon.com/vpc/latest/userguide/vpc-network-acls.html";
 var ROUTE_DOC = "https://docs.aws.amazon.com/vpc/latest/userguide/RouteTables.html";
-var DOC2 = {
+var DOC3 = {
   "source-security-group": SG_DOC,
   "source-route": ROUTE_DOC,
   "source-nacl-outbound": NACL_DOC,
@@ -322,7 +585,7 @@ var DOC2 = {
   "target-route": ROUTE_DOC
 };
 var SAME_SUBNET = "same subnet: no network ACL applies";
-var protoMatches2 = (rule, p) => rule === "all" || rule === p;
+var protoMatches3 = (rule, p) => rule === "all" || rule === p;
 function groupKeys(ep) {
   return ep.securityGroups.ok ? { ok: true, value: ep.securityGroups.value.map((g) => g.key) } : ep.securityGroups;
 }
@@ -334,7 +597,7 @@ function sgStep(groups, dir, peerKeys, peerCidr, peer, p, ports) {
     const rules = g[dir];
     if (!rules.ok) return { decision: "unknown", resource: g.address, rule: rules.reason, reason: rules.reason };
     for (const rule of rules.value) {
-      if (!protoMatches2(rule.protocol, p) || !contains(rule.ports, [ports])) continue;
+      if (!protoMatches3(rule.protocol, p) || !contains(rule.ports, [ports])) continue;
       if (rule.groups.some((k) => peerKeys.includes(k)) || contains(rule.sources, peerCidr)) allowing.push(rule.text);
       else if (!isEmpty(intersect(rule.sources, peerCidr))) doubt.push(`${rule.text} covers only part of the subnet of ${peer}, and its address is not known before apply`);
       else if (rule.unresolved) doubt.push(`${rule.text}: ${rule.unresolved}`);
@@ -440,14 +703,14 @@ function naclStep(nacl, at, dir, peerCidr, peer, p, ports, ephemeral) {
   const why = full + none === segs.length ? `${n.resource} allows the response only for some client ephemeral ports in ${formatPorts(EPHEMERAL)}; the result depends on the client's operating system` : `${n.resource} decides ${what} for only part of the subnet of ${peer}, and its address is not known before apply`;
   return { decision: "unknown", resource: n.resource, rule, reason: why };
 }
-var absent2 = { verdict: "absent", sources: [], hops: [], reason: "the resource does not exist on this side of the plan" };
+var absent3 = { verdict: "absent", sources: [], hops: [], reason: "the resource does not exist on this side of the plan" };
 function evaluateInternal(a, t, p, ports) {
-  if (!a || !t) return absent2;
+  if (!a || !t) return absent3;
   const hops = [];
   const doubts = [];
   const run2 = (hop, s) => {
     if (s.doubt) doubts.push(s.doubt);
-    hops.push({ hop, resource: s.resource, decision: s.decision, rule: s.rule, doc: DOC2[hop] ?? SG_DOC });
+    hops.push({ hop, resource: s.resource, decision: s.decision, rule: s.rule, doc: DOC3[hop] ?? SG_DOC });
     if (s.decision === "deny") return { verdict: "blocked", sources: [], hops, reason: s.reason ?? s.rule };
     if (s.decision === "unknown") return { verdict: "unknown", sources: [], hops, reason: s.reason ?? s.rule };
     return void 0;
@@ -491,7 +754,7 @@ function referencedPorts(a, t, p) {
   let out = EMPTY;
   for (const g of t.securityGroups.value) {
     if (!g.ingress.ok) continue;
-    for (const rule of g.ingress.value) if (protoMatches2(rule.protocol, p) && rule.groups.some((k) => keys.value.includes(k))) out = union(out, rule.ports);
+    for (const rule of g.ingress.value) if (protoMatches3(rule.protocol, p) && rule.groups.some((k) => keys.value.includes(k))) out = union(out, rule.ports);
   }
   return out;
 }
@@ -658,6 +921,7 @@ function resolveRef(snap, r, attr, targetType) {
 }
 
 // ../engine/src/model.ts
+var IPV6_ALL = [[0n, IPV6_MAX]];
 var known = (value) => ({ ok: true, value });
 var unknown = (reason) => ({ ok: false, reason });
 var UNMODELED_ROUTES = ["aws_vpn_gateway_route_propagation"];
@@ -671,7 +935,10 @@ var VPC_DEFAULTS = [
 ];
 var DROP = {
   nat_gateway_id: { text: "nat gateway", why: "a NAT gateway does not carry traffic for connections that start on the internet" },
-  vpc_peering_connection_id: { text: "vpc peering connection", why: "a peered VPC cannot use another VPC's internet gateway (no edge to edge routing)" }
+  vpc_peering_connection_id: { text: "vpc peering connection", why: "a peered VPC cannot use another VPC's internet gateway (no edge to edge routing)" },
+  // "prevent the internet from initiating connections with the instances"
+  // https://docs.aws.amazon.com/vpc/latest/userguide/egress-only-internet-gateway.html
+  egress_only_gateway_id: { text: "egress-only internet gateway", why: "an egress-only internet gateway does not carry traffic for connections that start on the internet" }
 };
 var BLACKHOLE = { text: "blackhole", why: "the route's target no longer exists, so AWS drops the traffic (route state blackhole)" };
 var dropOf = (key) => {
@@ -891,12 +1158,13 @@ var ModelBuilder = class {
           const egress = r.values.type === "egress";
           const groups = this.ruleGroups(r, "source_security_group_id", r.values.self === true);
           const lists = isNull(r, "prefix_list_ids") || !isUnknown(r, ["prefix_list_ids"]) && !arr(r.values.prefix_list_ids).length ? NO_LISTS : this.listsOf(resolveRefs(this.snap, r, "prefix_list_ids", "aws_ec2_managed_prefix_list"));
-          this.addSgRule(r, this.sgRuleOf(r, egress, r.values.protocol, r.values.from_port, r.values.to_port, arr(r.values.cidr_blocks).map(String), lists, groups, ["protocol", "from_port", "to_port", "cidr_blocks", "self"]), egress);
+          this.addSgRule(r, this.sgRuleOf(r, egress, r.values.protocol, r.values.from_port, r.values.to_port, arr(r.values.cidr_blocks).map(String), lists, groups, ["protocol", "from_port", "to_port", "cidr_blocks", "ipv6_cidr_blocks", "self"], arr(r.values.ipv6_cidr_blocks).map(String)), egress);
           break;
         }
         case "aws_vpc_security_group_ingress_rule": {
           const cidr = str(r.values.cidr_ipv4);
-          this.addSgRule(r, this.sgRuleOf(r, false, r.values.ip_protocol, r.values.from_port, r.values.to_port, cidr ? [cidr] : [], this.ruleList(r), this.ruleGroups(r, "referenced_security_group_id", false), ["ip_protocol", "from_port", "to_port", "cidr_ipv4"]), false);
+          const cidr6 = str(r.values.cidr_ipv6);
+          this.addSgRule(r, this.sgRuleOf(r, false, r.values.ip_protocol, r.values.from_port, r.values.to_port, cidr ? [cidr] : [], this.ruleList(r), this.ruleGroups(r, "referenced_security_group_id", false), ["ip_protocol", "from_port", "to_port", "cidr_ipv4", "cidr_ipv6"], cidr6 ? [cidr6] : []), false);
           break;
         }
         case "aws_vpc_security_group_egress_rule": {
@@ -1055,34 +1323,37 @@ var ModelBuilder = class {
     });
     return this.listsOf(refs);
   }
-  sgRuleOf(r, egress, protocolValue, from, to, cidrs, lists, groups, fields) {
+  sgRuleOf(r, egress, protocolValue, from, to, cidrs, lists, groups, fields, cidrs6 = []) {
     if (fields.some((f) => hasUnknown(r, [f]))) return unknown(`${r.address} has values that are unknown until apply`);
-    if (!cidrs.length && !lists.names.length && !lists.unresolved && !groups.keys.length && !groups.unresolved) return known(null);
+    if (!cidrs.length && !cidrs6.length && !lists.names.length && !lists.unresolved && !groups.keys.length && !groups.unresolved) return known(null);
     const protocol = normalizeProtocol(protocolValue);
     if (protocol === "other") return known(null);
     const ports = portSet(protocol, from, to);
     const sets = cidrs.map((c) => cidrToSet(c));
-    if (!ports || sets.some((s) => !s)) return unknown(`${r.address} has a value the engine cannot read`);
-    return known(this.rule(r.address, egress, protocol, ports, sets.flat(), cidrs, groups, describePorts(protocol, from, to), lists));
+    const sets6 = cidrs6.map((c) => cidr6ToSet(c));
+    if (!ports || sets.some((s) => !s) || sets6.some((s) => !s)) return unknown(`${r.address} has a value the engine cannot read`);
+    return known(this.rule(r.address, egress, protocol, ports, sets.flat(), cidrs, groups, describePorts(protocol, from, to), lists, cidrs6));
   }
-  rule(address, egress, protocol, ports, ranges, cidrs, groups, portText, lists = NO_LISTS) {
-    const peers = [...cidrs, ...lists.names.map((n) => `prefix list ${n}`), ...lists.unresolved && !lists.names.length ? ["a prefix list that is unknown until apply"] : [], ...groups.keys.map(groupLabel), ...groups.unresolved ? ["a security group that is unknown until apply"] : []];
-    return { protocol, ports, sources: fromRanges([...ranges, ...lists.set]), groups: groups.keys, ...groups.unresolved ? { unresolved: groups.unresolved } : {}, ...lists.unresolved ? { listUnresolved: lists.unresolved } : {}, resource: address, text: `${address} ${egress ? "egress" : "ingress"} ${portText} ${egress ? "to" : "from"} ${peers.join(", ")}` };
+  rule(address, egress, protocol, ports, ranges, cidrs, groups, portText, lists = NO_LISTS, cidrs6 = []) {
+    const sources6 = fromRanges6(cidrs6.flatMap((c) => cidr6ToSet(c) ?? []));
+    const peers = [...cidrs, ...cidrs6, ...lists.names.map((n) => `prefix list ${n}`), ...lists.unresolved && !lists.names.length ? ["a prefix list that is unknown until apply"] : [], ...groups.keys.map(groupLabel), ...groups.unresolved ? ["a security group that is unknown until apply"] : []];
+    return { protocol, ports, sources: fromRanges([...ranges, ...lists.set]), ...sources6.length ? { sources6 } : {}, groups: groups.keys, ...groups.unresolved ? { unresolved: groups.unresolved } : {}, ...lists.unresolved ? { listUnresolved: lists.unresolved } : {}, resource: address, text: `${address} ${egress ? "egress" : "ingress"} ${portText} ${egress ? "to" : "from"} ${peers.join(", ")}` };
   }
   naclRuleOf(r) {
-    if (["egress", "rule_number", "protocol", "rule_action", "cidr_block", "from_port", "to_port"].some((f) => hasUnknown(r, [f]))) return unknown(`${r.address} has values that are unknown until apply`);
+    if (["egress", "rule_number", "protocol", "rule_action", "cidr_block", "ipv6_cidr_block", "from_port", "to_port"].some((f) => hasUnknown(r, [f]))) return unknown(`${r.address} has values that are unknown until apply`);
     const egress = r.values.egress === true;
     const key = egress ? "egress" : "ingress";
-    const cidr = str(r.values.cidr_block);
-    if (!cidr) return known({ egress, rule: { ruleNo: num(r.values.rule_number) ?? 0, allow: false, protocol: "other", ports: [], cidr: [], text: `${r.address} (IPv6)` } });
+    const cidr6 = str(r.values.ipv6_cidr_block);
+    const cidr = str(r.values.cidr_block) ?? cidr6;
     const protocol = normalizeProtocol(r.values.protocol);
     if (protocol === "other") return known({ egress, rule: { ruleNo: num(r.values.rule_number) ?? 0, allow: false, protocol, ports: [], cidr: [], text: `${r.address} (${String(r.values.protocol)})` } });
     const ports = portSet(protocol, r.values.from_port, r.values.to_port);
-    const set = cidrToSet(cidr);
+    const set6 = cidr6 ? cidr6ToSet(cidr6) : void 0;
+    const set = cidr6 ? set6 ? [] : void 0 : cidr ? cidrToSet(cidr) : void 0;
     const ruleNo = num(r.values.rule_number);
-    if (!ports || !set || ruleNo === void 0) return unknown(`${r.address} has a value the engine cannot read`);
+    if (!cidr || !ports || !set || ruleNo === void 0) return unknown(`${r.address} has a value the engine cannot read`);
     const allow = String(r.values.rule_action).toLowerCase() === "allow";
-    return known({ egress, rule: { ruleNo, allow, protocol, ports, cidr: set, text: `${r.address} ${key} rule ${ruleNo}: ${allow ? "allow" : "deny"} ${describePorts(protocol, r.values.from_port, r.values.to_port)} ${egress ? "to" : "from"} ${cidr}` } });
+    return known({ egress, rule: { ruleNo, allow, protocol, ports, cidr: set, ...set6 ? { cidr6: set6 } : {}, text: `${r.address} ${key} rule ${ruleNo}: ${allow ? "allow" : "deny"} ${describePorts(protocol, r.values.from_port, r.values.to_port)} ${egress ? "to" : "from"} ${cidr}` } });
   }
   gatewayTarget(r, gw, text) {
     if (!gw.ok) return { kind: "unknown", reason: gw.reason };
@@ -1109,7 +1380,11 @@ var ModelBuilder = class {
     if (hasUnknown(r, ["destination_cidr_block"])) return unknown(`${r.address}: destination is unknown until apply`);
     const cidr = str(r.values.destination_cidr_block);
     const listed = !cidr && (str(r.values.destination_prefix_list_id) || isUnknown(r, ["destination_prefix_list_id"]) && r.configured.has("destination_prefix_list_id"));
-    if (!cidr && !listed) return known([{ cidr: [], prefix: 0, target: { kind: "local" }, text: `${r.address} (IPv6)` }]);
+    const c6 = str(r.values.destination_ipv6_cidr_block);
+    if (!cidr && !listed && !c6) {
+      if (isUnknown(r, ["destination_ipv6_cidr_block"]) && r.configured.has("destination_ipv6_cidr_block")) return unknown(`${r.address}: the IPv6 destination is unknown until apply`);
+      return known([]);
+    }
     const set = cidr ? cidrToSet(cidr) : [];
     const prefix = cidr ? cidrPrefixLength(cidr) : 0;
     if (!set || prefix === void 0) return unknown(`${r.address}: destination ${cidr ?? ""} cannot be read`);
@@ -1131,6 +1406,12 @@ var ModelBuilder = class {
     }
     if (!isUnknown(r, ["state"]) && r.values.state === "blackhole") target = { kind: "drop", ...BLACKHOLE };
     if (listed) return known(this.listRoutes(this.listsOf(resolveRefs(this.snap, r, "destination_prefix_list_id", "aws_ec2_managed_prefix_list")), target, r.address));
+    if (!cidr && c6) {
+      const set6 = cidr6ToSet(c6);
+      if (!set6) return unknown(`${r.address}: destination ${c6} cannot be read`);
+      const to6 = target.kind === "igw" ? target.address : target.kind === "other" || target.kind === "drop" ? target.text : target.kind;
+      return known([{ cidr: [], cidr6: set6, prefix: prefixLength6(c6) ?? 0, target, text: `${r.address} ${c6} -> ${to6}` }]);
+    }
     const to = target.kind === "igw" ? target.address : target.kind === "other" || target.kind === "drop" ? target.text : target.kind;
     return known([{ cidr: set, prefix, target, text: `${r.address} ${cidr} -> ${to}` }]);
   }
@@ -1154,7 +1435,26 @@ var ModelBuilder = class {
     if (!attached.ok) return known({ address, cidrs, igw: unknown(attached.reason) });
     attached.value.forEach((g) => igws.add(g));
     const igw = igws.size > 1 ? unknown(`${address} has ${igws.size} internet gateways in the plan`) : known([...igws][0]);
-    return known({ address, cidrs, igw, peerings: this.peeringsOf(address), via: this.igwAttach.sources(address) });
+    return known({ address, cidrs, igw, peerings: this.peeringsOf(address), ipv6: this.vpcIpv6(r), via: this.igwAttach.sources(address) });
+  }
+  /**
+   * A VPC's IPv6 block: `ipv6_cidr_block`, an Amazon-provided block
+   * (`assign_generated_ipv6_cidr_block`), or an IPAM pool. The provided block is known only
+   * after apply.
+   * https://docs.aws.amazon.com/vpc/latest/userguide/vpc-cidr-blocks.html
+   */
+  vpcIpv6(r) {
+    if (this.ofType("aws_vpc_ipv6_cidr_block_association").length) return unknown(`${r.address} may have IPv6 blocks from aws_vpc_ipv6_cidr_block_association, which is not modeled yet`);
+    const cidr = str(r.values.ipv6_cidr_block);
+    if (!isUnknown(r, ["ipv6_cidr_block"]) && cidr) {
+      const set = cidr6ToSet(cidr);
+      return set ? known({ cidrs: set }) : unknown(`${r.address}: ipv6_cidr_block ${cidr} cannot be read`);
+    }
+    for (const k of ["assign_generated_ipv6_cidr_block", "ipv6_ipam_pool_id"]) {
+      if (isUnknown(r, [k]) && r.configured.has(k)) return unknown(`${r.address}: ${k} is unknown until apply`);
+    }
+    if (r.values.assign_generated_ipv6_cidr_block === true || !isNull(r, "ipv6_ipam_pool_id") || isUnknown(r, ["ipv6_cidr_block"]) && r.configured.has("ipv6_cidr_block")) return known({});
+    return known(void 0);
   }
   /** A security group by key, with inline rules and rule resources merged. */
   securityGroup(key) {
@@ -1198,17 +1498,18 @@ var ModelBuilder = class {
     const rules = [];
     for (const [i, raw] of blocks.entries()) {
       if (!isObj(raw)) continue;
-      if (["protocol", "from_port", "to_port", "cidr_blocks", "self"].some((f) => hasUnknown(r, [dir, i, f]))) return unknown(`${address}: ${dir} rule ${i} has values that are unknown until apply`);
+      if (["protocol", "from_port", "to_port", "cidr_blocks", "ipv6_cidr_blocks", "self"].some((f) => hasUnknown(r, [dir, i, f]))) return unknown(`${address}: ${dir} rule ${i} has values that are unknown until apply`);
       const protocol = normalizeProtocol(raw.protocol);
       if (protocol === "other") continue;
       const ports = portSet(protocol, raw.from_port, raw.to_port);
       const cidrs = arr(raw.cidr_blocks).map(String);
       const lists = arr(raw.prefix_list_ids).length || isUnknown(r, [dir, i, "prefix_list_ids"]) ? this.blockLists(r, [dir, i, "prefix_list_ids"], raw.prefix_list_ids) : NO_LISTS;
+      const cidrs6 = arr(raw.ipv6_cidr_blocks).map(String);
       const sets = cidrs.map((c) => cidrToSet(c));
-      if (!ports || sets.some((s) => !s)) return unknown(`${address}: ${dir} rule ${i} has a value the engine cannot read`);
+      if (!ports || sets.some((s) => !s) || cidrs6.some((c) => !cidr6ToSet(c))) return unknown(`${address}: ${dir} rule ${i} has a value the engine cannot read`);
       const groups = this.inlineGroups(r, dir, i, blocks, key);
-      if (!cidrs.length && !lists.names.length && !lists.unresolved && !groups.keys.length && !groups.unresolved) continue;
-      rules.push(this.rule(address, dir === "egress", protocol, ports, sets.flat(), cidrs, groups, describePorts(protocol, raw.from_port, raw.to_port), lists));
+      if (!cidrs.length && !cidrs6.length && !lists.names.length && !lists.unresolved && !groups.keys.length && !groups.unresolved) continue;
+      rules.push(this.rule(address, dir === "egress", protocol, ports, sets.flat(), cidrs, groups, describePorts(protocol, raw.from_port, raw.to_port), lists, cidrs6));
     }
     return known([...rules, ...extra.value]);
   }
@@ -1276,16 +1577,17 @@ var ModelBuilder = class {
     for (const [i, raw] of arr(r.values[key]).entries()) {
       if (!isObj(raw)) continue;
       if (hasUnknown(r, [key, i])) return unknown(`${r.address}: ${key} rule ${i} has values that are unknown until apply`);
-      if (str(raw.ipv6_cidr_block)) continue;
       const protocol = normalizeProtocol(raw.protocol);
       if (protocol === "other") continue;
       const ports = portSet(protocol, raw.from_port, raw.to_port);
-      const cidr = str(raw.cidr_block);
-      const set = cidr ? cidrToSet(cidr) : void 0;
+      const cidr6 = str(raw.ipv6_cidr_block);
+      const set6 = cidr6 ? cidr6ToSet(cidr6) : void 0;
+      const cidr = cidr6 ?? str(raw.cidr_block);
+      const set = cidr6 ? set6 ? [] : void 0 : cidr ? cidrToSet(cidr) : void 0;
       const ruleNo = num(raw.rule_no);
       if (!ports || !set || ruleNo === void 0) return unknown(`${r.address}: ${key} rule ${i} has a value the engine cannot read`);
       const allow = String(raw.action).toLowerCase() === "allow";
-      rules.push({ ruleNo, allow, protocol, ports, cidr: set, text: `${r.address} ${key} rule ${ruleNo}: ${allow ? "allow" : "deny"} ${describePorts(protocol, raw.from_port, raw.to_port)} ${key === "ingress" ? "from" : "to"} ${cidr}` });
+      rules.push({ ruleNo, allow, protocol, ports, cidr: set, ...set6 ? { cidr6: set6 } : {}, text: `${r.address} ${key} rule ${ruleNo}: ${allow ? "allow" : "deny"} ${describePorts(protocol, raw.from_port, raw.to_port)} ${key === "ingress" ? "from" : "to"} ${cidr}` });
     }
     return known(rules);
   }
@@ -1304,7 +1606,12 @@ var ModelBuilder = class {
       if (!managed.ok) return { resource, ingress: unknown(managed.reason), egress: unknown(managed.reason) };
       if (managed.value) base = { ingress: this.inlineNaclRules(managed.value, "ingress"), egress: this.inlineNaclRules(managed.value, "egress") };
       else {
-        const all = (dir) => [{ ruleNo: 100, allow: true, protocol: "all", ports: ALL_PORTS, cidr: ALL_IPV4, text: `default NACL of ${vpc} ${dir} rule 100: allow all traffic (AWS default)` }];
+        const v = this.vpc(vpc);
+        const ipv6 = v.ok && v.value.ipv6?.ok ? v.value.ipv6.value !== void 0 : false;
+        const all = (dir) => [
+          { ruleNo: 100, allow: true, protocol: "all", ports: ALL_PORTS, cidr: ALL_IPV4, text: `default NACL of ${vpc} ${dir} rule 100: allow all traffic (AWS default)` },
+          ...ipv6 ? [{ ruleNo: 101, allow: true, protocol: "all", ports: ALL_PORTS, cidr: [], cidr6: IPV6_ALL, text: `default NACL of ${vpc} ${dir} rule 101: allow all IPv6 traffic (AWS default)` }] : []
+        ];
         base = { ingress: known(all("ingress")), egress: known(all("egress")) };
       }
     } else {
@@ -1433,6 +1740,14 @@ var ModelBuilder = class {
       if (!cidr) {
         const pl = isUnknown(r, ["route", i, "destination_prefix_list_id"]) || str(raw.destination_prefix_list_id);
         if (pl) routes.push(...this.listRoutes(this.blockLists(r, ["route", i, "destination_prefix_list_id"], [raw.destination_prefix_list_id]), this.routeTarget(r, raw, ["route", i], unknownGateways, knownGateways), `${r.address} route`));
+        const c6 = str(raw.ipv6_cidr_block);
+        if (c6 || isUnknown(r, ["route", i, "ipv6_cidr_block"])) {
+          const set6 = c6 ? cidr6ToSet(c6) : void 0;
+          if (!set6 || !c6) return unknown(`${r.address}: route ${i} has an IPv6 destination the engine cannot read`);
+          const target2 = this.routeTarget(r, raw, ["route", i], unknownGateways, knownGateways);
+          const to2 = target2.kind === "igw" ? target2.address : target2.kind === "other" || target2.kind === "drop" ? target2.text : target2.kind;
+          routes.push({ cidr: [], cidr6: set6, prefix: prefixLength6(c6) ?? 0, target: target2, text: `${r.address} route ${c6} -> ${to2}` });
+        }
         continue;
       }
       const set = cidrToSet(cidr);
@@ -1471,7 +1786,8 @@ var ModelBuilder = class {
     const gw = this.gatewayEndpoints.get(key);
     if (!gw.ok) return { resource, routes: unknown(gw.reason) };
     const endpointRoutes = [...new Set(gw.value)].toSorted(cmp).map((e) => ({ cidr: [], prefix: 0, target: { kind: "other", text: "vpc endpoint" }, text: `${resource} route to the prefix list of gateway endpoint ${e} -> vpc endpoint`, listUnresolved: `the service prefix list of ${e} is managed by AWS and cannot be expanded offline`, awsService: true }));
-    return { resource, routes: known([...localRoutes(vpc, resource, vpc.cidrs.value), ...base.value, ...extra.value.filter((x) => x.cidr.length || x.listUnresolved), ...endpointRoutes]) };
+    const local6 = vpc.ipv6?.ok && vpc.ipv6.value?.cidrs ? vpc.ipv6.value.cidrs.map((r) => ({ cidr: [], cidr6: [r], prefix: 128 - (r[1] - r[0] + 1n).toString(2).length + 1, target: { kind: "local" }, text: `${resource} local route (IPv6)` })) : [];
+    return { resource, routes: known([...localRoutes(vpc, resource, vpc.cidrs.value), ...local6, ...base.value, ...extra.value.filter((x) => x.cidr.length || x.cidr6 || x.listUnresolved), ...endpointRoutes]) };
   }
   /**
    * The route table of a subnet: an explicit association, else the VPC's main route table.
@@ -1520,7 +1836,7 @@ var ModelBuilder = class {
     return { address: r.address, type: r.type, vpc: unknown(reason), subnet: unknown(reason), subnetCidr: unknown(reason), publicIp: unknown(reason), securityGroups: unknown(reason), nacl: unknown(reason), routeTable: unknown(reason) };
   }
   /** An endpoint for `r` placed in `subnet`. */
-  place(r, subnet, publicIp, groups, placement, via = []) {
+  place(r, subnet, publicIp, groups, placement, via = [], publicIp6 = () => known(void 0)) {
     const s = this.get(subnet);
     if (!s) return this.fail(r, `${subnet} is not in this plan`);
     const vpcRef = this.refTo(s, "vpc_id", "aws_vpc");
@@ -1534,6 +1850,7 @@ var ModelBuilder = class {
       subnet: known(subnet),
       subnetCidr: subnetCidrOf(s),
       publicIp: publicIp(s),
+      publicIp6: publicIp6(s),
       securityGroups: groups(vpcRef.value),
       nacl: this.subnetNacl(subnet, vpcRef.value),
       routeTable: this.subnetRouteTable(subnet, vpc.value),
@@ -1591,10 +1908,20 @@ var ModelBuilder = class {
       if (!eips.ok && !(out.ok && out.value)) out = unknown(eips.reason);
       return out;
     };
+    const publicIp6 = (s) => {
+      const count = r.values.ipv6_address_count;
+      if (isUnknown(r, ["ipv6_address_count"]) && r.configured.has("ipv6_address_count")) return unknown(`${r.address}: ipv6_address_count is unknown until apply`);
+      if (isUnknown(r, ["ipv6_addresses"]) && r.configured.has("ipv6_addresses")) return unknown(`${r.address}: ipv6_addresses is unknown until apply`);
+      if (typeof count === "number" && count > 0) return known(`${r.address} ipv6_address_count = ${count}`);
+      if (arr(r.values.ipv6_addresses).length) return known(`${r.address} has ipv6_addresses`);
+      if (isUnknown(s, ["assign_ipv6_address_on_creation"]) && s.configured.has("assign_ipv6_address_on_creation")) return unknown(`${s.address}: assign_ipv6_address_on_creation is unknown until apply`);
+      if (s.values.assign_ipv6_address_on_creation === true) return known(`${s.address} assign_ipv6_address_on_creation = true`);
+      return known(void 0);
+    };
     return this.place(r, subnet.value, publicIp, (vpc) => {
       const g = this.groups(r, "vpc_security_group_ids", vpc);
       return g === "empty" ? known([]) : g;
-    }, void 0, this.eips.sources(r.address));
+    }, void 0, this.eips.sources(r.address), publicIp6);
   }
   /**
    * RDS: the DB instance gets a public address only when publicly_accessible is true, and
@@ -1823,7 +2150,12 @@ var ModelBuilder = class {
       const g = this.groups(r, "security_groups", vpc, !network);
       return g === "empty" ? this.listenerGroup(r) : g;
     };
-    return subnets.value.map((sub) => this.place(r, sub, publicIp, groups, "the result differs between the load balancer's subnets"));
+    const publicIp6 = () => {
+      if (isUnknown(r, ["internal"]) || isUnknown(r, ["ip_address_type"]) && r.configured.has("ip_address_type")) return unknown(`${r.address}: internal or ip_address_type is unknown until apply`);
+      const ipType = isUnknown(r, ["ip_address_type"]) ? "ipv4" : String(r.values.ip_address_type ?? "ipv4");
+      return r.values.internal !== true && ipType.startsWith("dualstack") ? known(`${r.address} is internet-facing with ip_address_type = ${ipType}`) : known(void 0);
+    };
+    return subnets.value.map((sub) => this.place(r, sub, publicIp, groups, "the result differs between the load balancer's subnets", [], publicIp6));
   }
   /** Listener ports of a load balancer without security groups, as allow rules from anywhere. */
   listenerGroup(lb) {
@@ -1909,6 +2241,10 @@ function evaluateAll(list, p, ports) {
   if (!list?.length) return evaluate(void 0, p, ports);
   return combine(list.map((e) => evaluate(e, p, ports)), list.map((e) => e.subnet.ok ? e.subnet.value : "unknown subnet"), list[0]?.placement);
 }
+function evaluateAll6(list, p, ports) {
+  if (!list?.length) return evaluate6(void 0, p, ports);
+  return combine(list.map((e) => evaluate6(e, p, ports)), list.map((e) => e.subnet.ok ? e.subnet.value : "unknown subnet"), list[0]?.placement);
+}
 function evaluatePairs(from, to, p, ports) {
   if (!from?.length || !to?.length) return evaluateInternal(void 0, void 0, p, ports);
   const pairs = from.flatMap((a) => to.map((t) => [a, t]));
@@ -1986,6 +2322,25 @@ function analyze(plan) {
       })
     );
   }
+  for (const address of addresses) {
+    const b = epBefore.get(address);
+    const a = epAfter.get(address);
+    const ports6 = (list, p) => (list ?? []).reduce((acc, e) => union(acc, exposedPorts6(e, p).map(({ lo, hi }) => [lo, hi])), []);
+    paths.push(
+      ...pathsOf({
+        id: `internet6->${address}`,
+        from: "internet",
+        family: "ipv6",
+        to: address,
+        toType: (a ?? b)?.[0]?.type ?? "",
+        candidates: (p) => union(ports6(b, p), ports6(a, p)),
+        cuts: [...(b ?? []).flatMap(portCuts), ...(a ?? []).flatMap(portCuts)],
+        before: (p, seg) => evaluateAll6(b, p, seg),
+        after: (p, seg) => evaluateAll6(a, p, seg),
+        risk: () => deleteFirst(a, after)
+      })
+    );
+  }
   for (const from of addresses) {
     for (const to of addresses) {
       if (from === to) continue;
@@ -2052,7 +2407,7 @@ function pathsOf(spec) {
       if (!run2) return;
       const ports = formatPorts([run2.ports]);
       const risk = run2.before.verdict === "allowed" && run2.after.verdict === "allowed" ? spec.risk() : [];
-      out.push({ id: `${spec.id}:${p}:${ports}`, from: spec.from, ...spec.fromType !== void 0 ? { fromType: spec.fromType } : {}, to: spec.to, toType: spec.toType, protocol: p, ports, change: changeOf(run2.before, run2.after), before: run2.before, after: run2.after, ...risk.length ? { outageRisk: risk } : {} });
+      out.push({ id: `${spec.id}:${p}:${ports}`, from: spec.from, ...spec.fromType !== void 0 ? { fromType: spec.fromType } : {}, ...spec.family ? { family: spec.family } : {}, to: spec.to, toType: spec.toType, protocol: p, ports, change: changeOf(run2.before, run2.after), before: run2.before, after: run2.after, ...risk.length ? { outageRisk: risk } : {} });
       run2 = void 0;
     };
     for (const seg of segment(spec.candidates(p), spec.cuts)) {
@@ -2100,7 +2455,7 @@ function renderMarkdown(result, opts) {
   if (!paths.length) lines.push("No reachability changes.", "");
   else {
     lines.push("| | Path | Port | Before | After |", "|---|---|---|---|---|");
-    for (const p of paths) lines.push(`| ${ICON[p.change]} ${p.change}${p.outageRisk ? " \u26A0\uFE0F" : ""} | ${p.from === "internet" ? "internet" : `\`${p.from}\``} \u2192 \`${p.to}\` | ${p.protocol}/${p.ports} | ${md(outcomeLine(p.before))} | ${md(outcomeLine(p.after))} |`);
+    for (const p of paths) lines.push(`| ${ICON[p.change]} ${p.change}${p.outageRisk ? " \u26A0\uFE0F" : ""} | ${p.from === "internet" ? p.family === "ipv6" ? "internet (IPv6)" : "internet" : `\`${p.from}\``} \u2192 \`${p.to}\` | ${p.protocol}/${p.ports} | ${md(outcomeLine(p.before))} | ${md(outcomeLine(p.after))} |`);
     lines.push("");
     for (const p of paths.filter((x) => x.outageRisk)) lines.push(`> \u26A0\uFE0F ${p.from === "internet" ? "" : `\`${p.from}\` \u2192 `}\`${p.to}\` ${p.protocol}/${p.ports}: ${md(riskLine(p))}`, "");
     for (const p of paths) {

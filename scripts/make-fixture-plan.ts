@@ -139,6 +139,9 @@ function toState(before: Obj, schemas: Obj): Obj {
         if (key === "owner_id") return ACCOUNT;
         if (key === "tags_all") return {};
         if (type === "aws_security_group" && path.length === 1 && key === "egress") return [];
+        // Amazon-provided IPv6 blocks (documentation-style, from Amazon's 2600:1f00::/24 range).
+        if (type === "aws_vpc" && path.length === 1 && key === "ipv6_cidr_block") return "2600:1f18:aa00::/56";
+        if (type === "aws_subnet" && path.length === 1 && key === "ipv6_cidr_block") return "2600:1f18:aa00:1::/64";
         // Group IDs in an inline rule (`ingress[0].security_groups`): the security groups
         // the block's expression references. Only one group per attribute is matched.
         // The same for prefix list IDs (`ingress[0].prefix_list_ids`).
