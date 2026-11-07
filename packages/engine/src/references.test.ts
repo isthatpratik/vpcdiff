@@ -43,6 +43,28 @@ describe("security group references", () => {
     expect(rules[1]?.unresolved).toMatch(/cannot be matched to resources/);
   });
 
+  it("matches a VPC's default group named through the configuration", () => {
+    const vpc: Res = { type: "aws_vpc", name: "main", after: { id: "vpc-1", cidr_block: "10.0.0.0/16", default_network_acl_id: "acl-1", default_security_group_id: "sg-default" } };
+    const sg = res("aws_security_group", "app", { id: "sg-1", ingress: [{ ...sgRule(8080, 8080, []), security_groups: [null, null] }], egress: [] }, { unknown: { ingress: [{ security_groups: [true, true] }] } });
+    const withConfig = plan(network({ vpc, sg }, [lbSg]));
+    // aws_security_group.lb.id and aws_vpc.main.default_security_group_id, as Terraform writes them.
+    const cfg = (withConfig as { configuration: { root_module: { resources: { address: string; expressions: Record<string, unknown> }[] } } }).configuration.root_module.resources.find((x) => x.address === "aws_security_group.app");
+    if (cfg) cfg.expressions.ingress = [{ security_groups: { references: ["aws_security_group.lb.id", "aws_security_group.lb", "aws_vpc.main.default_security_group_id", "aws_vpc.main"] } }];
+    const ep = new ModelBuilder(parsePlan(withConfig).after).endpoints()[0] as Endpoint;
+    expect(ingressOf(ep)[0]?.groups).toEqual(["aws_security_group.lb", "default-sg:aws_vpc.main"]);
+    expect(ingressOf(ep)[0]?.unresolved).toBeUndefined();
+  });
+
+  it("leaves unknown group IDs unresolved when the count does not match the configuration", () => {
+    const sg = res("aws_security_group", "app", { id: "sg-1", ingress: [{ ...sgRule(8080, 8080, []), security_groups: [null, null] }], egress: [] }, { unknown: { ingress: [{ security_groups: [true, true] }] }, config: { ingress: ["aws_security_group.lb"] } });
+    expect(ingressOf(endpoint(network({ sg }, [lbSg])))[0]?.unresolved).toMatch(/cannot be matched/);
+  });
+
+  it("leaves unknown group IDs unresolved when the configuration names another kind of resource", () => {
+    const sg = res("aws_security_group", "app", { id: "sg-1", ingress: [{ ...sgRule(8080, 8080, []), security_groups: null }], egress: [] }, { unknown: { ingress: [{ security_groups: true }] }, config: { ingress: ["aws_instance.app"] } });
+    expect(ingressOf(endpoint(network({ sg })))[0]?.unresolved).toMatch(/cannot be matched/);
+  });
+
   it("keeps internet paths decided when a group ID is unknown until apply", () => {
     // Before #32, any unknown value in an inline block made the whole group unknown.
     const sg = res("aws_security_group", "app", { id: "sg-1", ingress: [sgRule(443, 443, ["0.0.0.0/0"]), { ...sgRule(8080, 8080, []), security_groups: null }], egress: [] }, { unknown: { ingress: [{}, { security_groups: true }] }, config: { ingress: ["var.lb_sg"] } });

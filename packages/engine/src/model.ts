@@ -113,6 +113,9 @@ const VPC_DEFAULTS: [string, string][] = [
 /** How a group key reads in a rule: its address, or the VPC's default group. */
 export const groupLabel = (key: string): string => (key.startsWith("default-sg:") ? `default security group of ${key.slice("default-sg:".length)}` : key);
 
+/** True when `refs` also holds `ref` with an attribute (`x.id` next to `x`). */
+const fullRefsHasAttr = (refs: string[], ref: string) => refs.some((o) => o.startsWith(`${ref}.`));
+
 /** A subnet's IPv4 CIDR block. */
 function subnetCidrOf(s: Resource): Known<IntervalSet> {
   const cidr = typeof s.values.cidr_block === "string" ? s.values.cidr_block : undefined;
@@ -609,28 +612,56 @@ export class ModelBuilder {
     const keys: Key[] = raw.self === true ? [own] : [];
     const reasons: string[] = [];
     const listUnknown = isUnknown(r, [dir, i, "security_groups"]);
-    let pending = listUnknown;
+    const known_: Key[] = [];
+    let pending = 0;
     for (const [j, id] of arr(raw.security_groups).entries()) {
       if (listUnknown || isUnknown(r, [dir, i, "security_groups", j]) || typeof id !== "string") {
-        pending = true;
+        pending++;
         continue;
       }
       const k = this.keyOfId(id);
       if (!k.ok) reasons.push(k.reason);
-      else if (k.value !== null) keys.push(k.value);
+      else if (k.value !== null) known_.push(k.value);
     }
-    if (pending) {
+    keys.push(...known_);
+    if (listUnknown || pending) {
+      const fail = `${r.address}: ${dir} rule ${i} references security groups that are unknown until apply and cannot be matched to resources`;
       const withGroups = blocks.filter((b, n) => isObj(b) && (arr(b.security_groups).length > 0 || isUnknown(r, [dir, n, "security_groups"]))).length;
-      const refs = withGroups === 1 && !r.otherRefs.has(dir) ? fromConfig(this.snap, r, dir, ["aws_security_group", "aws_default_security_group"]) : [];
-      if (!refs.length || refs.some((x) => x.kind !== "resource")) reasons.push(`${r.address}: ${dir} rule ${i} references security groups that are unknown until apply and cannot be matched to resources`);
-      else
-        for (const x of refs) {
-          const k = this.canonical((x as { address: string }).address);
-          if (k.ok) keys.push(k.value);
-          else reasons.push(k.reason);
-        }
+      const found = withGroups === 1 && !r.otherRefs.has(dir) ? this.configGroups(r, dir) : undefined;
+      // Each unknown element must match one group the configuration names and the known
+      // IDs do not already cover. When the whole list is unknown, its length is unknown too.
+      const extra = found?.filter((k) => !known_.includes(k));
+      if (!extra || (!listUnknown && extra.length !== pending) || (listUnknown && !extra.length)) reasons.push(fail);
+      else keys.push(...extra);
     }
     return { keys: [...new Set(keys)].toSorted(cmp), ...(reasons.length ? { unresolved: reasons.join("; ") } : {}) };
+  }
+
+  /**
+   * Security groups that the configuration of `attr` names: group resources, managed
+   * default groups, and `aws_vpc.<name>.default_security_group_id`. Undefined when a
+   * reference is something else, except a subnet or VPC CIDR used by `cidr_blocks`.
+   */
+  private configGroups(r: Resource, attr: string): Key[] | undefined {
+    const out = new Set<Key>();
+    for (const ref of r.fullRefs[attr] ?? []) {
+      const m = /^(.*?aws_\w+\.[\w-]+(?:\[[^\]]+\])?)(?:\.(\w+))?$/.exec(localize(r.address, ref));
+      if (!m) return undefined;
+      const base = instanceOf(this.snap, m[1] as string);
+      if (!base) return undefined;
+      const type = typeOf(base);
+      const part = m[2];
+      if ((type === "aws_security_group" || type === "aws_default_security_group") && (part === undefined || part === "id")) {
+        const k = this.canonical(base);
+        if (!k.ok) return undefined;
+        out.add(k.value);
+      } else if (type === "aws_vpc" && part === "default_security_group_id") out.add(`default-sg:${base}`);
+      else if (type === "aws_vpc" && part === undefined) continue; // The bare reference that comes with `aws_vpc.x.attr`.
+      else if ((type === "aws_subnet" || type === "aws_vpc") && part === "cidr_block") continue;
+      else if (part === undefined && fullRefsHasAttr(r.fullRefs[attr] ?? [], ref)) continue;
+      else return undefined;
+    }
+    return [...out].toSorted(cmp);
   }
 
   private inlineNaclRules(r: Resource, key: "ingress" | "egress"): Known<NaclRule[]> {
