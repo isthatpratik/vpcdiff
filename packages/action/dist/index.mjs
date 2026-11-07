@@ -419,7 +419,7 @@ function resolveRefs(snap, r, attr, targetType) {
   if (r.otherRefs.has(attr)) return fail(`${r.address}: ${attr} uses values that are unknown until apply`);
   return fromConfig(snap, r, attr, targetType).toSorted((a, b) => cmp(refOrder(a), refOrder(b)));
 }
-var ADDRESS = /^(.*?)(aws_\w+\.[\w-]+(?:\[[^\]]+\])?)$/;
+var ADDRESS = /^(.*?)(aws_\w+\.[\w-]+(?:\[[^\]]+\])?(?:\.\w+)?)$/;
 function localize(from, ref) {
   const prefix = ADDRESS.exec(from)?.[1] ?? "";
   return prefix + (ADDRESS.exec(ref)?.[2] ?? ref);
@@ -460,6 +460,13 @@ var VPC_DEFAULTS = [
   ["default_network_acl_id", "default-nacl"],
   ["default_security_group_id", "default-sg"]
 ];
+var groupLabel = (key) => key.startsWith("default-sg:") ? `default security group of ${key.slice("default-sg:".length)}` : key;
+var fullRefsHasAttr = (refs, ref) => refs.some((o) => o.startsWith(`${ref}.`));
+function subnetCidrOf(s) {
+  const cidr = typeof s.values.cidr_block === "string" ? s.values.cidr_block : void 0;
+  const set = cidr && !isUnknown(s, ["cidr_block"]) ? cidrToSet(cidr) : void 0;
+  return set ? known(set) : unknown(`${s.address}: cidr_block is unknown until apply`);
+}
 var typeOf = (address) => address.replace(/\[[^\]]*\]/g, "").split(".").at(-2) ?? "";
 var str = (v) => typeof v === "string" && v !== "" ? v : void 0;
 var num = (v) => typeof v === "number" ? v : typeof v === "string" && /^-?\d+$/.test(v) ? Number(v) : void 0;
@@ -531,6 +538,7 @@ var ModelBuilder = class {
   /** Target address to the unmodeled resources that point at it. */
   touchedBy = /* @__PURE__ */ new Map();
   sgRules = new Index();
+  sgEgress = new Index();
   routes = new Index();
   naclRules = new Index();
   /** Subnet address to the NACL keys associated with it by aws_network_acl_association. */
@@ -579,12 +587,7 @@ var ModelBuilder = class {
     const norm = (key) => normalize ? this.normalizeKey(key) : known(key);
     if (isNull(r, attr)) return known(null);
     const v = r.values[attr];
-    if (!isUnknown(r, [attr]) && typeof v === "string") {
-      const address2 = this.snap.byId.get(v);
-      if (address2) return this.canonical(address2);
-      for (const vpc of this.ofType("aws_vpc")) for (const [a, kind] of VPC_DEFAULTS) if (vpc.values[a] === v) return norm(`${kind}:${vpc.address}`);
-      return known(null);
-    }
+    if (!isUnknown(r, [attr]) && typeof v === "string") return this.keyOfId(v, normalize);
     if (r.otherRefs.has(attr)) return unknown(`${r.address}: ${attr} uses values that are unknown until apply`);
     const bases = /* @__PURE__ */ new Map();
     for (const ref of r.fullRefs[attr] ?? []) {
@@ -602,6 +605,13 @@ var ModelBuilder = class {
       return kind ? norm(`${kind}:${address}`) : unknown(`${r.address}: ${attr} refers to ${address}.${part ?? "id"}`);
     }
     return this.canonical(address);
+  }
+  /** The key of a known ID: a resource that owns it wins; only an ID no resource owns can be a VPC default. */
+  keyOfId(v, normalize = true) {
+    const address = this.snap.byId.get(v);
+    if (address) return this.canonical(address);
+    for (const vpc of this.ofType("aws_vpc")) for (const [a, kind] of VPC_DEFAULTS) if (vpc.values[a] === v) return normalize ? this.normalizeKey(`${kind}:${vpc.address}`) : known(`${kind}:${vpc.address}`);
+    return known(null);
   }
   /** `main-rt:vpc` is the default route table unless an association replaces the main table. */
   normalizeKey(key) {
@@ -650,14 +660,24 @@ var ModelBuilder = class {
     for (const r of ordered) {
       switch (r.type) {
         case "aws_security_group_rule": {
-          if (!isUnknown(r, ["type"]) && r.values.type === "egress") break;
-          const item = isUnknown(r, ["type"]) ? unknown(`${r.address}: type is unknown until apply`) : this.sgRuleOf(r, r.values.protocol, r.values.from_port, r.values.to_port, arr(r.values.cidr_blocks).map(String), arr(r.values.prefix_list_ids).length > 0, ["protocol", "from_port", "to_port", "cidr_blocks", "prefix_list_ids"]);
-          this.addSgRule(r, item);
+          if (isUnknown(r, ["type"])) {
+            this.addSgRule(r, unknown(`${r.address}: type is unknown until apply`), false);
+            this.addSgRule(r, unknown(`${r.address}: type is unknown until apply`), true);
+            break;
+          }
+          const egress = r.values.type === "egress";
+          const groups = this.ruleGroups(r, "source_security_group_id", r.values.self === true);
+          this.addSgRule(r, this.sgRuleOf(r, egress, r.values.protocol, r.values.from_port, r.values.to_port, arr(r.values.cidr_blocks).map(String), arr(r.values.prefix_list_ids).length > 0, groups, ["protocol", "from_port", "to_port", "cidr_blocks", "prefix_list_ids", "self"]), egress);
           break;
         }
         case "aws_vpc_security_group_ingress_rule": {
           const cidr = str(r.values.cidr_ipv4);
-          this.addSgRule(r, this.sgRuleOf(r, r.values.ip_protocol, r.values.from_port, r.values.to_port, cidr ? [cidr] : [], !!str(r.values.prefix_list_id), ["ip_protocol", "from_port", "to_port", "cidr_ipv4", "prefix_list_id"]));
+          this.addSgRule(r, this.sgRuleOf(r, false, r.values.ip_protocol, r.values.from_port, r.values.to_port, cidr ? [cidr] : [], !!str(r.values.prefix_list_id), this.ruleGroups(r, "referenced_security_group_id", false), ["ip_protocol", "from_port", "to_port", "cidr_ipv4", "prefix_list_id"]), false);
+          break;
+        }
+        case "aws_vpc_security_group_egress_rule": {
+          const cidr = str(r.values.cidr_ipv4);
+          this.addSgRule(r, this.sgRuleOf(r, true, r.values.ip_protocol, r.values.from_port, r.values.to_port, cidr ? [cidr] : [], !!str(r.values.prefix_list_id), this.ruleGroups(r, "referenced_security_group_id", false), ["ip_protocol", "from_port", "to_port", "cidr_ipv4", "prefix_list_id"]), true);
           break;
         }
         case "aws_route": {
@@ -699,21 +719,37 @@ var ModelBuilder = class {
       }
     }
   }
-  addSgRule(r, item) {
+  addSgRule(r, item, egress) {
     const key = this.target(r, "security_group_id");
     if (item.ok && item.value === null) return;
-    this.sgRules.add(key, item, r.address);
+    (egress ? this.sgEgress : this.sgRules).add(key, item, r.address);
   }
-  sgRuleOf(r, protocolValue, from, to, cidrs, prefixList, fields) {
+  /** Groups a rule resource references: `attr` (another group) and `self` (its own group). */
+  ruleGroups(r, attr, self) {
+    const keys = [];
+    const reasons = [];
+    const take = (k) => {
+      if (!k.ok) reasons.push(k.reason);
+      else if (k.value !== null) keys.push(k.value);
+    };
+    if (self) take(this.target(r, "security_group_id"));
+    take(this.target(r, attr));
+    return { keys: [...new Set(keys)].toSorted(cmp), ...reasons.length ? { unresolved: reasons.join("; ") } : {} };
+  }
+  sgRuleOf(r, egress, protocolValue, from, to, cidrs, prefixList, groups, fields) {
     if (fields.some((f) => hasUnknown(r, [f]))) return unknown(`${r.address} has values that are unknown until apply`);
     if (prefixList) return unknown(`${r.address} uses a prefix list, which is not modeled yet`);
-    if (!cidrs.length) return known(null);
+    if (!cidrs.length && !groups.keys.length && !groups.unresolved) return known(null);
     const protocol = normalizeProtocol(protocolValue);
     if (protocol === "other") return known(null);
     const ports = portSet(protocol, from, to);
     const sets = cidrs.map((c) => cidrToSet(c));
     if (!ports || sets.some((s) => !s)) return unknown(`${r.address} has a value the engine cannot read`);
-    return known({ protocol, ports, sources: fromRanges(sets.flat()), text: `${r.address} ingress ${describePorts(protocol, from, to)} from ${cidrs.join(", ")}` });
+    return known(this.rule(r.address, egress, protocol, ports, sets.flat(), cidrs, groups, describePorts(protocol, from, to)));
+  }
+  rule(address, egress, protocol, ports, ranges, cidrs, groups, portText) {
+    const peers = [...cidrs, ...groups.keys.map(groupLabel), ...groups.unresolved ? ["a security group that is unknown until apply"] : []];
+    return { protocol, ports, sources: fromRanges(ranges), groups: groups.keys, ...groups.unresolved ? { unresolved: groups.unresolved } : {}, text: `${address} ${egress ? "egress" : "ingress"} ${portText} ${egress ? "to" : "from"} ${peers.join(", ")}` };
   }
   naclRuleOf(r) {
     if (["egress", "rule_number", "protocol", "rule_action", "cidr_block", "from_port", "to_port"].some((f) => hasUnknown(r, [f]))) return unknown(`${r.address} has values that are unknown until apply`);
@@ -784,45 +820,117 @@ var ModelBuilder = class {
   }
   /** A security group by key, with inline rules and rule resources merged. */
   securityGroup(key) {
-    return { ...this.securityGroupOf(key), via: this.sgRules.sources(key) };
+    return { ...this.securityGroupOf(key), via: [.../* @__PURE__ */ new Set([...this.sgRules.sources(key), ...this.sgEgress.sources(key)])].toSorted(cmp) };
   }
   securityGroupOf(key) {
-    const extra = this.sgRules.get(key);
+    const extraIn = this.sgRules.get(key);
+    const extraOut = this.sgEgress.get(key);
     if (key.startsWith("default-sg:")) {
-      const vpc = key.slice("default-sg:".length);
+      const address = groupLabel(key);
       const managed = this.managedDefault(key, "aws_default_security_group");
-      if (!managed.ok) return { address: `default security group of ${vpc}`, ingress: unknown(managed.reason) };
+      if (!managed.ok) return { address, key, ingress: unknown(managed.reason), egress: unknown(managed.reason) };
       if (!managed.value) {
-        return { address: `default security group of ${vpc}`, ingress: extra };
+        const fromItself = this.rule(address, false, "all", ALL_PORTS, [], [], { keys: [key] }, "all traffic");
+        const toAll = this.rule(address, true, "all", ALL_PORTS, ALL_IPV4, ["0.0.0.0/0"], { keys: [] }, "all traffic");
+        const def = (r2) => ({ ...r2, text: `${r2.text} (AWS default)` });
+        return { address, key, ingress: extraIn.ok ? known([def(fromItself), ...extraIn.value]) : extraIn, egress: extraOut.ok ? known([def(toAll), ...extraOut.value]) : extraOut };
       }
-      return this.inlineSg(managed.value, extra);
+      return this.inlineSg(managed.value, key, extraIn, extraOut);
     }
     const r = this.get(key);
-    if (!r) return { address: key, ingress: unknown(`${key} is not in this plan`) };
-    return this.inlineSg(r, extra);
+    if (!r) return { address: key, key, ingress: unknown(`${key} is not in this plan`), egress: unknown(`${key} is not in this plan`) };
+    return this.inlineSg(r, key, extraIn, extraOut);
   }
-  inlineSg(r, extra) {
+  inlineSg(r, key, extraIn, extraOut) {
+    return { address: r.address, key, ingress: this.inlineRules(r, "ingress", key, extraIn), egress: this.inlineRules(r, "egress", key, extraOut) };
+  }
+  /**
+   * Inline `ingress` or `egress` blocks merged with rule resources. A group created by
+   * Terraform with no `egress` has no outbound rules: Terraform removes the AWS default.
+   * https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/security_group
+   */
+  inlineRules(r, dir, key, extra) {
     const address = r.address;
-    if (!extra.ok) return { address, ingress: extra };
-    if (isUnknown(r, ["ingress"])) {
-      if (!r.configured.has("ingress")) return { address, ingress: extra };
-      return { address, ingress: unknown(`${address}: ingress is unknown until apply`) };
+    if (!extra.ok) return extra;
+    if (isUnknown(r, [dir])) {
+      if (!r.configured.has(dir)) return extra;
+      return unknown(`${address}: ${dir} is unknown until apply`);
     }
+    const blocks = arr(r.values[dir]);
     const rules = [];
-    for (const [i, raw] of arr(r.values.ingress).entries()) {
+    for (const [i, raw] of blocks.entries()) {
       if (!isObj(raw)) continue;
-      if (hasUnknown(r, ["ingress", i])) return { address, ingress: unknown(`${address}: ingress rule ${i} has values that are unknown until apply`) };
+      if (["protocol", "from_port", "to_port", "cidr_blocks", "prefix_list_ids", "self"].some((f) => hasUnknown(r, [dir, i, f]))) return unknown(`${address}: ${dir} rule ${i} has values that are unknown until apply`);
       const protocol = normalizeProtocol(raw.protocol);
       if (protocol === "other") continue;
       const ports = portSet(protocol, raw.from_port, raw.to_port);
       const cidrs = arr(raw.cidr_blocks).map(String);
-      if (arr(raw.prefix_list_ids).length) return { address, ingress: unknown(`${address}: ingress rule ${i} uses a prefix list, which is not modeled yet`) };
+      if (arr(raw.prefix_list_ids).length) return unknown(`${address}: ${dir} rule ${i} uses a prefix list, which is not modeled yet`);
       const sets = cidrs.map((c) => cidrToSet(c));
-      if (!ports || sets.some((s) => !s)) return { address, ingress: unknown(`${address}: ingress rule ${i} has a value the engine cannot read`) };
-      if (!cidrs.length) continue;
-      rules.push({ protocol, ports, sources: fromRanges(sets.flat()), text: `${address} ingress ${describePorts(protocol, raw.from_port, raw.to_port)} from ${cidrs.join(", ")}` });
+      if (!ports || sets.some((s) => !s)) return unknown(`${address}: ${dir} rule ${i} has a value the engine cannot read`);
+      const groups = this.inlineGroups(r, dir, i, blocks, key);
+      if (!cidrs.length && !groups.keys.length && !groups.unresolved) continue;
+      rules.push(this.rule(address, dir === "egress", protocol, ports, sets.flat(), cidrs, groups, describePorts(protocol, raw.from_port, raw.to_port)));
     }
-    return { address, ingress: known([...rules, ...extra.value]) };
+    return known([...rules, ...extra.value]);
+  }
+  /**
+   * Groups an inline block references: `self`, and `security_groups` by ID. IDs that are
+   * unknown until apply come from the configuration, which merges the references of all
+   * blocks; they are matched only when this is the one block that lists groups.
+   */
+  inlineGroups(r, dir, i, blocks, own) {
+    const raw = blocks[i];
+    const keys = raw.self === true ? [own] : [];
+    const reasons = [];
+    const listUnknown = isUnknown(r, [dir, i, "security_groups"]);
+    const known_ = [];
+    let pending = 0;
+    for (const [j, id] of arr(raw.security_groups).entries()) {
+      if (listUnknown || isUnknown(r, [dir, i, "security_groups", j]) || typeof id !== "string") {
+        pending++;
+        continue;
+      }
+      const k = this.keyOfId(id);
+      if (!k.ok) reasons.push(k.reason);
+      else if (k.value !== null) known_.push(k.value);
+    }
+    keys.push(...known_);
+    if (listUnknown || pending) {
+      const fail = `${r.address}: ${dir} rule ${i} references security groups that are unknown until apply and cannot be matched to resources`;
+      const withGroups = blocks.filter((b, n) => isObj(b) && (arr(b.security_groups).length > 0 || isUnknown(r, [dir, n, "security_groups"]))).length;
+      const found = withGroups === 1 && !r.otherRefs.has(dir) ? this.configGroups(r, dir) : void 0;
+      const extra = found?.filter((k) => !known_.includes(k));
+      if (!extra || !listUnknown && extra.length !== pending || listUnknown && !extra.length) reasons.push(fail);
+      else keys.push(...extra);
+    }
+    return { keys: [...new Set(keys)].toSorted(cmp), ...reasons.length ? { unresolved: reasons.join("; ") } : {} };
+  }
+  /**
+   * Security groups that the configuration of `attr` names: group resources, managed
+   * default groups, and `aws_vpc.<name>.default_security_group_id`. Undefined when a
+   * reference is something else, except a subnet or VPC CIDR used by `cidr_blocks`.
+   */
+  configGroups(r, attr) {
+    const out = /* @__PURE__ */ new Set();
+    for (const ref of r.fullRefs[attr] ?? []) {
+      const m = /^(.*?aws_\w+\.[\w-]+(?:\[[^\]]+\])?)(?:\.(\w+))?$/.exec(localize(r.address, ref));
+      if (!m) return void 0;
+      const base = instanceOf(this.snap, m[1]);
+      if (!base) return void 0;
+      const type = typeOf(base);
+      const part = m[2];
+      if ((type === "aws_security_group" || type === "aws_default_security_group") && (part === void 0 || part === "id")) {
+        const k = this.canonical(base);
+        if (!k.ok) return void 0;
+        out.add(k.value);
+      } else if (type === "aws_vpc" && part === "default_security_group_id") out.add(`default-sg:${base}`);
+      else if (type === "aws_vpc" && part === void 0) continue;
+      else if ((type === "aws_subnet" || type === "aws_vpc") && part === "cidr_block") continue;
+      else if (part === void 0 && fullRefsHasAttr(r.fullRefs[attr] ?? [], ref)) continue;
+      else return void 0;
+    }
+    return [...out].toSorted(cmp);
   }
   inlineNaclRules(r, key) {
     if (isUnknown(r, [key])) return r.configured.has(key) ? unknown(`${r.address}: ${key} is unknown until apply`) : known([]);
@@ -1017,7 +1125,7 @@ var ModelBuilder = class {
     ];
   }
   fail(r, reason) {
-    return { address: r.address, type: r.type, vpc: unknown(reason), subnet: unknown(reason), publicIp: unknown(reason), securityGroups: unknown(reason), nacl: unknown(reason), routeTable: unknown(reason) };
+    return { address: r.address, type: r.type, vpc: unknown(reason), subnet: unknown(reason), subnetCidr: unknown(reason), publicIp: unknown(reason), securityGroups: unknown(reason), nacl: unknown(reason), routeTable: unknown(reason) };
   }
   /** An endpoint for `r` placed in `subnet`. */
   place(r, subnet, publicIp, groups, placement, via = []) {
@@ -1032,6 +1140,7 @@ var ModelBuilder = class {
       type: r.type,
       vpc,
       subnet: known(subnet),
+      subnetCidr: subnetCidrOf(s),
       publicIp: publicIp(s),
       securityGroups: groups(vpcRef.value),
       nacl: this.subnetNacl(subnet, vpcRef.value),
@@ -1186,9 +1295,9 @@ var ModelBuilder = class {
       if (port === void 0 || isUnknown(l, ["port"]) || isUnknown(l, ["protocol"])) return unknown(`${l.address}: port or protocol is unknown until apply`);
       const protocols = proto === "UDP" ? ["udp"] : proto === "TCP_UDP" ? ["tcp", "udp"] : ["tcp"];
       via.push(l.address);
-      for (const protocol of protocols) rules.push({ protocol, ports: [[port, port]], sources: ALL_IPV4, text: `${l.address} listens on ${protocol} ${port} (${lb.address} has no security groups)` });
+      for (const protocol of protocols) rules.push({ protocol, ports: [[port, port]], sources: ALL_IPV4, groups: [], text: `${l.address} listens on ${protocol} ${port} (${lb.address} has no security groups)` });
     }
-    return known([{ address: `listeners of ${lb.address}`, ingress: known(rules), via }]);
+    return known([{ address: `listeners of ${lb.address}`, key: `listeners:${lb.address}`, ingress: known(rules), egress: unknown(`${lb.address} has no security groups`), via }]);
   }
 };
 
