@@ -53,9 +53,21 @@ Handled:
 - `protocol` values `tcp`, `6`, `udp`, `17`, and `-1`.
 - `vpc_security_group_ids` on `aws_instance`; an empty list means the VPC's default group.
 
-Skipped for internet paths, because they cannot match an internet address: a source
-that is another security group (`security_groups`, `self`), and IPv6 sources (IPv6 is
-not modeled yet).
+Read into the model since #32, for paths inside the VPC:
+
+- Group sources: inline `security_groups` and `self`, `source_security_group_id` and
+  `self` on `aws_security_group_rule`, and `referenced_security_group_id` on
+  `aws_vpc_security_group_ingress_rule`. A known ID that no resource in the plan owns
+  is ignored: none of that group's members are in the plan. An ID that is unknown until
+  apply comes from the configuration. For inline blocks, Terraform merges the
+  references of all blocks, so the match is used only when one block lists groups;
+  otherwise the rule keeps a reason and the group stays unresolved.
+- Egress rules: inline `egress`, `aws_security_group_rule` with `type = "egress"`, and
+  `aws_vpc_security_group_egress_rule`. The unmanaged default group gets the AWS
+  defaults: all inbound traffic from itself, all outbound traffic.
+
+Internet paths ignore group sources and egress rules: a group source cannot match an
+internet address, and responses are allowed (rule 2). IPv6 sources are not modeled yet.
 
 Returns `unknown` with a reason:
 

@@ -188,7 +188,8 @@ export function resolveRefs(snap: Snapshot, r: Resource, attr: string, targetTyp
   return fromConfig(snap, r, attr, targetType).toSorted((a, b) => cmp(refOrder(a), refOrder(b)));
 }
 
-const ADDRESS = /^(.*?)(aws_\w+\.[\w-]+(?:\[[^\]]+\])?)$/;
+// The resource part may end with an attribute (`aws_vpc.main.default_route_table_id`).
+const ADDRESS = /^(.*?)(aws_\w+\.[\w-]+(?:\[[^\]]+\])?(?:\.\w+)?)$/;
 
 /**
  * Configuration references have the module path without instance keys. A reference
