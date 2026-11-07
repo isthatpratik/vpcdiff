@@ -7,7 +7,8 @@ import { ENGINE_VERSION, type Path, type Result } from "@vpcdiff/engine";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEvent, type ReactNode } from "react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/litt/accordion";
 import { Button } from "@/components/litt/button";
-import { ArrowRightIcon, ArrowUpRightIcon, AtSignIcon, BoxIcon, CloudIcon, DatabaseIcon, FileIcon, FilterIcon, GitBranchIcon, GlobeIcon, LayersIcon, LockIcon, MinusIcon, PlusIcon, SearchIcon, ShieldIcon } from "@/components/litt/icons";
+import { Tour, VIEWER_TOUR } from "./tour.tsx";
+import { ArrowRightIcon, HelpIcon, ArrowUpRightIcon, AtSignIcon, BoxIcon, CloudIcon, DatabaseIcon, FileIcon, FilterIcon, GitBranchIcon, GlobeIcon, LayersIcon, LockIcon, MinusIcon, PlusIcon, SearchIcon, ShieldIcon } from "@/components/litt/icons";
 import { Segmented } from "@/components/litt/segmented";
 import { Loading, Skeleton } from "@/components/litt/states";
 import { Tooltip, TooltipProvider } from "@/components/litt/tooltip";
@@ -42,6 +43,8 @@ const LABEL = "font-litt-mono text-xs tracking-[0.12em] text-litt-fg-subtle uppe
 export function App() {
   const [state, setState] = useState<State>({ kind: "empty" });
   const [dragging, setDragging] = useState(false);
+  // The tour shows the parts of an open plan; from the start screen it opens an example first.
+  const [touring, setTouring] = useState<"off" | "waiting" | "on">("off");
   const depth = useRef(0);
 
   const open = useCallback(async (name: string, text: Promise<string>, source: Source, path?: string) => {
@@ -93,6 +96,13 @@ export function App() {
     return () => window.removeEventListener("hashchange", restore);
   }, [open, openExample]);
 
+  useEffect(() => {
+    if (touring !== "waiting" || state.kind !== "ready") return;
+    // Let the first card open and settle before the spotlight measures it.
+    const t = window.setTimeout(() => setTouring("on"), 350);
+    return () => window.clearTimeout(t);
+  }, [touring, state.kind]);
+
   // A plan can be dropped anywhere on the page, at any time.
   const hasFiles = (e: DragEvent) => Array.from(e.dataTransfer.types).includes("Files");
   const onDragEnter = (e: DragEvent) => {
@@ -120,7 +130,13 @@ export function App() {
         <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:top-3 focus:left-3 focus:z-50 focus:rounded-[6px] focus:bg-litt-canvas focus:px-3 focus:py-2 focus:text-litt-small focus:text-litt-fg focus:shadow-[inset_0_0_0_1px_var(--litt-line-strong)]">
           Skip to content
         </a>
-        <TopBar name={state.kind === "ready" || state.kind === "loading" ? state.name : undefined} onNew={
+        <TopBar onTour={() => {
+            if (state.kind === "ready") setTouring("on");
+            else {
+              setTouring("waiting");
+              openExample("sg-5432-opened");
+            }
+          }} name={state.kind === "ready" || state.kind === "loading" ? state.name : undefined} onNew={
             state.kind === "ready"
               ? () => {
                   clearPlace();
@@ -140,6 +156,7 @@ export function App() {
           {state.kind === "loading" && <Busy />}
           {state.kind === "ready" && <Workspace key={state.name} name={state.name} result={state.result} sha256={state.sha256} initialPath={state.path} />}
         </main>
+        {touring === "on" && state.kind === "ready" && <Tour steps={VIEWER_TOUR} onClose={() => setTouring("off")} />}
         <div
           aria-hidden={!dragging}
           className={`pointer-events-none fixed inset-3 z-50 grid place-items-center rounded-[14px] border border-dashed border-litt-fg/40 bg-litt-canvas/80 backdrop-blur-md transition-opacity duration-200 ${dragging ? "opacity-100" : "opacity-0"}`}
@@ -153,7 +170,7 @@ export function App() {
   );
 }
 
-function TopBar({ name, onNew }: { name?: string | undefined; onNew?: (() => void) | undefined }) {
+function TopBar({ name, onNew, onTour }: { name?: string | undefined; onNew?: (() => void) | undefined; onTour: () => void }) {
   return (
     <header className="flex h-14 min-w-0 items-center gap-4 border-b border-litt-line px-4 sm:px-5">
       <a href="../" aria-label="vpcdiff home" className="flex shrink-0 items-center rounded-litt-control focus-visible:outline-2 focus-visible:outline-litt-focus">
@@ -186,7 +203,10 @@ function TopBar({ name, onNew }: { name?: string | undefined; onNew?: (() => voi
         )}
       </nav>
       <div className="ml-auto flex shrink-0 items-center gap-2">
-        <span className="hidden h-8 items-center gap-2 rounded-[6px] border border-litt-line px-3 text-litt-caption text-litt-fg-subtle md:inline-flex" title="The plan is read in this tab. It is never uploaded.">
+        <Button size="sm" variant="ghost" icon={<HelpIcon />} onClick={onTour} aria-label="Take a tour of the viewer" className="shadow-[inset_0_0_0_1px_var(--litt-line-strong)] hover:bg-litt-surface-2 active:scale-[0.97] motion-reduce:active:scale-100">
+          <span className="hidden sm:inline">Tour</span>
+        </Button>
+        <span data-tour="local" className="hidden h-8 items-center gap-2 rounded-[6px] border border-litt-line px-3 text-litt-caption text-litt-fg-subtle md:inline-flex" title="The plan is read in this tab. It is never uploaded.">
           <LockIcon aria-hidden="true" className="size-3.5" />
           Local only
         </span>
@@ -475,7 +495,7 @@ function Workspace({ name, result, sha256: hash, initialPath }: { name: string; 
         {/* The plan: what to do with the pull request, then the counts as filters. */}
         <header className="grid gap-5" aria-labelledby="plan-title">
           <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
-            <div className="grid min-w-0 gap-1.5">
+            <div data-tour="plan" className="grid min-w-0 gap-1.5">
               <h1 id="plan-title" tabIndex={-1} className="flex items-center gap-2.5 font-display text-2xl leading-tight font-normal tracking-[-0.02em] text-litt-fg outline-none">
                 <span aria-hidden="true" className={`size-2.5 shrink-0 rounded-full ${TONE_BAR[pv.tone]}`} />
                 {pv.title}
@@ -497,10 +517,10 @@ function Workspace({ name, result, sha256: hash, initialPath }: { name: string; 
                 )}
               </p>
             </div>
-            <CopyButton variant="text" label="Copy all for PR" what="the plan summary for the pull request" text={() => planMarkdown(name, result, { version: ENGINE_VERSION, ...(hash ? { sha256: hash } : {}) })} />
+            <span data-tour="copy-all"><CopyButton variant="text" label="Copy all for PR" what="the plan summary for the pull request" text={() => planMarkdown(name, result, { version: ENGINE_VERSION, ...(hash ? { sha256: hash } : {}) })} /></span>
           </div>
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div role="group" aria-label="Counts. Choose one to show only those paths." className="flex flex-wrap gap-1.5">
+            <div data-tour="counts" role="group" aria-label="Counts. Choose one to show only those paths." className="flex flex-wrap gap-1.5">
               {counters.map((c) => {
                 const on = filter === c.key;
                 return (
@@ -519,7 +539,7 @@ function Workspace({ name, result, sha256: hash, initialPath }: { name: string; 
                 );
               })}
             </div>
-            <div className="flex w-full min-w-0 items-center gap-2 sm:w-auto">
+            <div data-tour="view" className="flex w-full min-w-0 items-center gap-2 sm:w-auto">
               <p id="filter-help" className="sr-only">
                 Changes lists only paths the plan opens, closes, or puts at risk. All paths lists every path the engine checked.
               </p>
@@ -581,8 +601,8 @@ function Workspace({ name, result, sha256: hash, initialPath }: { name: string; 
                 </div>
               )}
               <ul ref={list} onKeyDown={onKey} className="grid gap-3">
-                {visible.map((p) => (
-                  <li key={p.id}>
+                {visible.map((p, n) => (
+                  <li key={p.id} {...(n === 0 ? { "data-tour": "card" } : {})}>
                     <PathCard path={p} open={openIds.has(p.id)} onToggle={() => toggle(p.id)} />
                   </li>
                 ))}
@@ -846,7 +866,7 @@ function SideDetail({ title, cell }: { title: string; cell: Cell }) {
 function VerdictPanel({ path }: { path: Path }) {
   const v = verdictOf(path);
   return (
-    <section aria-label="Verdict" className="grid gap-4 rounded-xl border border-litt-line bg-litt-surface-1 p-5">
+    <section data-tour="verdict" aria-label="Verdict" className="grid gap-4 rounded-xl border border-litt-line bg-litt-surface-1 p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="grid gap-1.5">
           <p className="font-display text-xl font-normal tracking-[-0.01em] text-litt-fg">{v.title}</p>
@@ -941,7 +961,7 @@ function PathBody({ path }: { path: Path }) {
 
         {/* One evidence panel: the strip at a glance, then the hops in full. */}
         <section className="min-w-0 overflow-hidden rounded-xl border border-litt-line" aria-labelledby="hops-title">
-          <div className="p-5">
+          <div data-tour="strip" className="p-5">
             <PathStrip path={path} columns={cols} before={lanes.before.cells} after={lanes.after.cells} differs={differs} risk={risk} selected={selected} onSelect={select} />
           </div>
           <div className="flex flex-wrap items-baseline justify-between gap-3 border-t border-litt-line bg-litt-surface-1 px-5 py-3">
@@ -960,7 +980,7 @@ function PathBody({ path }: { path: Path }) {
                     : "No hop differs"}
             </p>
           </div>
-          <ol className="divide-y divide-litt-line border-t border-litt-line">
+          <ol data-tour="hops" className="divide-y divide-litt-line border-t border-litt-line">
             <li aria-hidden="true" className="hidden grid-cols-[200px_minmax(0,1fr)_minmax(0,1fr)_32px] gap-4 px-5 py-2 text-litt-caption text-litt-fg-subtle sm:grid">
               <span>Hop</span>
               <span>Before</span>

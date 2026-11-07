@@ -283,6 +283,13 @@ so it counts for Largest Contentful Paint. `src/site/main.tsx` adds the classes;
   text from 4.58:1 (subtle) to 18.5:1 (ink); danger 5.6, success 5.1, warning 5.2.
   Outlines that carry meaning (the "Not checked" and "Not in plan" squares) use the
   subtle ink at full strength, 4.58:1, above the 3:1 that WCAG 1.4.11 asks for.
+- **Tour:** a "Tour" button in the app bar walks through the viewer in nine steps (plan
+  verdict, counts, the Changes / All toggle and filter, a path card, the verdict, the
+  path strip, the hops, "Copy all for PR", "Local only"). From the start screen it opens
+  an example plan first. One spotlight stays mounted and moves from part to part; the
+  rest of the page dims. The step card sits under the part (or above it) on wide
+  screens, and is a bottom sheet on phones. It is a modal dialog: Esc closes, arrows move,
+  focus stays in the card. Under reduced motion nothing animates (`src/app/tour.tsx`).
 - **Keyboard and screen readers:** after a plan opens, focus moves to the plan verdict and
   a live region says how many paths were checked and the plan verdict. After a failed
   open, focus returns to "Choose a file", next to the message. Closed hop rows are
