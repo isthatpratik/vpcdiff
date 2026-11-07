@@ -119,8 +119,24 @@ describe("paths inside the VPC", () => {
   it("notes a rule whose group is unknown until apply", () => {
     const appSg = { id: "sg-app", ingress: [fromWeb, { ...sgRule(22, 22, []), security_groups: null }], egress: allOut };
     const result = analyze(plan(twoTier({ appSg }).map((r) => (r.name === "app" && r.type === "aws_security_group" ? { ...r, unknown: { ingress: [{}, { security_groups: true }] }, config: { ingress: ["var.bastion"] } } : r))));
-    expect(result.notes.find((n) => n.resource === "aws_security_group.app")?.message).toMatch(/paths inside the VPC to aws_instance.app from that group are not checked/);
+    expect(result.notes.find((n) => n.resource === "aws_security_group.app")?.message).toMatch(/paths inside the VPC to aws_instance.app from security groups that cannot be resolved are not checked/);
     expect(only(result.paths.filter((p) => p.from !== "internet")).after.verdict).toBe("allowed");
+  });
+
+  it("notes an endpoint whose security groups are unknown, instead of hiding its paths", () => {
+    const resources = twoTier({ app: { vpc_security_group_ids: null } }).map((r) => (r.type === "aws_instance" && r.name === "app" ? { ...r, unknown: { vpc_security_group_ids: true }, config: { vpc_security_group_ids: ["var.groups"] } } : r));
+    const result = analyze(plan(resources));
+    expect(result.paths.filter((p) => p.from !== "internet")).toEqual([]);
+    expect(result.notes.find((n) => n.resource === "aws_instance.app")?.message).toMatch(/its security groups are unknown .*paths inside the VPC to aws_instance.app/);
+  });
+
+  it("names every endpoint that shares a group with an unresolved rule in one note", () => {
+    const appSg = { id: "sg-app", ingress: [{ ...sgRule(22, 22, []), security_groups: null }], egress: allOut };
+    const second = res("aws_instance", "app2", { id: "i-app2", subnet_id: "subnet-2", vpc_security_group_ids: ["sg-app"], associate_public_ip_address: false, network_interface: [] });
+    const resources = twoTier({ appSg }, [second]).map((r) => (r.name === "app" && r.type === "aws_security_group" ? { ...r, unknown: { ingress: [{ security_groups: true }] }, config: { ingress: ["var.bastion"] } } : r));
+    const notes = analyze(plan(resources)).notes.filter((n) => n.resource === "aws_security_group.app");
+    expect(notes).toHaveLength(1);
+    expect(notes[0]?.message).toMatch(/to aws_instance.app, aws_instance.app2 from/);
   });
 
   it("does not list a path from a group outside the plan", () => {

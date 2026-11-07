@@ -1605,7 +1605,9 @@ function analyze(plan) {
   const summary = { added: 0, removed: 0, changed: 0, unchanged: 0, unknown: 0 };
   for (const path of paths) summary[path.change]++;
   const notes = [...notesFor(before, after), ...unresolvedNotes([...epBefore.values(), ...epAfter.values()].flat())];
-  const unique = [...new Map(notes.map((n) => [n.resource, n])).values()].toSorted((x, y) => cmp(x.resource, y.resource));
+  const merged = /* @__PURE__ */ new Map();
+  for (const n of notes) merged.set(n.resource, [.../* @__PURE__ */ new Set([...merged.get(n.resource) ?? [], n.message])]);
+  const unique = [...merged.entries()].map(([resource, messages]) => ({ resource, message: messages.toSorted(cmp).join("; ") })).toSorted((x, y) => cmp(x.resource, y.resource));
   return { format: RESULT_FORMAT, summary, paths, notes: unique };
 }
 function pairPorts(a, t, p) {
@@ -1614,15 +1616,24 @@ function pairPorts(a, t, p) {
   return out;
 }
 function unresolvedNotes(list) {
-  const out = [];
+  const byKey = /* @__PURE__ */ new Map();
+  const add = (resource, why, target) => {
+    const k = `${resource}\0${why}`;
+    const n = byKey.get(k) ?? { resource, why, targets: /* @__PURE__ */ new Set() };
+    n.targets.add(target);
+    byKey.set(k, n);
+  };
   for (const e of list) {
-    if (!groupKeys(e).ok || !e.securityGroups.ok) continue;
+    if (!e.securityGroups.ok) {
+      add(e.address, `its security groups are unknown (${e.securityGroups.reason})`, e.address);
+      continue;
+    }
     for (const g of e.securityGroups.value) {
-      if (!g.ingress.ok) continue;
-      for (const r of g.ingress.value) if (r.unresolved) out.push({ resource: r.resource, message: `${r.unresolved}; paths inside the VPC to ${e.address} from that group are not checked` });
+      if (!g.ingress.ok) add(g.address, `its inbound rules are unknown (${g.ingress.reason})`, e.address);
+      else for (const r of g.ingress.value) if (r.unresolved) add(r.resource, r.unresolved, e.address);
     }
   }
-  return out;
+  return [...byKey.values()].map((n) => ({ resource: n.resource, message: `${n.why}; paths inside the VPC to ${[...n.targets].toSorted(cmp).join(", ")} from security groups that cannot be resolved are not checked` }));
 }
 function pathsOf(spec) {
   const out = [];

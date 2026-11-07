@@ -85,6 +85,16 @@ subnet:
 - The response is allowed for some ephemeral ports only.
 - An endpoint has several placements (RDS, load balancers) and they disagree.
 
+## Notes instead of paths
+
+Some cases hide which group a rule references, so no candidate path can be found. The
+result then has a note for the resource, which names the targets whose paths are not
+checked:
+
+- A rule that references a group that is unknown until apply.
+- An endpoint whose security groups are unknown until apply.
+- A security group whose inbound rules are unknown until apply.
+
 ## Result format
 
 - `Path.from` is the source's address, and `Path.fromType` its resource type. For
