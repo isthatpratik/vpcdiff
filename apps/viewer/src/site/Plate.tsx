@@ -18,7 +18,7 @@ export function Plate({ children, className = "", inset = "pt-12 pl-12 sm:pt-16 
  * terminal): a rounded top-left corner (the other corners run off the plate), a soft
  * outline with a lit top edge, a deep shadow, quiet window dots, and a mono title.
  */
-export const WINDOW = "rounded-tl-[10px] bg-litt-canvas shadow-[0_0_0_1px_color-mix(in_oklab,var(--litt-fg)_10%,transparent),inset_0_1px_0_color-mix(in_oklab,var(--litt-fg)_6%,transparent),0_40px_80px_-24px_rgba(0,0,0,0.6)]";
+export const WINDOW = "rounded-tl-[10px] bg-litt-canvas shadow-(--mock-shadow-window)";
 
 export function WindowBar({ title }: { title: string }) {
   return (

@@ -108,7 +108,7 @@ function Screen({ step, typed }: { step: number; typed: number }) {
         {step <= 1 && <Caret />}
       </div>
       <Line show={step >= 2}>
-        <span className={dim}>┌</span> <span className="bg-litt-fg px-1 text-litt-canvas">vpcdiff</span> <span className={dim}>see what a Terraform plan opens to the internet</span>
+        <span className={dim}>┌</span> <span className="bg-litt-fg px-1 text-litt-canvas">vpcdiff</span> <span className={dim}>see what a Terraform plan opens</span>
       </Line>
       <Line show={step >= 2}>{rail}</Line>
       <Line show={step >= 2}>

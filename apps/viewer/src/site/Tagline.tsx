@@ -177,7 +177,7 @@ export function Tagline() {
               chips.current[i] = el;
             }}
             aria-hidden="true"
-            className={`absolute ${c.at} hidden rounded-lg bg-litt-surface-1 px-3 py-2 shadow-[0_0_0_1px_var(--litt-line),inset_0_1px_0_color-mix(in_oklab,var(--litt-fg)_6%,transparent),0_12px_32px_-12px_rgba(0,0,0,0.6)] transition-[opacity,transform,filter] duration-500 lg:block ${EASE} ${on ? "translate-y-0 opacity-100 blur-0 delay-300" : `${c.side === "top" ? "-translate-y-1.5" : "translate-y-1.5"} opacity-0 blur-[3px]`}`}
+            className={`absolute ${c.at} hidden rounded-lg bg-litt-surface-1 px-3 py-2 shadow-(--mock-shadow-tip) transition-[opacity,transform,filter] duration-500 lg:block ${EASE} ${on ? "translate-y-0 opacity-100 blur-0 delay-300" : `${c.side === "top" ? "-translate-y-1.5" : "translate-y-1.5"} opacity-0 blur-[3px]`}`}
           >
             {c.body}
           </div>

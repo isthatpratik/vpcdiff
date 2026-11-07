@@ -57,7 +57,7 @@ function cancelled<T>(v: T | symbol): v is symbol {
 /** Ask for the plan, analyze it, show the report. Returns the exit code. */
 export async function interactive(failOn: FailOn = "added"): Promise<number> {
   const cwd = process.cwd();
-  p.intro(`${pc.bgWhite(pc.black(" vpcdiff "))} ${pc.dim("see what a Terraform plan opens to the internet")}`);
+  p.intro(`${pc.bgWhite(pc.black(" vpcdiff "))} ${pc.dim("see what a Terraform plan opens")}`);
 
   const listing = readdirSync(cwd, { withFileTypes: true }).map((d) => {
     let size: number;
