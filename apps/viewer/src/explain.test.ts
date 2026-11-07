@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { analyze, type Path, type Result } from "@vpcdiff/engine";
 import { describe, expect, it } from "vitest";
+import { lanesOf } from "@vpcdiff/engine/lanes";
 import { changeWords, mdCode, mdText, pathMarkdown, planVerdict, planMarkdown, portLabel, serviceOf, severityOf, verdictOf, whoText } from "@vpcdiff/engine/explain";
 
 const resultOf = (fixture: string): Result => analyze(JSON.parse(readFileSync(join(import.meta.dirname, "../../../fixtures", fixture, "plan.json"), "utf8")) as unknown);
@@ -86,7 +87,7 @@ describe("Markdown", () => {
   it("says so when nothing changes", () => {
     const r = resultOf("sg-5432-opened");
     const none: Result = { ...r, summary: { added: 0, removed: 0, changed: 0, unknown: 0, unchanged: 1 }, paths: r.paths.map((p) => ({ ...p, change: "unchanged" as const })) };
-    expect(planMarkdown("plan.json", none)).toContain("No path from the internet changes.");
+    expect(planMarkdown("plan.json", none)).toContain("No path changes.");
   });
 });
 
@@ -127,7 +128,7 @@ describe("trust", () => {
 
   it("puts the scope, the notes, and a reproducible footer in the plan summary", () => {
     const md = planMarkdown("plan.json", resultOf("sg-5432-opened"), { version: "0.1.0", sha256: "abcdef0123456789ffff" });
-    expect(md).toContain("Scope: IPv4 paths from the internet.");
+    expect(md).toContain("Scope: IPv4 paths from the internet and inside the VPC.");
     expect(md).toContain("<sub>vpcdiff 0.1.0 · plan sha256 abcdef0123456789</sub>");
   });
 });
@@ -151,5 +152,40 @@ describe("plan verdict and change words", () => {
     const md = planMarkdown("plan.json", resultOf("sg-5432-opened"));
     expect(md).toContain("**Fix before merge:** 1 path opens to any public IPv4 address.");
     expect(md).toContain("<details><summary>**New exposure**");
+  });
+});
+
+describe("paths inside the VPC", () => {
+  const opened = () => pathOf("sg-ref-opened", "aws_instance.web->aws_instance.app:tcp:8080");
+  const cut = () => pathOf("sg-ref-cut", "aws_instance.app->aws_instance.db:tcp:5432");
+
+  it("uses the internal columns, with the source resource first", () => {
+    const lanes = lanesOf(opened());
+    expect(lanes.columns.map((c) => c.key)).toEqual(["source", "source-security-group", "source-route", "source-nacl-outbound", "target-nacl-inbound", "security-group", "target", "target-nacl-outbound", "source-nacl-inbound", "target-route"]);
+    expect(lanes.after.cells[0]?.resource).toBe("aws_instance.web");
+    expect(lanes.columns[lanes.focus]?.key).toBe("security-group");
+  });
+
+  it("says what opens inside the VPC, and asks for a review, not a fix", () => {
+    const v = verdictOf(opened());
+    expect(v).toMatchObject({ tone: "warning", title: "Opened inside the VPC", body: "After this plan, the network lets aws_instance.web reach aws_instance.app on tcp/8080 (HTTP alt)." });
+    expect(v.cause?.hop).toBe("Target SG in");
+    expect(planVerdict(resultOf("sg-ref-opened"))).toEqual({ tone: "warning", title: "Review before merge", detail: "1 path opens inside the VPC" });
+  });
+
+  it("warns when the plan cuts a path inside the VPC", () => {
+    const v = verdictOf(cut());
+    expect(v).toMatchObject({ tone: "warning", title: "Cut inside the VPC", body: "After this plan, aws_instance.app can no longer reach aws_instance.db on tcp/5432 (PostgreSQL): it is blocked at the Target NACL in hop." });
+    expect(planVerdict(resultOf("sg-ref-cut")).detail).toBe("1 path inside the VPC is cut");
+  });
+
+  it("names the source in the Markdown", () => {
+    expect(pathMarkdown(cut()).split("\n")[0]).toBe("**Cut inside the VPC** · `aws_instance.app` → `aws_instance.db` tcp/5432 (PostgreSQL)");
+  });
+
+  it("ranks a cut inside the VPC with the opened paths, below an internet exposure", () => {
+    const internet = pathOf("sg-5432-opened", "internet->aws_instance.db:tcp:5432");
+    expect(severityOf(internet)).toBeLessThan(severityOf(cut()));
+    expect(severityOf(cut())).toBeLessThan(4);
   });
 });

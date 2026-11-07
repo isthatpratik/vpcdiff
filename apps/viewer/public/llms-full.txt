@@ -1,6 +1,6 @@
 # vpcdiff: full text
 
-> vpcdiff reads a Terraform plan (`terraform show -json`) and computes which AWS resources the internet can reach before and after the plan, hop by hop. It reports paths that are opened, closed, changed, or unknown, and flags outage risk when a resource on an open path is replaced by deleting it first. It runs as a GitHub Action, a CLI, and an offline web viewer, all on one pure TypeScript engine. Free, open source (Apache 2.0), and offline: it needs no AWS account or credentials.
+> vpcdiff reads a Terraform plan (`terraform show -json`) and computes which AWS resources the internet, and other resources in the VPC, can reach before and after the plan, hop by hop. It reports paths that are opened, closed, changed, or unknown, and flags outage risk when a resource on an open path is replaced by deleting it first. It runs as a GitHub Action, a CLI, and an offline web viewer, all on one pure TypeScript engine. Free, open source (Apache 2.0), and offline: it needs no AWS account or credentials.
 
 This file is the long version of [llms.txt](https://isthatpratik.github.io/vpcdiff/llms.txt), for language models and readers who want the whole picture in one place.
 
@@ -29,8 +29,8 @@ The engine is pure: the same plan gives the same output, byte for byte. Every AW
 - **Plan verdict**, one line for the whole plan, most serious first:
   - "Fix before merge": a path opens to the internet.
   - "Check by hand": vpcdiff could not decide a path.
-  - "Review before merge": an outage risk, or a path whose sources change.
-  - "No new exposure": nothing new opens. vpcdiff never says "safe"; it checks IPv4 paths from the internet only.
+  - "Review before merge": an outage risk, a path whose sources change, or a path inside the VPC that opens or is cut.
+  - "No new exposure": nothing new opens. vpcdiff never says "safe"; it checks IPv4 paths from the internet and inside the VPC only.
 - **Path changes**: opened (new exposure), closed, changed sources, unknown, or outage risk. Each path reads before → after: "Blocked → Reachable", "New resource → Reachable", "Reachable → Removed", "Stays reachable", "Stays blocked".
 - **Hop states**: Allows, Allows some sources, Denies, Unknown, Not checked (an earlier hop already blocked the traffic), Not in plan (the resource is created or destroyed by the plan).
 - **Outage risk**: a security group or route on an open path is replaced delete-first, so traffic can drop during the apply. The fix is `lifecycle { create_before_destroy = true }`; for a security group with a fixed `name`, use `name_prefix`, because AWS does not allow two groups with the same name in a VPC.
@@ -83,7 +83,7 @@ node packages/cli/dist/vpcdiff.mjs            # guided mode, in a terminal
 
 ## Web viewer
 
-[Open the viewer](https://isthatpratik.github.io/vpcdiff/app/). Drop `plan.json`, or open one of four example plans. The plan is analyzed in a Web Worker in the tab; the page's Content Security Policy is `connect-src 'none'`, so it cannot send the plan anywhere.
+[Open the viewer](https://isthatpratik.github.io/vpcdiff/app/). Drop `plan.json`, or open one of six example plans. The plan is analyzed in a Web Worker in the tab; the page's Content Security Policy is `connect-src 'none'`, so it cannot send the plan anywhere.
 
 - The page starts with the plan verdict and counters (opened, closed, changed, outage risk, unknown); each counter filters the list. Each path is a card, sorted most serious first; open a card to see its verdict and hops.
 - Each path shows the verdict in one sentence, the hop and rule that decide it, what to do, a Terraform snippet when there is a standard fix, a before/after strip of the hops, and a table of the hops with the AWS documentation for each.
@@ -97,11 +97,12 @@ node packages/cli/dist/vpcdiff.mjs            # guided mode, in a terminal
 | `aws_internet_gateway`, `aws_internet_gateway_attachment` | supported |
 | `aws_route_table` (inline routes), `aws_route`, `aws_route_table_association` | supported |
 | Main route table: `aws_default_route_table`, `aws_main_route_table_association`, unmanaged default | supported |
-| `aws_security_group` (inline), `aws_security_group_rule`, `aws_vpc_security_group_ingress_rule` | supported (IPv4 CIDR sources) |
+| `aws_security_group` (inline), `aws_security_group_rule`, `aws_vpc_security_group_ingress_rule` | supported (IPv4 CIDR and security group sources) |
 | `aws_default_security_group`, unmanaged default security group | supported |
 | `aws_network_acl` (inline), `aws_network_acl_rule`, `aws_network_acl_association`, `aws_default_network_acl`, unmanaged default NACL | supported |
 | `aws_instance` (endpoint), `aws_eip`, `aws_eip_association` | supported |
-| `aws_vpc_security_group_egress_rule` | read; does not affect inbound paths (security groups are stateful) |
+| Egress rules: inline `egress`, `aws_security_group_rule`, `aws_vpc_security_group_egress_rule` | supported for paths inside the VPC; internet paths do not need them (security groups are stateful) |
+| Paths inside the VPC: endpoint to endpoint through a security group reference (`security_groups`, `source_security_group_id`, `referenced_security_group_id`, `self`) | supported in one VPC; other VPCs and routes through a middlebox are unknown |
 | `aws_db_instance` (endpoint; `publicly_accessible`, `aws_db_subnet_group`) | supported |
 | `aws_lb` (endpoint; internet-facing ALB and NLB, `aws_lb_listener` for NLBs without groups) | supported |
 | Aurora, ECS services, Classic and Gateway Load Balancers | noted |
@@ -130,7 +131,7 @@ security review, and an updated support matrix.
 - **What does unknown mean?** The engine could not decide that hop: a value Terraform learns only at apply time, a resource it does not model yet, or a load balancer whose subnets give different answers. The reason is always shown. Unknown is a result, never a guess.
 - **How is this different from Checkov, tfsec, or Trivy?** Those tools judge each rule on its own. vpcdiff follows the whole path: an open security group behind a network ACL that denies the port is not an exposure, and a narrow rule can still open a path when a route changes.
 - **How is it different from AWS Reachability Analyzer?** Reachability Analyzer checks a live account, one path at a time, after you deploy. vpcdiff works on the plan, before you apply, for every endpoint at once. Each test fixture includes the steps to check it against Reachability Analyzer; those paid checks have not been run yet.
-- **Does it check traffic between my own services?** Not yet. Today it checks paths from the internet to instances, databases, and load balancers. Paths inside the VPC are next on the roadmap.
+- **Does it check traffic between my own services?** Yes, inside one VPC, where a security group rule references another group (for example load balancer to service, or app to database). It checks both groups, the route, and the network ACLs both ways. Paths between VPCs are on the roadmap.
 - **Can it block a pull request?** Yes. The GitHub Action fails the check when the plan adds a path from the internet (you choose the level with fail-on), writes the report to the job summary, and keeps one comment on the pull request up to date.
 - **What does it cost?** Nothing. vpcdiff is free and open source under the Apache 2.0 license.
 

@@ -57,6 +57,8 @@ AWS account or credentials, and the viewer never sends your plan anywhere.
   with:
     plan: plan.json
     # fail-on: added   # added | changed | unknown | never
+    # added = new exposure to the internet; changed also counts
+    # paths inside the VPC that the plan opens or cuts
 ```
 
 It comments on the pull request, writes the report to the job summary, and fails the
@@ -133,7 +135,7 @@ error.
 
 | Interface | Use |
 |---|---|
-| Web viewer | Load a plan in the browser. Each path with a verdict in plain words and a hop table. The plan never leaves your device. |
+| Web viewer | Load a plan in the browser. Each path, from the internet or inside the VPC, with a verdict in plain words and a hop table. The plan never leaves your device. |
 | CLI | Guided mode in a terminal, or text, JSON, or Markdown output. Exit code `1` when the plan adds new exposure. |
 | GitHub Action | Posts a reachability summary on the pull request. |
 
@@ -163,11 +165,12 @@ reported as `unknown` with a reason, never as allowed or blocked by guess.
 | `aws_internet_gateway`, `aws_internet_gateway_attachment` | supported |
 | `aws_route_table` (inline routes), `aws_route`, `aws_route_table_association` | supported |
 | Main route table: `aws_default_route_table`, `aws_main_route_table_association`, unmanaged default | supported |
-| `aws_security_group` (inline), `aws_security_group_rule`, `aws_vpc_security_group_ingress_rule` | supported (IPv4 CIDR sources) |
+| `aws_security_group` (inline), `aws_security_group_rule`, `aws_vpc_security_group_ingress_rule` | supported (IPv4 CIDR and security group sources) |
 | `aws_default_security_group`, unmanaged default security group | supported |
 | `aws_network_acl` (inline), `aws_network_acl_rule`, `aws_network_acl_association`, `aws_default_network_acl`, unmanaged default NACL | supported |
 | `aws_instance` (endpoint), `aws_eip`, `aws_eip_association` | supported |
-| `aws_vpc_security_group_egress_rule` | read; does not affect inbound paths (security groups are stateful) |
+| Egress rules: inline `egress`, `aws_security_group_rule`, `aws_vpc_security_group_egress_rule` | supported for paths inside the VPC; internet paths do not need them (security groups are stateful) |
+| Paths inside the VPC: endpoint to endpoint through a security group reference (`security_groups`, `source_security_group_id`, `referenced_security_group_id`, `self`) | supported in one VPC; other VPCs and routes through a middlebox are unknown |
 | `aws_db_instance` (endpoint; `publicly_accessible`, `aws_db_subnet_group`) | supported |
 | `aws_lb` (endpoint; internet-facing ALB and NLB, `aws_lb_listener` for NLBs without groups) | supported |
 | Aurora, ECS services, Classic and Gateway Load Balancers | noted |
@@ -184,6 +187,7 @@ security review, and an updated support matrix.
 
 1. [Paths inside the VPC](https://github.com/isthatpratik/vpcdiff/issues/32): security
    group references, so "load balancer to service" or "web to database" changes show up.
+   In review: #76, #77, and the display PR.
 2. [More AWS networking](https://github.com/isthatpratik/vpcdiff/issues/33): NAT gateways,
    VPC peering, Transit Gateway, VPC endpoints, IPv6, and prefix lists.
 3. [OpenTofu support](https://github.com/isthatpratik/vpcdiff/issues/34): the same plan

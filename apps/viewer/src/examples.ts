@@ -34,4 +34,16 @@ export const EXAMPLES: Example[] = [
     description: "Renaming a security group replaces it delete first, on a path that stays open.",
     load: () => import("../../../fixtures/sg-replaced/plan.json").then(text),
   },
+  {
+    id: "sg-ref-opened",
+    title: "App opened to the web tier",
+    description: "Inside the VPC: the app group now allows 8080 from the web group.",
+    load: () => import("../../../fixtures/sg-ref-opened/plan.json").then(text),
+  },
+  {
+    id: "sg-ref-cut",
+    title: "Database cut off by a NACL",
+    description: "Inside the VPC: a new NACL on the db subnet denies 5432 from the app subnet.",
+    load: () => import("../../../fixtures/sg-ref-cut/plan.json").then(text),
+  },
 ];

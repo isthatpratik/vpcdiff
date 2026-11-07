@@ -7,8 +7,8 @@ import { renderMarkdown, renderText, shouldFail, type FailOn } from "./render.ts
 const USAGE = `Usage: vpcdiff [options] <plan.json | ->
        vpcdiff            (in a terminal: find a plan here and walk through it)
 
-Shows which resources a Terraform plan makes reachable from the internet, or no
-longer reachable, with the deciding rule at each hop.
+Shows which resources a Terraform plan makes reachable from the internet or from
+each other inside a VPC, or no longer reachable, with the deciding rule at each hop.
 
 Make the input with:
   terraform plan -out=tfplan && terraform show -json tfplan > plan.json
@@ -18,7 +18,10 @@ Options:
   -a, --all                               Also show unchanged paths
       --fail-on <added|changed|unknown|never>
                                           Exit 1 when the plan has paths of this
-                                          kind or worse (default: added)
+                                          kind or worse (default: added). added is
+                                          a new exposure to the internet; changed
+                                          also counts paths inside the VPC that
+                                          the plan opens or cuts
   -v, --version                           Print the version
   -h, --help                              Print this help
 

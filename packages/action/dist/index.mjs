@@ -1686,18 +1686,18 @@ function outcomeLine(o) {
 }
 var md = (text) => text.replace(/[|\\`*_<>]/g, (c) => `\\${c}`);
 function renderMarkdown(result, opts) {
-  const lines = ["### vpcdiff: internet reachability", "", summaryLine(result), ""];
+  const lines = ["### vpcdiff: reachability", "", summaryLine(result), ""];
   const paths = visiblePaths(result, opts);
-  if (!paths.length) lines.push("No reachability changes from the internet.", "");
+  if (!paths.length) lines.push("No reachability changes.", "");
   else {
     lines.push("| | Path | Port | Before | After |", "|---|---|---|---|---|");
-    for (const p of paths) lines.push(`| ${ICON[p.change]} ${p.change}${p.outageRisk ? " \u26A0\uFE0F" : ""} | internet \u2192 \`${p.to}\` | ${p.protocol}/${p.ports} | ${md(outcomeLine(p.before))} | ${md(outcomeLine(p.after))} |`);
+    for (const p of paths) lines.push(`| ${ICON[p.change]} ${p.change}${p.outageRisk ? " \u26A0\uFE0F" : ""} | ${p.from === "internet" ? "internet" : `\`${p.from}\``} \u2192 \`${p.to}\` | ${p.protocol}/${p.ports} | ${md(outcomeLine(p.before))} | ${md(outcomeLine(p.after))} |`);
     lines.push("");
-    for (const p of paths.filter((x) => x.outageRisk)) lines.push(`> \u26A0\uFE0F \`${p.to}\` ${p.protocol}/${p.ports}: ${md(riskLine(p))}`, "");
+    for (const p of paths.filter((x) => x.outageRisk)) lines.push(`> \u26A0\uFE0F ${p.from === "internet" ? "" : `\`${p.from}\` \u2192 `}\`${p.to}\` ${p.protocol}/${p.ports}: ${md(riskLine(p))}`, "");
     for (const p of paths) {
       const explain = p.after.verdict === "absent" ? p.before : p.after;
       if (!explain.hops.length) continue;
-      lines.push(`<details><summary>${md(p.to)} ${p.protocol}/${p.ports}: hops (${p.after.verdict === "absent" ? "before" : "after"})</summary>`, "", "| Hop | Decision | Rule |", "|---|---|---|");
+      lines.push(`<details><summary>${p.from === "internet" ? "" : `${md(p.from)} \u2192 `}${md(p.to)} ${p.protocol}/${p.ports}: hops (${p.after.verdict === "absent" ? "before" : "after"})</summary>`, "", "| Hop | Decision | Rule |", "|---|---|---|");
       for (const h of explain.hops) lines.push(`| [${h.hop}](${h.doc}) | ${h.decision} | ${md(h.rule)} |`);
       lines.push("", "</details>", "");
     }
@@ -1711,11 +1711,14 @@ function renderMarkdown(result, opts) {
 `;
 }
 function shouldFail(result, failOn) {
-  const s = result.summary;
+  const count = (f) => result.paths.filter(f).length;
+  const internet = (p) => p.from === "internet";
   if (failOn === "never") return false;
-  if (failOn === "added") return s.added > 0;
-  if (failOn === "changed") return s.added + s.changed > 0;
-  return s.added + s.changed + s.unknown > 0;
+  const added = count((p) => internet(p) && p.change === "added");
+  if (failOn === "added") return added > 0;
+  const changed = count((p) => p.change === "changed" || !internet(p) && (p.change === "added" || p.change === "removed"));
+  if (failOn === "changed") return added + changed > 0;
+  return added + changed + result.summary.unknown > 0;
 }
 
 // src/main.ts

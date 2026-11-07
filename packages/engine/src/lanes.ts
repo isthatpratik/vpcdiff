@@ -2,8 +2,13 @@ import type { Decision, HopKind, Outcome, Path } from "./types.js";
 
 export type ColumnKey = "source" | HopKind | "target";
 
-/** Columns in the order traffic meets them: the request, the target, then the response. */
-export const COLUMNS: { key: ColumnKey; label: string }[] = [
+export interface Column {
+  key: ColumnKey;
+  label: string;
+}
+
+/** Columns of an internet path in the order traffic meets them: the request, the target, then the response. */
+export const COLUMNS: Column[] = [
   { key: "source", label: "Internet" },
   { key: "public-ip", label: "Public IP" },
   { key: "internet-gateway", label: "Internet gateway" },
@@ -13,6 +18,26 @@ export const COLUMNS: { key: ColumnKey; label: string }[] = [
   { key: "nacl-outbound", label: "NACL outbound" },
   { key: "route", label: "Return route" },
 ];
+
+/** Columns of a path inside the VPC (docs/semantics/internal-paths.md), in the same order. */
+export const INTERNAL_COLUMNS: Column[] = [
+  { key: "source", label: "Source" },
+  { key: "source-security-group", label: "Source SG out" },
+  { key: "source-route", label: "Route" },
+  { key: "source-nacl-outbound", label: "Source NACL out" },
+  { key: "target-nacl-inbound", label: "Target NACL in" },
+  { key: "security-group", label: "Target SG in" },
+  { key: "target", label: "Target" },
+  { key: "target-nacl-outbound", label: "Target NACL out" },
+  { key: "source-nacl-inbound", label: "Source NACL in" },
+  { key: "target-route", label: "Return route" },
+];
+
+/** True for a path from the internet; false for a path inside the VPC. */
+export const isInternet = (path: Pick<Path, "from">): boolean => path.from === "internet";
+
+/** The columns for a path's kind. */
+export const columnsOf = (path: Pick<Path, "from">): Column[] => (isInternet(path) ? COLUMNS : INTERNAL_COLUMNS);
 
 export type CellState = Decision | "not-reached" | "absent";
 
@@ -29,6 +54,8 @@ export interface Lane {
 }
 
 export interface Lanes {
+  /** The columns of this path's kind; every cell list follows this order. */
+  columns: Column[];
   before: Lane;
   after: Lane;
   /** Per column: true when the two sides differ there (the source column is never marked). */
@@ -38,11 +65,12 @@ export interface Lanes {
 }
 
 function laneOf(outcome: Outcome, path: Path): Lane {
+  const COLUMNS = columnsOf(path);
   if (outcome.verdict === "absent") {
     return { outcome, cells: COLUMNS.map((c) => ({ state: "absent", resource: c.key === "target" ? path.to : "", rule: "Not in the plan on this side: the plan creates or destroys this resource." })) };
   }
   const cells = COLUMNS.map((col): Cell => {
-    if (col.key === "source") return { state: "allow", resource: "internet", rule: outcome.sources.join(", ") };
+    if (col.key === "source") return { state: "allow", resource: path.from, rule: outcome.sources.join(", ") };
     if (col.key === "target") {
       return outcome.verdict === "allowed"
         ? { state: "allow", resource: path.to, rule: `Reachable on ${path.protocol}/${path.ports}` }
@@ -57,6 +85,7 @@ function laneOf(outcome: Outcome, path: Path): Lane {
 }
 
 export function lanesOf(path: Path): Lanes {
+  const COLUMNS = columnsOf(path);
   const before = laneOf(path.before, path);
   const after = laneOf(path.after, path);
   // When one side does not exist, every column differs; marking them all says nothing.
@@ -73,7 +102,7 @@ export function lanesOf(path: Path): Lanes {
   // A path with outage risk opens on the hop whose resource the plan replaces.
   const risky = path.outageRisk ? after.cells.findIndex((c) => (path.outageRisk ?? []).some((r) => c.resource.split(", ").includes(r) || c.rule.includes(r))) : -1;
   const focus = oneSideAbsent ? sg : firstChanged >= 0 ? firstChanged : risky >= 0 ? risky : Math.max(reached(before), reached(after));
-  return { before, after, changed, focus };
+  return { columns: COLUMNS, before, after, changed, focus };
 }
 
 /**
@@ -84,7 +113,7 @@ export function lanesOf(path: Path): Lanes {
 export function rowsDiffer(lanes: Lanes): boolean[] {
   return lanes.before.cells.map((b, i) => {
     const a = lanes.after.cells[i];
-    if (!a || COLUMNS[i]?.key === "source") return false;
+    if (!a || lanes.columns[i]?.key === "source") return false;
     return b.state !== a.state || b.resource !== a.resource || b.rule !== a.rule;
   });
 }

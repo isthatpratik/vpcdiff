@@ -162,7 +162,8 @@ plan.json
 The roadmap, in order (each item is a GitHub issue; see the README):
 
 1. Paths between endpoints inside the VPC (security group references), so a change that
-   cuts "load balancer to service" shows up (#32).
+   cuts "load balancer to service" shows up (#32). Specified in
+   [internal-paths.md](../semantics/internal-paths.md); result format 0.2.
 2. NAT gateways, VPC peering, Transit Gateway, VPC endpoints, IPv6, prefix lists (#33).
 3. OpenTofu plans, checked byte for byte against the Terraform fixtures (#34).
 4. Aurora, ECS services, Classic Load Balancers (#35).

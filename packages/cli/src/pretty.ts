@@ -3,7 +3,7 @@
 // text from render.ts. Colors come from picocolors and follow NO_COLOR and FORCE_COLOR.
 import type { Path, Result } from "@vpcdiff/engine";
 import { changeWords, planVerdict, portLabel, verdictOf, type Tone } from "@vpcdiff/engine/explain";
-import { COLUMNS, lanesOf, rowsDiffer, type CellState } from "@vpcdiff/engine/lanes";
+import { isInternet, lanesOf, rowsDiffer, type CellState } from "@vpcdiff/engine/lanes";
 import type pc from "picocolors";
 import { visiblePaths, type RenderOptions } from "./render.ts";
 
@@ -30,10 +30,11 @@ export function prettyPath(c: Colors, path: Path, full = false): string[] {
   const v = verdictOf(path);
   const lanes = lanesOf(path);
   const oneSide = path.before.verdict === "absent" || path.after.verdict === "absent";
-  const differs = oneSide ? COLUMNS.map(() => false) : rowsDiffer(lanes);
+  const cols = lanes.columns;
+  const differs = oneSide ? cols.map(() => false) : rowsDiffer(lanes);
   const lines = [
     `${tone(c, v.tone, "●")} ${tone(c, v.tone, v.title)}`,
-    `  ${c.bold(path.to)}  ${c.dim(portLabel(path))}  ${c.dim(changeWords(path))}`,
+    `  ${isInternet(path) ? "" : `${c.bold(path.from)} ${c.dim("→")} `}${c.bold(path.to)}  ${c.dim(portLabel(path))}  ${c.dim(changeWords(path))}`,
     `  ${v.body}`,
   ];
   if (v.doubt) lines.push(`  ${c.yellow("Partly undecided:")} ${v.doubt}`);
@@ -42,7 +43,7 @@ export function prettyPath(c: Colors, path: Path, full = false): string[] {
   if (v.snippet) lines.push(...v.snippet.split("\n").map((l) => `    ${c.cyan(l)}`));
   if (full) {
     lines.push("", `  ${c.dim("Every hop, before → after:")}`);
-    COLUMNS.forEach((col, i) => {
+    cols.forEach((col, i) => {
       const b = lanes.before.cells[i];
       const a = lanes.after.cells[i];
       if (!b || !a) return;
@@ -57,7 +58,7 @@ export function prettyPath(c: Colors, path: Path, full = false): string[] {
     });
     return lines;
   }
-  const rows = COLUMNS.map((col, i) => ({ col, i })).filter(({ i }) => differs[i]);
+  const rows = cols.map((col, i) => ({ col, i })).filter(({ i }) => differs[i]);
   if (rows.length) {
     lines.push("", `  ${c.dim("Hop".padEnd(18))}${c.dim("Before".padEnd(13))}${c.dim("After")}`);
     for (const { col, i } of rows) {
@@ -66,7 +67,7 @@ export function prettyPath(c: Colors, path: Path, full = false): string[] {
       if (!b || !a) continue;
       lines.push(`  ${col.label.padEnd(18)}${state(c, b.state)} ${state(c, a.state)}${a.resource ? c.dim(a.resource) : ""}`);
     }
-    const same = COLUMNS.length - rows.length;
+    const same = cols.length - rows.length;
     if (same) lines.push(`  ${c.dim(`${same} other hops are the same before and after.`)}`);
   }
   return lines;
@@ -87,7 +88,7 @@ export function renderPretty(c: Colors, result: Result, opts: RenderOptions & { 
   ];
   const paths = visiblePaths(result, opts);
   if (!paths.length) {
-    lines.push("", result.paths.length ? `${c.green("✓")} No path from the internet changes. ${c.dim(`(${result.paths.length} checked; --all lists them)`)}` : `${c.green("✓")} No security group opens a port to a public address, so there is no path from the internet to check.`);
+    lines.push("", result.paths.length ? `${c.green("✓")} No path changes. ${c.dim(`(${result.paths.length} checked; --all lists them)`)}` : `${c.green("✓")} No security group opens a port to a public address, so there is no path from the internet to check.`);
   }
   for (const p of paths) lines.push("", ...prettyPath(c, p));
   if (result.notes.length) {

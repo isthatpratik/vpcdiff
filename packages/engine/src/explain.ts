@@ -2,7 +2,7 @@
 // the rule that caused it, what to do next, short definitions for tooltips, and a
 // Markdown summary to paste into a pull request. Pure functions of the engine result.
 import type { Path, Result } from "./types.js";
-import { COLUMNS, lanesOf, type CellState, type ColumnKey } from "./lanes.js";
+import { isInternet, lanesOf, type CellState, type ColumnKey } from "./lanes.js";
 
 /** Well-known ports, so "tcp/5432" can also say "PostgreSQL". */
 const SERVICES: Record<string, string> = {
@@ -57,6 +57,16 @@ export function whoText(sources: string[]): string {
   return sources.join(", ");
 }
 
+/** Where a path starts, in a sentence: "the internet" or the source resource. */
+export function fromText(path: Pick<Path, "from">): string {
+  return isInternet(path) ? "the internet" : path.from;
+}
+
+/** A hop's definition for this path's kind: the source column differs inside the VPC. */
+export function hopHelp(path: Pick<Path, "from">, key: ColumnKey): string {
+  return key === "source" && !isInternet(path) ? "Where the traffic starts: a resource in the VPC, from its private address." : HOP_HELP[key];
+}
+
 /** Short definitions for each hop, for tooltips. Plain words first, the AWS term second. */
 export const HOP_HELP: Record<ColumnKey, string> = {
   source: "Where the traffic starts: public addresses on the internet.",
@@ -87,7 +97,7 @@ export const STATE_HELP: Record<CellState, string> = {
 };
 
 export const CHANGE_HELP = {
-  added: "Paths the plan opens to the internet.",
+  added: "Paths the plan opens, from the internet or inside the VPC.",
   removed: "Paths the plan closes.",
   changed: "Still reachable, but from different sources.",
   unknown: "Paths vpcdiff could not decide. Check them by hand.",
@@ -128,6 +138,8 @@ export function severityOf(path: Path): number {
   const rank = path.change === "unchanged" && path.outageRisk?.length ? 3 : CHANGE_RANK[path.change];
   const sources = path.after.verdict === "allowed" ? path.after.sources : path.before.sources;
   const wide = sources.includes("internet") ? 0 : 1;
+  // Inside the VPC, a path the plan cuts can break the application, so it ranks with the opened ones.
+  if (!isInternet(path) && path.change === "removed") return CHANGE_RANK.added * 4 + 2 + (SENSITIVE.has(path.ports) ? 0 : 1);
   const sensitive = SENSITIVE.has(path.ports) ? 0 : 1;
   return rank * 4 + wide * 2 + sensitive;
 }
@@ -136,7 +148,7 @@ export function severityOf(path: Path): number {
 function stoppedAt(path: Path, side: "before" | "after"): string | undefined {
   const lanes = lanesOf(path);
   const i = lanes[side].cells.findIndex((c) => c.state === "deny");
-  return i >= 0 ? `${COLUMNS[i]?.label} hop` : undefined;
+  return i >= 0 ? `${lanes.columns[i]?.label} hop` : undefined;
 }
 
 /** The verdict for one path, in plain words, with any undecided sources. */
@@ -152,17 +164,27 @@ function baseVerdict(path: Path): Verdict {
   const firstChanged = lanes.changed.indexOf(true);
   const causeFrom = (side: "before" | "after", i: number) => {
     const cell = lanes[side].cells[i];
-    return cell ? { hop: COLUMNS[i]?.label ?? "", resource: cell.resource, rule: cell.rule } : undefined;
+    return cell ? { hop: lanes.columns[i]?.label ?? "", resource: cell.resource, rule: cell.rule } : undefined;
   };
   // A new resource: the decisive hop is the one that lets traffic through or stops it.
   const decisive = (side: "before" | "after") => {
     const cells = lanes[side].cells;
     const deny = cells.findIndex((c) => c.state === "deny");
     if (deny >= 0) return deny;
-    const sg = COLUMNS.findIndex((c) => c.key === "security-group");
-    return sg;
+    return lanes.columns.findIndex((c) => c.key === "security-group");
   };
 
+  const from = fromText(path);
+  if (path.change === "added" && !isInternet(path)) {
+    const cause = causeFrom("after", firstChanged >= 0 ? firstChanged : decisive("after"));
+    return {
+      tone: "warning",
+      title: "Opened inside the VPC",
+      body: `After this plan, the network lets ${path.from} reach ${path.to} on ${port}.`,
+      ...(cause ? { cause } : {}),
+      action: `Check that ${path.from} should reach ${path.to} on this port.`,
+    };
+  }
   if (path.change === "added") {
     const i = firstChanged >= 0 ? firstChanged : decisive("after");
     const cause = causeFrom("after", i);
@@ -181,12 +203,12 @@ function baseVerdict(path: Path): Verdict {
     const i = firstChanged >= 0 ? firstChanged : decisive("before");
     const cause = causeFrom("after", i);
     const at = stoppedAt(path, "after");
-    return {
-      tone: "success",
-      title: "Closed",
-      body: path.after.verdict === "absent" ? `This plan removes ${path.to}, so the path from the internet on ${port} goes away.` : `After this plan, the internet can no longer reach ${path.to} on ${port}${at ? `: it is blocked at the ${at}` : ""}.`,
-      ...(cause ? { cause } : {}),
-    };
+    const gone = path.after.verdict === "absent" ? `This plan removes ${path.to}, so the path from ${from} on ${port} goes away.` : `After this plan, ${from} can no longer reach ${path.to} on ${port}${at ? `: it is blocked at the ${at}` : ""}.`;
+    if (!isInternet(path)) {
+      // A path inside the VPC that closes is usually traffic the application needs.
+      return { tone: "warning", title: "Cut inside the VPC", body: gone, ...(cause ? { cause } : {}), action: `If ${path.from} still needs ${path.to}, the application can fail after this apply. Check that the cut is intended.` };
+    }
+    return { tone: "success", title: "Closed", body: gone, ...(cause ? { cause } : {}) };
   }
   if (path.change === "changed") {
     const cause = firstChanged >= 0 ? causeFrom("after", firstChanged) : undefined;
@@ -203,7 +225,7 @@ function baseVerdict(path: Path): Verdict {
     return {
       tone: "warning",
       title: "Could not decide",
-      body: `vpcdiff could not decide whether the internet can reach ${path.to} on ${port}${reason ? `: ${reason}` : "."}`,
+      body: `vpcdiff could not decide whether ${from} can reach ${path.to} on ${port}${reason ? `: ${reason}` : "."}`,
       action: "Check this path by hand. vpcdiff reports unknown instead of guessing.",
     };
   }
@@ -221,16 +243,17 @@ function baseVerdict(path: Path): Verdict {
   if (path.before.verdict === "absent" && path.after.verdict === "blocked") {
     const at = stoppedAt(path, "after");
     const cause = causeFrom("after", decisive("after"));
-    return { tone: "neutral", title: "New, and not reachable", body: `This plan creates ${path.to}, and the internet cannot reach it on ${port}${at ? `: it is blocked at the ${at}` : ""}.`, ...(cause ? { cause } : {}) };
+    return { tone: "neutral", title: "New, and not reachable", body: `This plan creates ${path.to}, and ${from} cannot reach it on ${port}${at ? `: it is blocked at the ${at}` : ""}.`, ...(cause ? { cause } : {}) };
   }
   if (path.after.verdict === "allowed") {
     return { tone: "neutral", title: "No change", body: `${path.to} is reachable on ${port} from ${whoText(path.after.sources)}, before and after this plan.` };
   }
   const at = stoppedAt(path, "after");
-  return { tone: "neutral", title: "Stays blocked", body: `The internet cannot reach ${path.to} on ${port}, before or after this plan${at ? `: it is blocked at the ${at}` : ""}.` };
+  return { tone: "neutral", title: "Stays blocked", body: `${from === "the internet" ? "The internet" : from} cannot reach ${path.to} on ${port}, before or after this plan${at ? `: it is blocked at the ${at}` : ""}.` };
 }
 
 const CHANGE_WORD: Record<Path["change"], string> = { added: "New exposure", removed: "Closed", changed: "Sources changed", unknown: "Unknown", unchanged: "No change" };
+const INTERNAL_WORD: Partial<Record<Path["change"], string>> = { added: "Opened inside the VPC", removed: "Cut inside the VPC" };
 
 /**
  * Inline code that a value cannot close early: the fence is one backtick longer than any
@@ -286,13 +309,22 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
 export function planVerdict(result: Result): PlanVerdict {
   const s = result.summary;
   const risky = result.paths.filter((p) => p.outageRisk?.length).length;
-  if (s.added) {
-    const wide = result.paths.filter((p) => p.change === "added" && p.after.sources.includes("internet")).length;
-    return { tone: "danger", title: "Fix before merge", detail: wide ? `${plural(wide, "path opens", "paths open")} to any public IPv4 address` : `${plural(s.added, "path opens", "paths open")} to some addresses` };
+  const count = (f: (p: Path) => boolean) => result.paths.filter(f).length;
+  const opened = count((p) => p.change === "added" && isInternet(p));
+  const openedInside = count((p) => p.change === "added" && !isInternet(p));
+  const cutInside = count((p) => p.change === "removed" && !isInternet(p));
+  if (opened) {
+    const wide = count((p) => p.change === "added" && p.after.sources.includes("internet"));
+    return { tone: "danger", title: "Fix before merge", detail: wide ? `${plural(wide, "path opens", "paths open")} to any public IPv4 address` : `${plural(opened, "path opens", "paths open")} to some addresses` };
   }
   if (s.unknown) return { tone: "warning", title: "Check by hand", detail: `vpcdiff could not decide ${plural(s.unknown, "path", "paths")}` };
-  if (risky || s.changed) {
-    const parts = [risky ? plural(risky, "outage risk", "outage risks") : "", s.changed ? plural(s.changed, "path changes sources", "paths change sources") : ""].filter(Boolean);
+  if (risky || s.changed || openedInside || cutInside) {
+    const parts = [
+      cutInside ? `${plural(cutInside, "path", "paths")} inside the VPC ${cutInside === 1 ? "is" : "are"} cut` : "",
+      openedInside ? `${plural(openedInside, "path opens", "paths open")} inside the VPC` : "",
+      risky ? plural(risky, "outage risk", "outage risks") : "",
+      s.changed ? plural(s.changed, "path changes sources", "paths change sources") : "",
+    ].filter(Boolean);
     return { tone: "warning", title: "Review before merge", detail: parts.join(" · ") };
   }
   return { tone: "success", title: "No new exposure", detail: s.removed ? `${plural(s.removed, "path closes", "paths close")}; nothing new opens` : "Nothing new opens to the internet" };
@@ -300,13 +332,14 @@ export function planVerdict(result: Result): PlanVerdict {
 
 /** The headline word for a path: the change, or the outage risk on an unchanged path. */
 function headline(path: Path): string {
-  return path.change === "unchanged" && path.outageRisk?.length ? verdictOf(path).title : CHANGE_WORD[path.change];
+  if (path.change === "unchanged" && path.outageRisk?.length) return verdictOf(path).title;
+  return (!isInternet(path) && INTERNAL_WORD[path.change]) || CHANGE_WORD[path.change];
 }
 
 /** One path as Markdown, to paste into a pull request comment. */
 export function pathMarkdown(path: Path): string {
   const v = verdictOf(path);
-  const lines = [`**${headline(path)}** · internet → ${mdCode(path.to)} ${portLabel(path)}`, "", mdText(v.body)];
+  const lines = [`**${headline(path)}** · ${isInternet(path) ? "internet" : mdCode(path.from)} → ${mdCode(path.to)} ${portLabel(path)}`, "", mdText(v.body)];
   if (v.doubt) lines.push("", `**Partly undecided:** ${mdText(v.doubt)}`);
   if (v.cause && v.cause.rule) lines.push("", `Decided at the ${v.cause.hop} hop: ${mdCode(v.cause.rule)}`);
   if (v.action) lines.push("", mdText(v.action));
@@ -315,7 +348,7 @@ export function pathMarkdown(path: Path): string {
 }
 
 /** What the engine checks, for the scope line in the viewer and the Markdown. */
-export const SCOPE = "IPv4 paths from the internet";
+export const SCOPE = "IPv4 paths from the internet and inside the VPC";
 
 /**
  * The whole plan as Markdown: the counts, the scope, every path that changes or carries a
@@ -334,7 +367,7 @@ export function planMarkdown(name: string, result: Result, meta?: { version?: st
       const [head = "", ...rest] = pathMarkdown(p).split("\n");
       return `<details><summary>${head}</summary>\n${rest.join("\n")}\n\n</details>`;
     });
-  out.push("", items.length ? items.join("\n\n") : "No path from the internet changes.");
+  out.push("", items.length ? items.join("\n\n") : "No path changes.");
   if (result.notes.length) {
     out.push("", "Not modeled yet:", ...result.notes.map((n) => `- ${mdCode(n.resource)}: ${mdText(n.message)}`));
   }
