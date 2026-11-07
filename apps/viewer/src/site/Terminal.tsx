@@ -238,7 +238,7 @@ export function CliSection() {
         <div role="img" aria-label="Terminal: vpcdiff asks which plan to read, then shows that the plan opens aws_instance.db on tcp/5432 to the internet, decided by a security group rule." className="pt-8 pl-6 sm:pt-12 sm:pl-12">
           <div aria-hidden="true" className={WINDOW}>
             <WindowBar title="~/infra" />
-            <div className="h-[460px] overflow-hidden px-5 py-4 font-litt-mono text-[12.5px] leading-[20px] text-litt-fg-muted sm:text-[13px]">
+            <div className="h-[520px] overflow-hidden px-5 py-4 font-litt-mono text-[12.5px] leading-[20px] text-litt-fg-muted max-sm:[&_.whitespace-pre]:whitespace-pre-wrap max-sm:[&_.whitespace-pre]:[overflow-wrap:anywhere] sm:h-[460px] sm:text-[13px]">
               <Screen step={step} typed={typed} />
             </div>
           </div>

@@ -288,7 +288,9 @@ export function PathField({ className = "" }: { className?: string }) {
   return (
     <>
     <svg ref={ref} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMin slice" className={`block h-full w-full ${className}`} aria-hidden="true">
-      <style>{`@media (max-width: 640px) { .pf-text { display: none } }`}</style>
+      {/* On phones the field is drawn at about half size, so hop labels are set larger to
+          render near 12 to 14 px; the plan caption is cropped out there, so it hides. */}
+      <style>{`@media (max-width: 640px) { .pf-caption { display: none } .pf-label { font-size: 25px } .pf-label-last { font-size: 28px } .pf-detail { font-size: 21px } }`}</style>
       <g ref={fieldRef}>
         <g ref={camRef}>
           <g ref={dotsRef}>
@@ -371,10 +373,10 @@ export function PathField({ className = "" }: { className?: string }) {
                   style={{ transition: instant ?? `fill 500ms ${EXPO}, transform 900ms ${EXPO}`, transformBox: "fill-box", transformOrigin: "center", transform: on ? "scale(1)" : "scale(0.85)" }}
                 />
                 <g className="pf-text" fillOpacity={on ? 1 : 0.32} style={{ transition: instant ?? `fill-opacity 600ms ${EXPO}` }}>
-                  <text x={p.x + (last ? 34 : 18)} y={h.below ? p.y + 30 : p.y - 14} fill="var(--litt-fg)" fontFamily="var(--litt-font-mono)" fontSize={last ? 17 : 14} stroke="var(--litt-canvas)" strokeWidth={8} paintOrder="stroke">
+                  <text className={last ? "pf-label-last" : "pf-label"} x={p.x + (last ? 34 : 18)} y={h.below ? p.y + 30 : p.y - 14} fill="var(--litt-fg)" fontFamily="var(--litt-font-mono)" fontSize={last ? 17 : 14} stroke="var(--litt-canvas)" strokeWidth={8} paintOrder="stroke">
                     {h.label}
                   </text>
-                  <text x={p.x + (last ? 34 : 18)} y={h.below ? p.y + 50 : p.y + 6} fill="var(--litt-fg-subtle)" fontFamily="var(--litt-font-mono)" fontSize={12.5} stroke="var(--litt-canvas)" strokeWidth={8} paintOrder="stroke">
+                  <text className="pf-detail" x={p.x + (last ? 34 : 18)} y={h.below ? p.y + 56 : p.y + 6} fill="var(--litt-fg-subtle)" fontFamily="var(--litt-font-mono)" fontSize={12.5} stroke="var(--litt-canvas)" strokeWidth={8} paintOrder="stroke">
                     {h.detail}
                   </text>
                 </g>
@@ -386,7 +388,7 @@ export function PathField({ className = "" }: { className?: string }) {
 
       {/* The cause: the plan's one-line change, at the top right. It stays still while
           the camera moves, like a caption on the frame. */}
-      <g className="pf-text">
+      <g className="pf-text pf-caption">
         <rect x={W - 460} y={28} width={440} height={64} fill="var(--litt-canvas)" />
         <g transform={`translate(${W - 40} 52)`} fontFamily="var(--litt-font-mono)" textAnchor="end">
           <text fontSize={13} fill="var(--litt-fg-subtle)">

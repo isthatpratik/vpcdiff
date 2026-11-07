@@ -183,17 +183,36 @@ export function StepTabs() {
         onPointerLeave={() => setHover(false)}
         className="grid lg:grid-cols-[5fr_7fr]"
       >
-        <div key={step.id} className="grid content-start gap-4 px-6 py-12 md:px-16 md:py-16 animate-[step-in_500ms_ease-out_both]">
-          <h3 className="font-display text-3xl leading-tight font-normal tracking-[-0.03em] text-litt-fg">
-            {step.title}
-            <span className="block text-litt-fg-subtle">{step.rest}</span>
-          </h3>
-          <p className="max-w-[44ch] text-base leading-relaxed text-litt-fg-muted">{step.body}</p>
+        {/* Every step is rendered in the same grid cell and only the current one shows, so
+            the panel keeps the height of the tallest step and the page never shifts when
+            the tabs switch. Hidden steps are inert and hidden from screen readers. */}
+        <div className="grid">
+          {STEPS.map((st) => {
+            const on = st.id === step.id;
+            return (
+              <div key={st.id} aria-hidden={!on} inert={!on} className={`[grid-area:1/1] grid content-start gap-4 px-6 py-12 md:px-16 md:py-16 ${on ? "visible animate-[step-in_500ms_ease-out_both] motion-reduce:animate-none" : "invisible"}`}>
+                <h3 className="font-display text-3xl leading-tight font-normal tracking-[-0.03em] text-litt-fg">
+                  {st.title}
+                  <span className="block text-litt-fg-subtle">{st.rest}</span>
+                </h3>
+                <p className="max-w-[44ch] text-base leading-relaxed text-litt-fg-muted">{st.body}</p>
+              </div>
+            );
+          })}
         </div>
         <Plate className="min-h-[320px] border-t border-litt-line lg:border-t-0 lg:border-l" inset="pt-10 pl-8 sm:pt-14 sm:pl-14">
-          <PanelWindow key={step.id} title={step.panelTitle} className="min-h-[300px] animate-[step-in_500ms_ease-out_both]">
-            {step.panel}
-          </PanelWindow>
+          <div className="grid">
+            {STEPS.map((st) => {
+              const on = st.id === step.id;
+              return (
+                <div key={st.id} aria-hidden={!on} inert={!on} className={`[grid-area:1/1] ${on ? "visible animate-[step-in_500ms_ease-out_both] motion-reduce:animate-none" : "invisible"}`}>
+                  <PanelWindow title={st.panelTitle} className="h-full min-h-[300px]">
+                    {st.panel}
+                  </PanelWindow>
+                </div>
+              );
+            })}
+          </div>
         </Plate>
       </div>
     </div>

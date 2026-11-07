@@ -45,7 +45,7 @@ const GROUPS: { title: string; links: [string, string][] }[] = [
 ];
 
 const LABEL = "font-litt-mono text-xs tracking-[0.12em] text-litt-fg-subtle uppercase";
-const LINK = "rounded-[4px] py-0.5 transition-colors duration-200 hover:text-litt-fg focus-visible:outline-2 focus-visible:outline-litt-focus";
+const LINK = "inline-block min-w-6 rounded-[4px] py-1 transition-colors duration-200 hover:text-litt-fg focus-visible:outline-2 focus-visible:outline-litt-focus";
 
 /**
  * The page's own report, in the CLI's words: what this page sends and stores. These are
@@ -96,7 +96,7 @@ export function Footer() {
           {GROUPS.map((g) => (
             <nav key={g.title} aria-label={g.title} className="grid content-start gap-4 bg-litt-canvas px-6 py-12 md:px-8 md:py-14">
               <p className={LABEL}>{g.title}</p>
-              <ul className="grid gap-2.5 text-litt-small text-litt-fg-muted">
+              <ul className="grid gap-1 text-litt-small text-litt-fg-muted">
                 {g.links.map(([l, h]) => (
                   <li key={l}>
                     <a href={h} className={`${LINK} ${l.endsWith(".txt") ? "font-litt-mono text-xs" : ""}`}>

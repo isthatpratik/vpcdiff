@@ -203,7 +203,7 @@ export function HeroDemo() {
     <Stage
       width={1040}
       height={460}
-      compact={{ below: 720, width: 358, height: 560 }}
+      compact={{ below: 720, width: 358, height: 520 }}
       initial={initial}
       poster={POSTER}
       script={script}

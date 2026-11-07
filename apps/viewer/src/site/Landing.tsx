@@ -1,4 +1,5 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import { MenuIcon, XIcon } from "@/components/litt/icons";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/litt/accordion";
 import { Tag } from "@/components/litt/tag";
 import { TooltipProvider } from "@/components/litt/tooltip";
@@ -33,17 +34,23 @@ const HOP_NAMES = ["Public IP", "Gateway", "NACL in", "Groups", "NACL out", "Rou
 function HopChain({ on }: { on: boolean }) {
   return (
     <ol className="relative grid grid-cols-6" aria-label="The six hops, in the order traffic meets them">
-      {HOP_NAMES.map((h, i) => (
-        <li key={h} className="relative grid content-start justify-items-start gap-3">
+      {/* On phones the labels alternate above and below the line, so each one has two
+          columns of room and stays on one line. */}
+      {HOP_NAMES.map((h, i) => {
+        const odd = i % 2 === 1;
+        return (
+        <li key={h} className="relative grid content-start justify-items-start gap-2 sm:gap-3">
           {i < HOP_NAMES.length - 1 && (
-            <span aria-hidden="true" className={`absolute top-[5px] left-3 h-px w-[calc(100%-12px)] origin-left bg-litt-fg transition-transform duration-500 ${EASE} ${on ? "scale-x-100" : "scale-x-0"}`} style={{ transitionDelay: `${200 + i * 160}ms` }} />
+            <span aria-hidden="true" className={`absolute top-[33px] left-3 sm:top-[5px] h-px w-[calc(100%-12px)] origin-left bg-litt-fg transition-transform duration-500 ${EASE} ${on ? "scale-x-100" : "scale-x-0"}`} style={{ transitionDelay: `${200 + i * 160}ms` }} />
           )}
+          <span className="h-5 font-litt-mono text-litt-caption whitespace-nowrap text-litt-fg-muted sm:hidden">{odd ? h : ""}</span>
           <span aria-hidden="true" className={`relative size-3 border border-litt-fg transition-colors duration-300 ${on ? "bg-litt-fg" : "bg-litt-canvas"}`} style={{ transitionDelay: `${120 + i * 160}ms` }} />
-          <span className="pr-2 font-litt-mono text-litt-caption leading-tight text-litt-fg-muted">{h}</span>
+          <span className={`font-litt-mono text-litt-caption leading-tight whitespace-nowrap text-litt-fg-muted sm:pr-2 sm:whitespace-normal ${odd ? "max-sm:invisible" : ""}`}>{h}</span>
         </li>
-      ))}
+        );
+      })}
       {/* After the chain fills, a soft light travels it, the way a packet meets each hop in order. */}
-      <li aria-hidden="true" className="pointer-events-none absolute top-[5px] left-1.5 h-px w-[83.333%]">
+      <li aria-hidden="true" className="pointer-events-none absolute top-[33px] left-1.5 h-px w-[83.333%] sm:top-[5px]">
         {on && (
           <span className="absolute inset-y-0 left-0 w-full opacity-0 motion-safe:animate-[hop-packet_4.2s_cubic-bezier(0.65,0,0.35,1)_1.6s_infinite]">
             <span className="absolute top-1/2 -left-[3px] size-[7px] -translate-y-1/2 rounded-full bg-litt-fg shadow-[0_0_0_3px_color-mix(in_oklab,var(--litt-fg)_14%,transparent),0_0_12px_2px_color-mix(in_oklab,var(--litt-fg)_35%,transparent)]" />
@@ -205,6 +212,15 @@ function NavLink({ href, children }: { href: string; children: string }) {
 
 /** The nav sits between the rails like a section of its own, over a frosted canvas. */
 function Nav() {
+  // The phone menu: the section links (hidden on small screens), the theme, and GitHub.
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open]);
+  const icon = "absolute inset-0 m-auto size-4 transition-[opacity,transform] duration-200 ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:transition-none";
   return (
     <header className="intro-nav fixed inset-x-0 top-0 z-40 bg-litt-canvas/75 backdrop-blur-xl">
       <div className="intro-rail relative mx-3 border-x border-litt-line sm:mx-6 xl:mx-auto xl:max-w-[1200px]">
@@ -216,7 +232,7 @@ function Nav() {
               </li>
             ))}
           </ul>
-          <a href="./" aria-label="vpcdiff home" className="flex items-center gap-2 focus-visible:outline-2 focus-visible:outline-litt-focus md:justify-self-center">
+          <a href="./" aria-label="vpcdiff home" className="flex h-10 items-center gap-2 focus-visible:outline-2 focus-visible:outline-litt-focus md:justify-self-center">
             <Wordmark size={18} />
           </a>
           <div className="flex items-center justify-end gap-1">
@@ -226,6 +242,17 @@ function Nav() {
             <span className="hidden sm:inline [&_a]:rounded-full">
               <GithubLink />
             </span>
+            <button
+              type="button"
+              aria-expanded={open}
+              aria-controls="phone-menu"
+              aria-label={open ? "Close menu" : "Open menu"}
+              onClick={() => setOpen((v) => !v)}
+              className="relative grid size-10 place-items-center rounded-[6px] text-litt-fg-muted transition-colors duration-200 hover:bg-litt-surface-2 hover:text-litt-fg focus-visible:outline-2 focus-visible:outline-litt-focus md:hidden"
+            >
+              <MenuIcon aria-hidden="true" className={`${icon} ${open ? "scale-75 rotate-90 opacity-0" : "opacity-100"}`} />
+              <XIcon aria-hidden="true" className={`${icon} ${open ? "opacity-100" : "scale-75 -rotate-90 opacity-0"}`} />
+            </button>
             <span className="ml-2">
               <Cta href={APP} primary size="sm">
                 Try it
@@ -233,6 +260,23 @@ function Nav() {
             </span>
           </div>
         </nav>
+        <div id="phone-menu" inert={!open} className={`grid transition-[grid-template-rows] duration-300 ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:transition-none md:hidden ${open ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}>
+          <div className="min-h-0 overflow-hidden">
+            <ul className="grid border-t border-litt-line px-4 py-2">
+              {NAV_LINKS.map(([l, h], i) => (
+                <li key={h} className={`transition-[opacity,transform] duration-300 ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:transition-none ${open ? "translate-y-0 opacity-100" : "translate-y-2 opacity-0"}`} style={{ transitionDelay: open ? `${60 + i * 50}ms` : "0ms" }}>
+                  <a href={h} onClick={() => setOpen(false)} className="flex h-12 items-center text-base text-litt-fg-muted transition-colors duration-200 hover:text-litt-fg focus-visible:outline-2 focus-visible:outline-litt-focus">
+                    {l}
+                  </a>
+                </li>
+              ))}
+              <li className="flex items-center gap-2 border-t border-litt-line py-3">
+                <ThemeCycle className="text-litt-fg-subtle hover:bg-litt-surface-2 hover:text-litt-fg" />
+                <GithubLink />
+              </li>
+            </ul>
+          </div>
+        </div>
       </div>
       <Divider dots />
     </header>

@@ -203,6 +203,20 @@ Fonts load from Google Fonts (see section 10 for what that means for privacy).
   24 px (after primora.xyz). It says "more below" and fades out when the footer comes
   into view.
 
+### Landing on phones
+
+Checked at 360, 390, and 768 px: no sideways scroll, no text under 12 px, touch targets at
+least 24 px, Lighthouse mobile 100 for accessibility, best practices, and SEO.
+
+- A menu button (icon morphs to a close mark) opens the section links, the theme, and
+  GitHub under the nav; Escape or a link closes it.
+- The hero field keeps its hop labels, set larger so they render near 12 to 14 px; only
+  the plan caption, which the crop cuts off, hides.
+- The "How it works" panel renders every step in one grid cell and shows the current one,
+  so its height is the tallest step's and the page never shifts when the tabs switch.
+- The hop chain alternates labels above and below the line; the CLI terminal wraps long
+  lines; the pull request demo's check card wraps its hop chips and fits its width.
+
 ### Landing intro
 
 On every load that starts at the top of the page (no hash, not scrolled, motion allowed):
