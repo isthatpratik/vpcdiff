@@ -101,12 +101,12 @@ describe("paths inside the VPC", () => {
     expect(internal(twoTier({ webSg: web })).map((p) => p.id)).toEqual(["aws_instance.app->aws_instance.web:tcp:9000", "aws_instance.web->aws_instance.app:tcp:8080"]);
   });
 
-  it("returns unknown for endpoints in different VPCs", () => {
+  it("returns unknown for endpoints in different VPCs when the route is not a peering connection", () => {
     const vpc2 = res("aws_vpc", "other", { id: "vpc-2", cidr_block: "10.9.0.0/16", default_network_acl_id: "acl-9" });
     const subnet = res("aws_subnet", "c", { id: "subnet-9", vpc_id: "vpc-2", cidr_block: "10.9.1.0/24", map_public_ip_on_launch: false });
     const p = only(internal(twoTier({ app: { subnet_id: "subnet-9" } }, [vpc2, subnet])));
     expect(p.after.verdict).toBe("unknown");
-    expect(p.after.reason).toMatch(/different VPCs/);
+    expect(p.after.reason).toMatch(/not modeled for paths between VPCs/);
   });
 
   it("returns unknown when a route more specific than local covers the target subnet", () => {

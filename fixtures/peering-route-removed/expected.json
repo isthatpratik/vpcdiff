@@ -1,0 +1,151 @@
+{
+  "format": "0.2",
+  "summary": {
+    "added": 0,
+    "removed": 1,
+    "changed": 0,
+    "unchanged": 0,
+    "unknown": 0
+  },
+  "paths": [
+    {
+      "id": "aws_instance.web->aws_instance.db:tcp:5432",
+      "from": "aws_instance.web",
+      "fromType": "aws_instance",
+      "to": "aws_instance.db",
+      "toType": "aws_instance",
+      "protocol": "tcp",
+      "ports": "5432",
+      "change": "removed",
+      "before": {
+        "verdict": "allowed",
+        "sources": [
+          "aws_instance.web"
+        ],
+        "hops": [
+          {
+            "hop": "source-security-group",
+            "resource": "aws_security_group.web",
+            "decision": "allow",
+            "rule": "aws_security_group.web egress all traffic to 0.0.0.0/0",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/security-group-rules.html"
+          },
+          {
+            "hop": "source-route",
+            "resource": "aws_route_table.a",
+            "decision": "allow",
+            "rule": "aws_route_table.a route 10.20.0.0/16 -> vpc peering connection (aws_vpc_peering_connection.ab auto_accept = true)",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/RouteTables.html"
+          },
+          {
+            "hop": "source-nacl-outbound",
+            "resource": "default NACL of aws_vpc.a",
+            "decision": "allow",
+            "rule": "default NACL of aws_vpc.a egress rule 100: allow all traffic (AWS default)",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/vpc-network-acls.html"
+          },
+          {
+            "hop": "target-nacl-inbound",
+            "resource": "default NACL of aws_vpc.b",
+            "decision": "allow",
+            "rule": "default NACL of aws_vpc.b ingress rule 100: allow all traffic (AWS default)",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/vpc-network-acls.html"
+          },
+          {
+            "hop": "security-group",
+            "resource": "aws_security_group.db",
+            "decision": "allow",
+            "rule": "aws_security_group.db ingress tcp 5432 from aws_security_group.web",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/security-group-rules.html"
+          },
+          {
+            "hop": "target-nacl-outbound",
+            "resource": "default NACL of aws_vpc.b",
+            "decision": "allow",
+            "rule": "default NACL of aws_vpc.b egress rule 100: allow all traffic (AWS default)",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/custom-network-acl.html#nacl-ephemeral-ports"
+          },
+          {
+            "hop": "source-nacl-inbound",
+            "resource": "default NACL of aws_vpc.a",
+            "decision": "allow",
+            "rule": "default NACL of aws_vpc.a ingress rule 100: allow all traffic (AWS default)",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/custom-network-acl.html#nacl-ephemeral-ports"
+          },
+          {
+            "hop": "target-route",
+            "resource": "aws_route_table.b",
+            "decision": "allow",
+            "rule": "aws_route_table.b route 10.10.0.0/16 -> vpc peering connection (aws_vpc_peering_connection.ab auto_accept = true)",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/RouteTables.html"
+          }
+        ],
+        "reason": ""
+      },
+      "after": {
+        "verdict": "blocked",
+        "sources": [],
+        "hops": [
+          {
+            "hop": "source-security-group",
+            "resource": "aws_security_group.web",
+            "decision": "allow",
+            "rule": "aws_security_group.web egress all traffic to 0.0.0.0/0",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/security-group-rules.html"
+          },
+          {
+            "hop": "source-route",
+            "resource": "aws_route_table.a",
+            "decision": "allow",
+            "rule": "aws_route_table.a route 10.20.0.0/16 -> vpc peering connection (aws_vpc_peering_connection.ab auto_accept = true)",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/RouteTables.html"
+          },
+          {
+            "hop": "source-nacl-outbound",
+            "resource": "default NACL of aws_vpc.a",
+            "decision": "allow",
+            "rule": "default NACL of aws_vpc.a egress rule 100: allow all traffic (AWS default)",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/vpc-network-acls.html"
+          },
+          {
+            "hop": "target-nacl-inbound",
+            "resource": "default NACL of aws_vpc.b",
+            "decision": "allow",
+            "rule": "default NACL of aws_vpc.b ingress rule 100: allow all traffic (AWS default)",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/vpc-network-acls.html"
+          },
+          {
+            "hop": "security-group",
+            "resource": "aws_security_group.db",
+            "decision": "allow",
+            "rule": "aws_security_group.db ingress tcp 5432 from aws_security_group.web",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/security-group-rules.html"
+          },
+          {
+            "hop": "target-nacl-outbound",
+            "resource": "default NACL of aws_vpc.b",
+            "decision": "allow",
+            "rule": "default NACL of aws_vpc.b egress rule 100: allow all traffic (AWS default)",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/custom-network-acl.html#nacl-ephemeral-ports"
+          },
+          {
+            "hop": "source-nacl-inbound",
+            "resource": "default NACL of aws_vpc.a",
+            "decision": "allow",
+            "rule": "default NACL of aws_vpc.a ingress rule 100: allow all traffic (AWS default)",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/custom-network-acl.html#nacl-ephemeral-ports"
+          },
+          {
+            "hop": "target-route",
+            "resource": "aws_route_table.b",
+            "decision": "deny",
+            "rule": "aws_route_table.b has no route to the subnet of aws_instance.web in aws_vpc.a",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/RouteTables.html"
+          }
+        ],
+        "reason": "aws_route_table.b has no route to the subnet of aws_instance.web in aws_vpc.a"
+      }
+    }
+  ],
+  "notes": []
+}

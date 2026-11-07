@@ -54,6 +54,7 @@ const KINDS: Record<string, [string, string]> = {
   aws_network_acl: ["acl", "network-acl"],
   aws_instance: ["i", "instance"],
   aws_ec2_managed_prefix_list: ["pl", "prefix-list"],
+  aws_vpc_peering_connection: ["pcx", "vpc-peering-connection"],
 };
 
 const cache = join(tmpdir(), TOFU ? "vpcdiff-tofu-plugin-cache" : "vpcdiff-tf-plugin-cache");

@@ -42,6 +42,8 @@ const MODELED = new Set([
   "aws_lb",
   "aws_lb_listener",
   "aws_nat_gateway",
+  "aws_vpc_peering_connection",
+  "aws_vpc_peering_connection_accepter",
   "aws_vpc_endpoint",
   "aws_vpc_endpoint_route_table_association",
   "aws_ec2_managed_prefix_list",

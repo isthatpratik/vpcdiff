@@ -174,7 +174,7 @@ reported as `unknown` with a reason, never as allowed or blocked by guess.
 | `aws_network_acl` (inline), `aws_network_acl_rule`, `aws_network_acl_association`, `aws_default_network_acl`, unmanaged default NACL | supported |
 | `aws_instance` (endpoint), `aws_eip`, `aws_eip_association` | supported |
 | Egress rules: inline `egress`, `aws_security_group_rule`, `aws_vpc_security_group_egress_rule` | supported for paths inside the VPC; internet paths do not need them (security groups are stateful) |
-| Paths inside the VPC: endpoint to endpoint through a security group reference (`security_groups`, `source_security_group_id`, `referenced_security_group_id`, `self`) | supported in one VPC; other VPCs and routes through a middlebox are unknown |
+| Paths inside the VPC: endpoint to endpoint through a security group reference (`security_groups`, `source_security_group_id`, `referenced_security_group_id`, `self`) | supported in one VPC and across an active VPC peering connection (`aws_vpc_peering_connection`, `_accepter`); Transit Gateway and middlebox routes are unknown |
 | `aws_db_instance` (endpoint; `publicly_accessible`, `aws_db_subnet_group`) | supported |
 | `aws_lb` (endpoint; internet-facing ALB and NLB, `aws_lb_listener` for NLBs without groups) | supported |
 | `aws_rds_cluster_instance` (Aurora endpoint; groups and subnet group from `aws_rds_cluster`) | supported |

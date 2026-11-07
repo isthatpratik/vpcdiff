@@ -382,6 +382,42 @@ function routeStep(table, at, peerCidr, peer) {
   }
   return { decision: "allow", resource: t.resource, rule: texts.join("; "), ...listDoubt.length ? { doubt: `traffic to the subnet of ${peer} may match a prefix list route instead: ${listDoubt.join("; ")}` } : {} };
 }
+function peeringStep(table, at, peerCidr, peer, own, peerVpc) {
+  const fail = (decision, resource, why) => ({ decision, resource, rule: why, reason: why });
+  if (!table.ok) return fail("unknown", at, table.reason);
+  const t = table.value;
+  if (!t.routes.ok) return fail("unknown", t.resource, t.routes.reason);
+  if (own.cidrs.ok && peerVpc.cidrs.ok && !isEmpty(intersect(own.cidrs.value, peerVpc.cidrs.value))) return fail("unknown", own.address, `${own.address} and ${peerVpc.address} have overlapping CIDR blocks, so they cannot be peered`);
+  const routes = t.routes.value.toSorted((a, b) => b.prefix - a.prefix);
+  let remaining = peerCidr;
+  const via = /* @__PURE__ */ new Set();
+  const texts = [];
+  for (const [i, route] of routes.entries()) {
+    const m = intersect(remaining, route.cidr);
+    if (isEmpty(m)) continue;
+    if (routes.some((o, j) => j !== i && equals(o.cidr, route.cidr))) return fail("unknown", t.resource, `${t.resource} has more than one route for the same destination`);
+    texts.push(route.text);
+    const target = route.target;
+    if (target.kind === "drop" && target.peering) {
+      if (!target.peering.ok) return fail("unknown", t.resource, target.peering.reason);
+      via.add(target.peering.value);
+    } else if (target.kind === "drop") return fail("deny", t.resource, `${route.text}: ${target.why}`);
+    else if (target.kind === "unknown") return fail("unknown", t.resource, target.reason);
+    else return fail("unknown", t.resource, `${route.text} sends traffic for the subnet of ${peer} to a ${target.kind === "other" ? target.text : target.kind}, which is not modeled for paths between VPCs`);
+    remaining = subtract(remaining, m);
+  }
+  if (!isEmpty(remaining)) return fail("deny", t.resource, `${t.resource} has no route to the subnet of ${peer} in ${peerVpc.address}`);
+  if (via.size !== 1) return fail("unknown", t.resource, `${t.resource} sends the subnet of ${peer} to more than one peering connection`);
+  const pcx = [...via][0];
+  if (!own.peerings) return fail("unknown", own.address, `${own.address}: peering connections are not known`);
+  if (!own.peerings.ok) return fail("unknown", own.address, own.peerings.reason);
+  const p = own.peerings.value.find((x) => x.address === pcx);
+  if (!p) return fail("unknown", t.resource, `${pcx} is not a peering connection of ${own.address} in this plan`);
+  if (!p.peer.ok) return fail("unknown", pcx, p.peer.reason);
+  if (p.peer.value !== peerVpc.address) return fail("deny", pcx, `${pcx} joins ${own.address} and ${p.peer.value}, not ${peerVpc.address}`);
+  if (!p.active.ok) return fail("unknown", pcx, p.active.reason);
+  return { decision: "allow", resource: t.resource, rule: `${texts.join("; ")} (${p.active.value})` };
+}
 function naclStep(nacl, at, dir, peerCidr, peer, p, ports, ephemeral) {
   if (!nacl.ok) return { decision: "unknown", resource: at, rule: nacl.reason, reason: nacl.reason };
   const n = nacl.value;
@@ -429,8 +465,8 @@ function evaluateInternal(a, t, p, ports) {
   if (out) return out;
   if (!a.vpc.ok) return fail("source-route", a.address, a.vpc.reason);
   if (!t.vpc.ok) return fail("source-route", t.address, t.vpc.reason);
-  if (a.vpc.value.address !== t.vpc.value.address) return fail("source-route", a.address, `${a.address} and ${t.address} are in different VPCs (${a.vpc.value.address}, ${t.vpc.value.address}); peering and Transit Gateway are not modeled yet`);
-  const r1 = run2("source-route", routeStep(a.routeTable, a.address, tCidr, t.address));
+  const peered = a.vpc.value.address !== t.vpc.value.address;
+  const r1 = run2("source-route", peered ? peeringStep(a.routeTable, a.address, tCidr, t.address, a.vpc.value, t.vpc.value) : routeStep(a.routeTable, a.address, tCidr, t.address));
   if (r1) return r1;
   const same = a.subnet.ok && t.subnet.ok && a.subnet.value === t.subnet.value;
   const at = (ep) => ep.subnet.ok ? ep.subnet.value : ep.address;
@@ -445,7 +481,7 @@ function evaluateInternal(a, t, p, ports) {
   if (n6) return n6;
   const n7 = run2("source-nacl-inbound", same ? skip(a) : naclStep(a.nacl, at(a), "ingress", tCidr, t.address, p, ports, true));
   if (n7) return n7;
-  const r8 = run2("target-route", routeStep(t.routeTable, t.address, aCidr, a.address));
+  const r8 = run2("target-route", peered ? peeringStep(t.routeTable, t.address, aCidr, a.address, t.vpc.value, a.vpc.value) : routeStep(t.routeTable, t.address, aCidr, a.address));
   if (r8) return r8;
   return { verdict: "allowed", sources: [a.address], hops, reason: doubts.join("; ") };
 }
@@ -1088,6 +1124,10 @@ var ModelBuilder = class {
     } else {
       const other = ["nat_gateway_id", "network_interface_id", "transit_gateway_id", "vpc_peering_connection_id", "vpc_endpoint_id", "egress_only_gateway_id", "carrier_gateway_id", "local_gateway_id", "core_network_arn"].find((k) => !isNull(r, k));
       target = other ? dropOf(other) ?? { kind: "other", text: other.replace(/_id$|_arn$/, "").replaceAll("_", " ") } : { kind: "unknown", reason: `${r.address} has no target the engine can read` };
+      if (other === "vpc_peering_connection_id" && target.kind === "drop") {
+        const id = r.values.vpc_peering_connection_id;
+        target = { ...target, peering: !isUnknown(r, ["vpc_peering_connection_id"]) && typeof id === "string" ? this.peeringById(r, id) : this.refTo(r, "vpc_peering_connection_id", "aws_vpc_peering_connection") };
+      }
     }
     if (!isUnknown(r, ["state"]) && r.values.state === "blackhole") target = { kind: "drop", ...BLACKHOLE };
     if (listed) return known(this.listRoutes(this.listsOf(resolveRefs(this.snap, r, "destination_prefix_list_id", "aws_ec2_managed_prefix_list")), target, r.address));
@@ -1114,7 +1154,7 @@ var ModelBuilder = class {
     if (!attached.ok) return known({ address, cidrs, igw: unknown(attached.reason) });
     attached.value.forEach((g) => igws.add(g));
     const igw = igws.size > 1 ? unknown(`${address} has ${igws.size} internet gateways in the plan`) : known([...igws][0]);
-    return known({ address, cidrs, igw, via: this.igwAttach.sources(address) });
+    return known({ address, cidrs, igw, peerings: this.peeringsOf(address), via: this.igwAttach.sources(address) });
   }
   /** A security group by key, with inline rules and rule resources merged. */
   securityGroup(key) {
@@ -1326,9 +1366,54 @@ var ModelBuilder = class {
       return { kind: "unknown", reason: `${r.address}: gateway_id is unknown until apply and its reference is ambiguous` };
     }
     for (const key of ["nat_gateway_id", "network_interface_id", "transit_gateway_id", "vpc_peering_connection_id", "vpc_endpoint_id", "egress_only_gateway_id", "carrier_gateway_id", "local_gateway_id", "core_network_arn"]) {
-      if (str(raw[key]) || isUnknown(r, [...path, key])) return dropOf(key) ?? { kind: "other", text: key.replace(/_id$|_arn$/, "").replaceAll("_", " ") };
+      if (str(raw[key]) || isUnknown(r, [...path, key])) {
+        const d = dropOf(key);
+        if (d?.kind === "drop" && key === "vpc_peering_connection_id") return { ...d, peering: this.inlinePeering(r, raw, path) };
+        return d ?? { kind: "other", text: key.replace(/_id$|_arn$/, "").replaceAll("_", " ") };
+      }
     }
     return { kind: "unknown", reason: `${r.address}: route has no target the engine can read` };
+  }
+  /** The peering connection of an inline route: by known ID, else the one the `route` blocks reference. */
+  inlinePeering(r, raw, path) {
+    const id = raw.vpc_peering_connection_id;
+    if (!isUnknown(r, [...path, "vpc_peering_connection_id"]) && typeof id === "string") return this.peeringById(r, id);
+    const refs = r.otherRefs.has("route") ? [] : fromConfig(this.snap, r, "route", "aws_vpc_peering_connection");
+    return refs.length === 1 && refs[0]?.kind === "resource" ? known(refs[0].address) : unknown(`${r.address}: the peering connection of a route is unknown until apply`);
+  }
+  /** The aws_vpc_peering_connection with this ID. Its accepter resource has the same ID, so `byId` may name the accepter. */
+  peeringById(r, id) {
+    const found = this.ofType("aws_vpc_peering_connection").filter((p) => p.values.id === id && !isUnknown(p, ["id"]));
+    return found.length === 1 ? known(found[0].address) : unknown(`${r.address}: peering connection ${id} is not in this plan`);
+  }
+  /**
+   * Peering connections of a VPC. A connection carries traffic once active: the accepter
+   * accepts it (`auto_accept`, or aws_vpc_peering_connection_accepter), or its state shows
+   * `active`.
+   * https://docs.aws.amazon.com/vpc/latest/peering/vpc-peering-basics.html
+   */
+  peeringsOf(vpc) {
+    const out = [];
+    for (const p of this.ofType("aws_vpc_peering_connection")) {
+      const a = this.optionalRefTo(p, "vpc_id", "aws_vpc");
+      const b = this.optionalRefTo(p, "peer_vpc_id", "aws_vpc");
+      if (!a.ok) return unknown(a.reason);
+      if (!b.ok) return unknown(b.reason);
+      if (a.value !== vpc && b.value !== vpc) continue;
+      const other = a.value === vpc ? b.value : a.value;
+      out.push({ address: p.address, peer: other ? known(other) : unknown(`${p.address}: the peer VPC is not in this plan`), active: this.peeringActive(p) });
+    }
+    return known(out.toSorted((x, y) => cmp(x.address, y.address)));
+  }
+  peeringActive(p) {
+    if (!isUnknown(p, ["auto_accept"]) && p.values.auto_accept === true) return known(`${p.address} auto_accept = true`);
+    if (!isUnknown(p, ["accept_status"]) && p.values.accept_status === "active") return known(`${p.address} accept_status = active`);
+    for (const acc of this.ofType("aws_vpc_peering_connection_accepter")) {
+      const id = acc.values.vpc_peering_connection_id;
+      const ref = !isUnknown(acc, ["vpc_peering_connection_id"]) && typeof id === "string" ? this.peeringById(acc, id) : this.optionalRefTo(acc, "vpc_peering_connection_id", "aws_vpc_peering_connection");
+      if (ref.ok && ref.value === p.address && !isUnknown(acc, ["auto_accept"]) && acc.values.auto_accept === true) return known(`${acc.address} accepts ${p.address}`);
+    }
+    return unknown(`${p.address} is not accepted in this plan, so it may not be active`);
   }
   inlineRoutes(r) {
     const vgws = r.values.propagating_vgws;
@@ -1792,6 +1877,8 @@ var MODELED = /* @__PURE__ */ new Set([
   "aws_lb",
   "aws_lb_listener",
   "aws_nat_gateway",
+  "aws_vpc_peering_connection",
+  "aws_vpc_peering_connection_accepter",
   "aws_vpc_endpoint",
   "aws_vpc_endpoint_route_table_association",
   "aws_ec2_managed_prefix_list",

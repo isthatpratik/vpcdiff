@@ -58,7 +58,7 @@ export type RouteTarget =
   | { kind: "igw"; address: string }
   | { kind: "other"; text: string }
   /** A target that never carries traffic back to the internet: NAT gateway, peering, blackhole. */
-  | { kind: "drop"; text: string; why: string }
+  | { kind: "drop"; text: string; why: string; peering?: Known<string> }
   | { kind: "unknown"; reason: string };
 
 export interface Route {
@@ -78,10 +78,19 @@ export interface RouteTable {
   via?: string[];
 }
 
+/** A VPC peering connection of a VPC: the other VPC, and whether it is active. */
+export interface Peering {
+  address: string;
+  /** The other VPC's address, or why it is not known in this plan. */
+  peer: Known<string>;
+  active: Known<string>;
+}
+
 export interface Vpc {
   address: string;
   cidrs: Known<IntervalSet>;
   igw: Known<string | undefined>;
+  peerings?: Known<Peering[]>;
   via?: string[];
 }
 
@@ -663,6 +672,10 @@ export class ModelBuilder {
     } else {
       const other = ["nat_gateway_id", "network_interface_id", "transit_gateway_id", "vpc_peering_connection_id", "vpc_endpoint_id", "egress_only_gateway_id", "carrier_gateway_id", "local_gateway_id", "core_network_arn"].find((k) => !isNull(r, k));
       target = other ? (dropOf(other) ?? { kind: "other", text: other.replace(/_id$|_arn$/, "").replaceAll("_", " ") }) : { kind: "unknown", reason: `${r.address} has no target the engine can read` };
+      if (other === "vpc_peering_connection_id" && target.kind === "drop") {
+        const id = r.values.vpc_peering_connection_id;
+        target = { ...target, peering: !isUnknown(r, ["vpc_peering_connection_id"]) && typeof id === "string" ? this.peeringById(r, id) : this.refTo(r, "vpc_peering_connection_id", "aws_vpc_peering_connection") };
+      }
     }
     // A route whose target was deleted keeps its entry with state "blackhole".
     // https://docs.aws.amazon.com/vpc/latest/userguide/RouteTables.html
@@ -695,7 +708,7 @@ export class ModelBuilder {
     if (!attached.ok) return known({ address, cidrs, igw: unknown(attached.reason) });
     attached.value.forEach((g) => igws.add(g));
     const igw: Known<string | undefined> = igws.size > 1 ? unknown(`${address} has ${igws.size} internet gateways in the plan`) : known([...igws][0]);
-    return known({ address, cidrs, igw, via: this.igwAttach.sources(address) });
+    return known({ address, cidrs, igw, peerings: this.peeringsOf(address), via: this.igwAttach.sources(address) });
   }
 
   /** A security group by key, with inline rules and rule resources merged. */
@@ -934,9 +947,58 @@ export class ModelBuilder {
       return { kind: "unknown", reason: `${r.address}: gateway_id is unknown until apply and its reference is ambiguous` };
     }
     for (const key of ["nat_gateway_id", "network_interface_id", "transit_gateway_id", "vpc_peering_connection_id", "vpc_endpoint_id", "egress_only_gateway_id", "carrier_gateway_id", "local_gateway_id", "core_network_arn"]) {
-      if (str(raw[key]) || isUnknown(r, [...path, key])) return dropOf(key) ?? { kind: "other", text: key.replace(/_id$|_arn$/, "").replaceAll("_", " ") };
+      if (str(raw[key]) || isUnknown(r, [...path, key])) {
+        const d = dropOf(key);
+        if (d?.kind === "drop" && key === "vpc_peering_connection_id") return { ...d, peering: this.inlinePeering(r, raw, path) };
+        return d ?? { kind: "other", text: key.replace(/_id$|_arn$/, "").replaceAll("_", " ") };
+      }
     }
     return { kind: "unknown", reason: `${r.address}: route has no target the engine can read` };
+  }
+
+  /** The peering connection of an inline route: by known ID, else the one the `route` blocks reference. */
+  private inlinePeering(r: Resource, raw: Obj, path: (string | number)[]): Known<string> {
+    const id = raw.vpc_peering_connection_id;
+    if (!isUnknown(r, [...path, "vpc_peering_connection_id"]) && typeof id === "string") return this.peeringById(r, id);
+    const refs = r.otherRefs.has("route") ? [] : fromConfig(this.snap, r, "route", "aws_vpc_peering_connection");
+    return refs.length === 1 && refs[0]?.kind === "resource" ? known(refs[0].address) : unknown(`${r.address}: the peering connection of a route is unknown until apply`);
+  }
+
+  /** The aws_vpc_peering_connection with this ID. Its accepter resource has the same ID, so `byId` may name the accepter. */
+  private peeringById(r: Resource, id: string): Known<string> {
+    const found = this.ofType("aws_vpc_peering_connection").filter((p) => p.values.id === id && !isUnknown(p, ["id"]));
+    return found.length === 1 ? known((found[0] as Resource).address) : unknown(`${r.address}: peering connection ${id} is not in this plan`);
+  }
+
+  /**
+   * Peering connections of a VPC. A connection carries traffic once active: the accepter
+   * accepts it (`auto_accept`, or aws_vpc_peering_connection_accepter), or its state shows
+   * `active`.
+   * https://docs.aws.amazon.com/vpc/latest/peering/vpc-peering-basics.html
+   */
+  private peeringsOf(vpc: string): Known<Peering[]> {
+    const out: Peering[] = [];
+    for (const p of this.ofType("aws_vpc_peering_connection")) {
+      const a = this.optionalRefTo(p, "vpc_id", "aws_vpc");
+      const b = this.optionalRefTo(p, "peer_vpc_id", "aws_vpc");
+      if (!a.ok) return unknown(a.reason);
+      if (!b.ok) return unknown(b.reason);
+      if (a.value !== vpc && b.value !== vpc) continue;
+      const other = a.value === vpc ? b.value : a.value;
+      out.push({ address: p.address, peer: other ? known(other) : unknown(`${p.address}: the peer VPC is not in this plan`), active: this.peeringActive(p) });
+    }
+    return known(out.toSorted((x, y) => cmp(x.address, y.address)));
+  }
+
+  private peeringActive(p: Resource): Known<string> {
+    if (!isUnknown(p, ["auto_accept"]) && p.values.auto_accept === true) return known(`${p.address} auto_accept = true`);
+    if (!isUnknown(p, ["accept_status"]) && p.values.accept_status === "active") return known(`${p.address} accept_status = active`);
+    for (const acc of this.ofType("aws_vpc_peering_connection_accepter")) {
+      const id = acc.values.vpc_peering_connection_id;
+      const ref = !isUnknown(acc, ["vpc_peering_connection_id"]) && typeof id === "string" ? this.peeringById(acc, id) : this.optionalRefTo(acc, "vpc_peering_connection_id", "aws_vpc_peering_connection");
+      if (ref.ok && ref.value === p.address && !isUnknown(acc, ["auto_accept"]) && acc.values.auto_accept === true) return known(`${acc.address} accepts ${p.address}`);
+    }
+    return unknown(`${p.address} is not accepted in this plan, so it may not be active`);
   }
 
   private inlineRoutes(r: Resource): Known<Route[]> {

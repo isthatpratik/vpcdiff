@@ -77,13 +77,34 @@ subnet:
 
 ## Returns `unknown` with a reason
 
-- `A` and `T` are in different VPCs (peering and Transit Gateway are roadmap #33).
+- `A` and `T` are in different VPCs and a route to the other subnet does not use a VPC
+  peering connection (Transit Gateway, VPN, and other targets are not modeled for paths
+  between VPCs).
+- A peering connection that is not accepted in the plan (no `auto_accept`, no
+  `aws_vpc_peering_connection_accepter`, no `active` status), or VPCs with overlapping
+  CIDR blocks ("You cannot create a VPC peering connection between VPCs that have
+  matching or overlapping IPv4 or IPv6 CIDR blocks").
 - A route more specific than the local route covers part of the other subnet.
 - A rule or NACL entry covers only part of the other subnet.
 - A rule of `T` that could match references a group that is unknown until apply, and
   no other rule allows the traffic. The same for an outbound rule of `A`.
 - The response is allowed for some ephemeral ports only.
 - An endpoint has several placements (RDS, load balancers) and they disagree.
+
+## Across a VPC peering connection (#33)
+
+When `A` and `T` are in different VPCs, hops 2 and 8 check peering instead of the local
+route. "To enable the flow of traffic between the VPCs using private IP addresses, the
+owner of each VPC in the VPC peering connection must manually add a route to one or more
+of their VPC route tables that points to the IP address range of the other VPC."
+
+- Every address of the other subnet must use routes to one peering connection, by
+  longest prefix match, in the source's table (hop 2) and the target's table (hop 8).
+- That connection must join the two VPCs (`vpc_id`, `peer_vpc_id`) and be active.
+- No route gives `blocked`; a NAT gateway or blackhole route gives `blocked`.
+- Group references across a peering connection work as in one VPC ("If both VPCs are
+  in the same Region, you can reference a security group from the peer VPC").
+- Source: <https://docs.aws.amazon.com/vpc/latest/peering/vpc-peering-basics.html>
 
 ## Notes instead of paths
 

@@ -3,7 +3,7 @@
 // docs/semantics/internal-paths.md.
 import { EPHEMERAL, naclEval, PRIVATE_IPV4, segment } from "./evaluate.js";
 import { contains, equals, formatPorts, intersect, isEmpty, subtract, union, EMPTY, type IntervalSet, type Range } from "./intervals.js";
-import type { Endpoint, Known, Nacl, NaclRule, RouteTable, SecurityGroup } from "./model.js";
+import type { Endpoint, Known, Nacl, NaclRule, RouteTable, SecurityGroup, Vpc } from "./model.js";
 import type { Hop, HopKind, Outcome, Protocol } from "./types.js";
 
 const SG_DOC = "https://docs.aws.amazon.com/vpc/latest/userguide/security-group-rules.html";
@@ -100,6 +100,51 @@ function routeStep(table: Known<RouteTable>, at: string, peerCidr: IntervalSet, 
   return { decision: "allow", resource: t.resource, rule: texts.join("; "), ...(listDoubt.length ? { doubt: `traffic to the subnet of ${peer} may match a prefix list route instead: ${listDoubt.join("; ")}` } : {}) };
 }
 
+/**
+ * The route from a subnet to a subnet in a peered VPC: every address of the peer subnet
+ * must use one route to a VPC peering connection that joins the two VPCs and is active.
+ * "The owner of each VPC in the VPC peering connection must manually add a route ... that
+ * points to the IP address range of the other VPC."
+ * https://docs.aws.amazon.com/vpc/latest/peering/vpc-peering-basics.html
+ */
+function peeringStep(table: Known<RouteTable>, at: string, peerCidr: IntervalSet, peer: string, own: Vpc, peerVpc: Vpc): Step {
+  const fail = (decision: "deny" | "unknown", resource: string, why: string): Step => ({ decision, resource, rule: why, reason: why });
+  if (!table.ok) return fail("unknown", at, table.reason);
+  const t = table.value;
+  if (!t.routes.ok) return fail("unknown", t.resource, t.routes.reason);
+  // "You cannot create a VPC peering connection between VPCs that have matching or overlapping IPv4 or IPv6 CIDR blocks."
+  if (own.cidrs.ok && peerVpc.cidrs.ok && !isEmpty(intersect(own.cidrs.value, peerVpc.cidrs.value))) return fail("unknown", own.address, `${own.address} and ${peerVpc.address} have overlapping CIDR blocks, so they cannot be peered`);
+  const routes = t.routes.value.toSorted((a, b) => b.prefix - a.prefix);
+  let remaining = peerCidr;
+  const via = new Set<string>();
+  const texts: string[] = [];
+  for (const [i, route] of routes.entries()) {
+    const m = intersect(remaining, route.cidr);
+    if (isEmpty(m)) continue;
+    if (routes.some((o, j) => j !== i && equals(o.cidr, route.cidr))) return fail("unknown", t.resource, `${t.resource} has more than one route for the same destination`);
+    texts.push(route.text);
+    const target = route.target;
+    if (target.kind === "drop" && target.peering) {
+      if (!target.peering.ok) return fail("unknown", t.resource, target.peering.reason);
+      via.add(target.peering.value);
+    } else if (target.kind === "drop") return fail("deny", t.resource, `${route.text}: ${target.why}`);
+    else if (target.kind === "unknown") return fail("unknown", t.resource, target.reason);
+    else return fail("unknown", t.resource, `${route.text} sends traffic for the subnet of ${peer} to a ${target.kind === "other" ? target.text : target.kind}, which is not modeled for paths between VPCs`);
+    remaining = subtract(remaining, m);
+  }
+  if (!isEmpty(remaining)) return fail("deny", t.resource, `${t.resource} has no route to the subnet of ${peer} in ${peerVpc.address}`);
+  if (via.size !== 1) return fail("unknown", t.resource, `${t.resource} sends the subnet of ${peer} to more than one peering connection`);
+  const pcx = [...via][0] as string;
+  if (!own.peerings) return fail("unknown", own.address, `${own.address}: peering connections are not known`);
+  if (!own.peerings.ok) return fail("unknown", own.address, own.peerings.reason);
+  const p = own.peerings.value.find((x) => x.address === pcx);
+  if (!p) return fail("unknown", t.resource, `${pcx} is not a peering connection of ${own.address} in this plan`);
+  if (!p.peer.ok) return fail("unknown", pcx, p.peer.reason);
+  if (p.peer.value !== peerVpc.address) return fail("deny", pcx, `${pcx} joins ${own.address} and ${p.peer.value}, not ${peerVpc.address}`);
+  if (!p.active.ok) return fail("unknown", pcx, p.active.reason);
+  return { decision: "allow", resource: t.resource, rule: `${texts.join("; ")} (${p.active.value})` };
+}
+
 /** One direction of a NACL for the whole peer subnet. `ephemeral`: the response to the client's port. */
 function naclStep(nacl: Known<Nacl>, at: string, dir: "ingress" | "egress", peerCidr: IntervalSet, peer: string, p: Protocol, ports: Range, ephemeral: boolean): Step {
   if (!nacl.ok) return { decision: "unknown", resource: at, rule: nacl.reason, reason: nacl.reason };
@@ -156,8 +201,8 @@ export function evaluateInternal(a: Endpoint | undefined, t: Endpoint | undefine
   // 2. Same VPC, and the local route to the target's subnet.
   if (!a.vpc.ok) return fail("source-route", a.address, a.vpc.reason);
   if (!t.vpc.ok) return fail("source-route", t.address, t.vpc.reason);
-  if (a.vpc.value.address !== t.vpc.value.address) return fail("source-route", a.address, `${a.address} and ${t.address} are in different VPCs (${a.vpc.value.address}, ${t.vpc.value.address}); peering and Transit Gateway are not modeled yet`);
-  const r1 = run("source-route", routeStep(a.routeTable, a.address, tCidr, t.address));
+  const peered = a.vpc.value.address !== t.vpc.value.address;
+  const r1 = run("source-route", peered ? peeringStep(a.routeTable, a.address, tCidr, t.address, a.vpc.value, t.vpc.value) : routeStep(a.routeTable, a.address, tCidr, t.address));
   if (r1) return r1;
 
   // 3, 4. The request leaves the source subnet and enters the target subnet.
@@ -180,7 +225,7 @@ export function evaluateInternal(a: Endpoint | undefined, t: Endpoint | undefine
   if (n7) return n7;
 
   // 8. The local route back to the source's subnet.
-  const r8 = run("target-route", routeStep(t.routeTable, t.address, aCidr, a.address));
+  const r8 = run("target-route", peered ? peeringStep(t.routeTable, t.address, aCidr, a.address, t.vpc.value, a.vpc.value) : routeStep(t.routeTable, t.address, aCidr, a.address));
   if (r8) return r8;
 
   return { verdict: "allowed", sources: [a.address], hops, reason: doubts.join("; ") };
