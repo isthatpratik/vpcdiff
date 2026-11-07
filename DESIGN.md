@@ -65,8 +65,14 @@ to its left at 1.15 times the cap height, 8 px away.
 - **Hop decisions:** a hop that allows traffic is plain ink (a raised tag), one that
   denies is rose, a partial allow is amber. "Denies" is never red, so it is not read as
   new exposure.
-- **The landing page opens dark.** The theme switch still offers light and system. The
-  viewer follows the system setting.
+- **Two themes, dark by default.** The landing page and the viewer open dark. One round
+  toggle (`src/shared/theme.tsx`) switches between dark and light; there is no system
+  mode. The sun and moon icons turn and fade into each other (500 ms ease-out). Where
+  the browser supports view transitions, the new theme grows as a circle from the
+  toggle; with reduced motion the colors change at once. The choice is saved per browser.
+- **Mockup shadows** (hero demo, plate windows, tagline callouts) come from
+  `--mock-shadow-*` tokens: deep in dark mode, short and faint in light mode, so they
+  stay inside the stage and never read as smudges on the light canvas.
 
 ### Tokens
 

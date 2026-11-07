@@ -10,7 +10,7 @@ import nodejs from "../logos/nodejs-icon-mono.svg?url";
 import terraform from "../logos/terraform-icon-mono.svg?url";
 import { Mark, REPO, Wordmark } from "../shared/brand.tsx";
 import { GithubLink } from "../shared/github.tsx";
-import { ThemeCycle } from "../shared/theme.tsx";
+import { ThemeToggle } from "../shared/theme.tsx";
 import { Cta } from "./Cta.tsx";
 import { HeroDemo } from "./HeroDemo.tsx";
 import { PathField } from "./PathField.tsx";
@@ -237,7 +237,7 @@ function Nav() {
           </a>
           <div className="flex items-center justify-end gap-1">
             <span className="hidden sm:inline">
-              <ThemeCycle className="text-litt-fg-subtle hover:bg-litt-surface-2 hover:text-litt-fg" />
+              <ThemeToggle className="text-litt-fg-subtle hover:bg-litt-surface-2 hover:text-litt-fg" />
             </span>
             <span className="hidden sm:inline [&_a]:rounded-full">
               <GithubLink />
@@ -271,7 +271,7 @@ function Nav() {
                 </li>
               ))}
               <li className="flex items-center gap-2 border-t border-litt-line py-3">
-                <ThemeCycle className="text-litt-fg-subtle hover:bg-litt-surface-2 hover:text-litt-fg" />
+                <ThemeToggle className="text-litt-fg-subtle hover:bg-litt-surface-2 hover:text-litt-fg" />
                 <GithubLink />
               </li>
             </ul>

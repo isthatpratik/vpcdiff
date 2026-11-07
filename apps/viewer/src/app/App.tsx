@@ -19,7 +19,7 @@ import { clearPlace, keptFile, placeExample, placeFile, placePath, readPlace } f
 import { isInternet, lanesOf, rowsDiffer, type Cell, type CellState, type Column, type ColumnKey } from "@vpcdiff/engine/lanes";
 import { Wordmark } from "../shared/brand.tsx";
 import { GithubLink } from "../shared/github.tsx";
-import { ThemeSwitch } from "../shared/theme.tsx";
+import { ThemeToggle } from "../shared/theme.tsx";
 import { CHANGE_TEXT, ChangeTag, DecisionTag } from "./status.tsx";
 
 type State = { kind: "empty"; error?: string } | { kind: "loading"; name: string } | { kind: "ready"; name: string; result: Result; sha256?: string; path?: string };
@@ -197,7 +197,7 @@ function TopBar({ name, onNew }: { name?: string | undefined; onNew?: (() => voi
           </Button>
         )}
         <span className="hidden sm:inline">
-          <ThemeSwitch />
+          <ThemeToggle className="text-litt-fg-subtle shadow-[inset_0_0_0_1px_var(--litt-line-strong)] hover:bg-litt-surface-2 hover:text-litt-fg" />
         </span>
         <span className="hidden sm:inline">
           <GithubLink />

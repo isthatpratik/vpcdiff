@@ -4,7 +4,7 @@ import { createRoot } from "react-dom/client";
 import { initTheme } from "../shared/theme.tsx";
 import { Landing } from "./Landing.tsx";
 
-initTheme("dark");
+initTheme();
 
 // The page-load intro (styles/app.css, "Landing intro"). The page stays hidden until the
 // fonts are ready (at most 800 ms), so text never swaps from a fallback font and shifts.
