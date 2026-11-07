@@ -123,7 +123,7 @@ function Features() {
       </article>
       <article id="outage" className={`${cell} scroll-mt-24`}>
         <div className="grid gap-3">
-          <span className={label}>03 · new in v0.1</span>
+          <span className={label}>03 · outage risk</span>
           <h3 className={title}>Outage risk, not only exposure</h3>
           <p className={body}>A group or route replaced by deleting it first leaves a gap on a path that stays open.</p>
         </div>
@@ -170,14 +170,14 @@ function Logos() {
 }
 
 const COVERAGE: { group: string; items: string[] }[] = [
-  { group: "Endpoints", items: ["aws_instance", "aws_db_instance", "aws_lb"] },
-  { group: "Routing", items: ["aws_vpc", "aws_subnet", "aws_internet_gateway", "aws_route_table", "aws_route", "aws_main_route_table_association", "aws_default_route_table"] },
-  { group: "Filters", items: ["aws_security_group", "aws_security_group_rule", "aws_vpc_security_group_ingress_rule", "aws_default_security_group", "aws_network_acl", "aws_network_acl_rule", "aws_default_network_acl"] },
-  { group: "Addresses and listeners", items: ["aws_eip", "aws_eip_association", "aws_lb_listener", "aws_db_subnet_group"] },
+  { group: "Endpoints", items: ["aws_instance", "aws_db_instance", "aws_rds_cluster_instance", "aws_ecs_service", "aws_lb", "aws_elb", "aws_vpc_endpoint"] },
+  { group: "Routing", items: ["aws_vpc", "aws_subnet", "aws_internet_gateway", "aws_nat_gateway", "aws_vpc_peering_connection", "aws_route_table", "aws_route", "aws_main_route_table_association", "aws_default_route_table"] },
+  { group: "Filters", items: ["aws_security_group", "aws_security_group_rule", "aws_vpc_security_group_ingress_rule", "aws_vpc_security_group_egress_rule", "aws_default_security_group", "aws_network_acl", "aws_network_acl_rule", "aws_default_network_acl", "aws_ec2_managed_prefix_list"] },
+  { group: "Addresses and listeners", items: ["aws_eip", "aws_eip_association", "aws_lb_listener", "aws_db_subnet_group", "IPv6 addresses"] },
 ];
 
 /** Not modeled yet (README support matrix); paths through them are reported as unknown. */
-const NOT_YET = ["NAT gateway", "VPC peering", "Transit Gateway", "VPC endpoints", "IPv6", "Aurora", "ECS services"];
+const NOT_YET = ["Transit Gateway", "VPN routes", "Gateway Load Balancers", "IPv6 inside the VPC", "ECS bridge mode"];
 
 const FAQ: { q: string; a: string }[] = [
   { q: "Does vpcdiff need AWS credentials or an AWS account?", a: "No. It reads the JSON that terraform show produces. Terraform needs credentials to make the plan; vpcdiff does not." },
@@ -185,8 +185,8 @@ const FAQ: { q: string; a: string }[] = [
   { q: "What does unknown mean?", a: "The engine could not decide that hop: a value Terraform learns only at apply time, a resource it does not model yet, or a load balancer whose subnets give different answers. The reason is always shown. Unknown is a result, never a guess." },
   { q: "How is this different from Checkov, tfsec, or Trivy?", a: "Those tools judge each rule on its own. vpcdiff follows the whole path: an open security group behind a network ACL that denies the port is not an exposure, and a narrow rule can still open a path when a route changes." },
   { q: "How is it different from AWS Reachability Analyzer?", a: "Reachability Analyzer checks a live account, one path at a time, after you deploy. vpcdiff works on the plan, before you apply, for every endpoint at once. Each test fixture includes the steps to check it against Reachability Analyzer; those paid checks have not been run yet." },
-  { q: "Does it check traffic between my own services?", a: "Not yet. Today it checks paths from the internet to instances, databases, and load balancers. Paths inside the VPC are next on the roadmap." },
-  { q: "Can it block a pull request?", a: "Yes. The GitHub Action fails the check when the plan adds a path from the internet (you choose the level with fail-on), writes the report to the job summary, and keeps one comment on the pull request up to date." },
+  { q: "Does it check traffic between my own services?", a: "Yes, since v0.2. When a security group allows traffic from another group, such as a load balancer to its service or an app to its database, vpcdiff checks that path too: both groups, the routes, and the network ACLs both ways, also across a VPC peering connection. A plan that cuts such a path gets a review." },
+  { q: "Can it block a pull request?", a: "Yes. The GitHub Action fails the check when the plan adds a path from the internet (you choose the level with fail-on; changed also counts paths inside the VPC that open or close), writes the report to the job summary, and keeps one comment on the pull request up to date." },
   { q: "What does it cost?", a: "Nothing. vpcdiff is free and open source under the Apache 2.0 license." },
 ];
 
@@ -316,7 +316,7 @@ function Hero() {
           </span>
         </h1>
         <div className="intro-fade grid gap-8 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end" style={{ "--intro-d": "450ms" } as React.CSSProperties}>
-          <p className="max-w-[560px] text-lg leading-relaxed text-litt-fg-muted">vpcdiff reads your plan before you apply it and shows every path the internet gains or loses, with the security group, network ACL, and route that decides each hop.</p>
+          <p className="max-w-[560px] text-lg leading-relaxed text-litt-fg-muted">vpcdiff reads your plan before you apply it and shows every path it opens or closes, from the internet and between your own services, with the security group, network ACL, and route that decides each hop.</p>
           <div className="grid justify-items-start gap-4 lg:justify-items-end">
             <div className="flex flex-wrap gap-3">
               <Cta href={APP} primary>
