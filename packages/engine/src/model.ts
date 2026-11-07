@@ -530,6 +530,8 @@ export class ModelBuilder {
       }
     }
     out.set = fromRanges(out.entries.flatMap((e) => e.set));
+    out.names = [...new Set(out.names)].toSorted(cmp);
+    out.entries = out.entries.toSorted((a, b) => cmp(a.cidr, b.cidr));
     return reasons.length ? { ...out, unresolved: reasons.join("; ") } : out;
   }
 

@@ -971,6 +971,8 @@ var ModelBuilder = class {
       }
     }
     out.set = fromRanges(out.entries.flatMap((e) => e.set));
+    out.names = [...new Set(out.names)].toSorted(cmp);
+    out.entries = out.entries.toSorted((a, b) => cmp(a.cidr, b.cidr));
     return reasons.length ? { ...out, unresolved: reasons.join("; ") } : out;
   }
   /** `prefix_list_id` on aws_vpc_security_group_ingress_rule and _egress_rule. */
