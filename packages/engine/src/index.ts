@@ -1,5 +1,5 @@
 import { evaluate, exposedPorts, portCuts, segment } from "./evaluate.js";
-import { evaluateInternal, groupKeys, internalCuts, referencedPorts } from "./internal.js";
+import { evaluateInternal, internalCuts, referencedPorts } from "./internal.js";
 import { formatPorts, union, type IntervalSet, type Range } from "./intervals.js";
 import { ModelBuilder, type Endpoint } from "./model.js";
 import { cmp, parsePlan, type Snapshot } from "./plan.js";
