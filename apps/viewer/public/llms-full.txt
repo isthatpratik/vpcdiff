@@ -85,7 +85,7 @@ node packages/cli/dist/vpcdiff.mjs            # guided mode, in a terminal
 
 [Open the viewer](https://isthatpratik.github.io/vpcdiff/app/). Drop `plan.json`, or open one of four example plans. The plan is analyzed in a Web Worker in the tab; the page's Content Security Policy is `connect-src 'none'`, so it cannot send the plan anywhere.
 
-- The path list starts with the plan verdict and counters (opened, closed, changed, outage risk, unknown); each counter filters the list. Paths are sorted most serious first.
+- The page starts with the plan verdict and counters (opened, closed, changed, outage risk, unknown); each counter filters the list. Each path is a card, sorted most serious first; open a card to see its verdict and hops.
 - Each path shows the verdict in one sentence, the hop and rule that decide it, what to do, a Terraform snippet when there is a standard fix, a before/after strip of the hops, and a table of the hops with the AWS documentation for each.
 - "Copy for PR" copies one path as Markdown; "Copy all for PR" copies the plan, with each path in a details block and a footer with the vpcdiff version and the plan's SHA-256. Names and rules are escaped, so a pasted plan cannot add links or @-mentions.
 

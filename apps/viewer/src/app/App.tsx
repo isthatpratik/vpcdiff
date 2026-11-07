@@ -1,7 +1,8 @@
 // The viewer (DESIGN.md): open a plan, read every path from the internet before and after
-// it, hop by hop. The layout gives the most room to the change itself: a path strip that
-// shows the difference at a glance, and one hop table where the hops that changed are
-// open and the rest fold to a line. Nothing leaves the tab.
+// it, hop by hop. One review column (ADR 0010): the plan verdict on top, then one card per
+// path. An open card holds a path strip that shows the difference at a glance, and one
+// hop table where the hops that changed are open and the rest fold to a line. Nothing
+// leaves the tab.
 import { ENGINE_VERSION, type Path, type Result } from "@vpcdiff/engine";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEvent, type ReactNode } from "react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/litt/accordion";
@@ -338,17 +339,15 @@ function Start({ error, onFile, onExample }: { error?: string | undefined; onFil
 
 function Busy() {
   return (
-    <Loading label="Analyzing the plan" className="grid h-full grid-cols-1 md:grid-cols-[320px_1fr]">
-      <div className="grid content-start gap-3 border-b border-litt-line p-5 md:border-r md:border-b-0">
-        <Skeleton className="h-16 w-full" radius="surface" />
-        <Skeleton className="h-9 w-full" radius="surface" />
+    <Loading label="Analyzing the plan" className="h-full overflow-hidden">
+      <div className="mx-auto grid max-w-[1040px] content-start gap-6 px-4 py-6 sm:px-8 sm:py-10">
+        <div className="grid gap-2">
+          <Skeleton text="h2" className="w-64" />
+          <Skeleton className="h-5 w-96 max-w-full" />
+        </div>
+        <Skeleton className="h-8 w-full" radius="surface" />
+        <Skeleton className="h-[480px] w-full" radius="surface" />
         <Skeleton className="h-14 w-full" radius="surface" />
-        <Skeleton className="h-14 w-full" radius="surface" />
-      </div>
-      <div className="grid content-start gap-4 p-8">
-        <Skeleton text="h2" className="w-1/2" />
-        <Skeleton className="h-24 w-full" radius="surface" />
-        <Skeleton className="h-72 w-full" radius="surface" />
       </div>
     </Loading>
   );
@@ -388,7 +387,7 @@ function sourcesOf(path: Path): string[] {
 
 function Workspace({ name, result, sha256: hash, initialPath }: { name: string; result: Result; sha256?: string | undefined; initialPath?: string | undefined }) {
   const remembered = initialPath ? result.paths.find((p) => p.id === initialPath) : undefined;
-  // A remembered path that the Changes view hides opens with All, so it stays selected.
+  // A remembered path that the Changes view hides opens with All, so it stays open.
   const [filter, setFilter] = useState<Filter>(remembered && remembered.change === "unchanged" && !remembered.outageRisk?.length ? "all" : "changes");
   const [query, setQuery] = useState("");
   const visible = useMemo(() => {
@@ -398,34 +397,63 @@ function Workspace({ name, result, sha256: hash, initialPath }: { name: string; 
       .filter((p) => !q || [p.to, p.toType, `${p.protocol}/${p.ports}`, serviceOf(p.ports) ?? "", ...sourcesOf(p)].some((s) => s.toLowerCase().includes(q)))
       .toSorted((a, b) => severityOf(a) - severityOf(b) || (a.id < b.id ? -1 : 1));
   }, [result, filter, query]);
-  const [selectedId, setSelectedId] = useState<string | undefined>(remembered?.id ?? visible[0]?.id);
-  useEffect(() => placePath(selectedId), [selectedId]);
+  // Paths are cards in one column. The most serious one starts open; more can be open at
+  // once. The URL remembers the card opened last (src/app/place.ts).
+  const first = remembered?.id ?? visible[0]?.id;
+  const [openIds, setOpenIds] = useState<ReadonlySet<string>>(() => new Set(first ? [first] : []));
+  const [lastOpened, setLastOpened] = useState<string | undefined>(first);
+  // Also after a new result: opening a plan rewrites the hash without the path.
+  useEffect(() => placePath(lastOpened), [lastOpened, result]);
+  // When a filter or search changes the list and no shown card is open, open the first one,
+  // so a counter click always lands on a detail. Closing the last card yourself does not
+  // reopen it: this runs only when the list changes.
+  const shown = useRef(visible);
   useEffect(() => {
-    if (!visible.some((p) => p.id === selectedId)) setSelectedId(visible[0]?.id);
-  }, [visible, selectedId]);
-  const selected = result.paths.find((p) => p.id === selectedId);
+    if (shown.current === visible) return;
+    shown.current = visible;
+    const top = visible[0];
+    if (top && !visible.some((p) => openIds.has(p.id))) {
+      setOpenIds((s) => new Set(s).add(top.id));
+      setLastOpened(top.id);
+    }
+  }, [visible, openIds]);
+  const toggle = (id: string) => {
+    const opening = !openIds.has(id);
+    setOpenIds((s) => {
+      const n = new Set(s);
+      if (opening) n.add(id);
+      else n.delete(id);
+      return n;
+    });
+    if (opening) setLastOpened(id);
+    else if (lastOpened === id) setLastOpened([...openIds].find((x) => x !== id));
+  };
   const unchanged = result.paths.filter((p) => p.change === "unchanged" && !p.outageRisk).length;
   const risky = result.paths.filter((p) => p.outageRisk?.length).length;
   const list = useRef<HTMLUListElement>(null);
   const [notesOpen, setNotesOpen] = useState("");
-  // After a plan opens, move focus to the result and say what it found.
+  // After a plan opens, move focus to the plan verdict and say what it found.
   useEffect(() => {
-    document.getElementById("detail-title")?.focus({ preventScroll: true });
+    document.getElementById("plan-title")?.focus({ preventScroll: true });
     const pv0 = planVerdict(result);
     announce(`Plan opened. ${result.paths.length} ${result.paths.length === 1 ? "path" : "paths"} checked. ${pv0.title}: ${pv0.detail}.`);
   }, [result]);
   const notesRef = useRef<HTMLDivElement>(null);
+  // A remembered path further down the list comes into view after a reload.
+  const rememberedId = remembered?.id;
+  useEffect(() => {
+    if (rememberedId) list.current?.querySelector(`[data-id="${CSS.escape(rememberedId)}"]`)?.scrollIntoView({ block: "start" });
+  }, [rememberedId]);
 
-  // Up and down move through the list, like a native list box.
+  // Up, Down, Home, and End move between the card headers.
   const onKey = (e: KeyboardEvent) => {
-    const i = visible.findIndex((p) => p.id === selectedId);
-    const to = e.key === "ArrowDown" ? i + 1 : e.key === "ArrowUp" ? i - 1 : e.key === "Home" ? 0 : e.key === "End" ? visible.length - 1 : undefined;
+    const heads = Array.from(list.current?.querySelectorAll<HTMLButtonElement>("button[data-id]") ?? []);
+    const i = heads.indexOf(document.activeElement as HTMLButtonElement);
+    if (i < 0) return;
+    const to = e.key === "ArrowDown" ? i + 1 : e.key === "ArrowUp" ? i - 1 : e.key === "Home" ? 0 : e.key === "End" ? heads.length - 1 : undefined;
     if (to === undefined) return;
     e.preventDefault();
-    const next = visible[Math.min(visible.length - 1, Math.max(0, to))];
-    if (!next) return;
-    setSelectedId(next.id);
-    list.current?.querySelector<HTMLButtonElement>(`[data-id="${CSS.escape(next.id)}"]`)?.focus();
+    heads[Math.min(heads.length - 1, Math.max(0, to))]?.focus();
   };
 
   const counters: { key: Filter; label: string; value: number; tone: string; help: string }[] = [
@@ -439,85 +467,84 @@ function Workspace({ name, result, sha256: hash, initialPath }: { name: string; 
   const only = counters.find((c) => c.key === filter);
 
   return (
-    <div className="grid h-full min-h-0 grid-cols-1 overflow-auto md:grid-cols-[360px_minmax(0,1fr)] md:overflow-hidden">
-      <aside className="flex min-h-0 flex-col border-b border-litt-line md:border-r md:border-b-0" aria-label="Paths">
-        {/* Summary: the plan verdict and the copy action, then the counts as filter chips. */}
-        <div className="grid gap-3 border-b border-litt-line p-4">
-          <div className="flex items-start justify-between gap-3">
-            <div className="grid min-w-0 gap-0.5">
-              <p className={`flex items-center gap-2 text-litt-small font-medium ${TONE_TEXT[pv.tone]}`}>
-                <span aria-hidden="true" className={`size-2 shrink-0 rounded-full ${TONE_BAR[pv.tone]}`} />
+    <div className="h-full min-h-0 overflow-auto">
+      <div className="mx-auto grid max-w-[1040px] gap-6 px-4 py-6 sm:px-8 sm:py-10 [&>*]:min-w-0">
+        {/* The plan: what to do with the pull request, then the counts as filters. */}
+        <header className="grid gap-5" aria-labelledby="plan-title">
+          <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
+            <div className="grid min-w-0 gap-1.5">
+              <h1 id="plan-title" tabIndex={-1} className="flex items-center gap-2.5 font-display text-2xl leading-tight font-normal tracking-[-0.02em] text-litt-fg outline-none">
+                <span aria-hidden="true" className={`size-2.5 shrink-0 rounded-full ${TONE_BAR[pv.tone]}`} />
                 {pv.title}
+              </h1>
+              <p className="flex flex-wrap items-center gap-x-1.5 pl-5 text-litt-small text-litt-fg-muted">
+                <span>{pv.detail}.</span>
+                <span className="text-litt-fg-subtle">Checks {SCOPE} only.</span>
+                {result.notes.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNotesOpen("notes");
+                      window.setTimeout(() => notesRef.current?.scrollIntoView({ block: "nearest" }), 0);
+                    }}
+                    className="text-litt-warning underline decoration-dotted underline-offset-4 hover:decoration-solid focus-visible:outline-2 focus-visible:outline-litt-focus"
+                  >
+                    {result.notes.length} {result.notes.length === 1 ? "resource" : "resources"} not modeled
+                  </button>
+                )}
               </p>
-              <p className="pl-4 text-litt-caption text-litt-fg-muted">{pv.detail}</p>
             </div>
             <CopyButton variant="text" label="Copy all for PR" what="the plan summary for the pull request" text={() => planMarkdown(name, result, { version: ENGINE_VERSION, ...(hash ? { sha256: hash } : {}) })} />
           </div>
-          <div role="group" aria-label="Counts. Choose one to show only those paths." className="flex flex-wrap gap-1.5">
-            {counters.map((c) => {
-              const on = filter === c.key;
-              return (
-                <button
-                  key={c.key}
-                  type="button"
-                  disabled={!c.value}
-                  aria-pressed={on}
-                  onClick={() => setFilter(on ? "changes" : c.key)}
-                  title={c.help}
-                  className={`inline-flex h-7 items-center gap-1.5 rounded-[6px] px-2 text-litt-caption transition-[background-color,box-shadow,scale] duration-150 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-litt-fg enabled:hover:bg-litt-surface-2 enabled:active:scale-[0.97] disabled:cursor-default ${on ? "bg-litt-surface-2 shadow-[inset_0_0_0_1px_var(--litt-fg-subtle)]" : "shadow-[inset_0_0_0_1px_var(--litt-line)]"}`}
-                >
-                  <span className={`font-medium tabular-nums ${c.value ? c.tone : "text-litt-fg-subtle"}`}>{c.value}</span>
-                  <span className={c.value ? "text-litt-fg-muted" : "text-litt-fg-subtle"}>{c.label}</span>
-                </button>
-              );
-            })}
-          </div>
-          <p className="flex flex-wrap items-center gap-x-1.5 text-litt-caption text-litt-fg-subtle">
-            <span>Checks {SCOPE} only.</span>
-            {result.notes.length > 0 && (
-              <button
-                type="button"
-                onClick={() => {
-                  setNotesOpen("notes");
-                  window.setTimeout(() => notesRef.current?.scrollIntoView({ block: "nearest" }), 0);
-                }}
-                className="text-litt-warning underline decoration-dotted underline-offset-4 hover:decoration-solid focus-visible:outline-2 focus-visible:outline-litt-focus"
-              >
-                {result.notes.length} {result.notes.length === 1 ? "resource" : "resources"} not modeled
-              </button>
-            )}
-          </p>
-        </div>
-        {/* Controls: which paths, and a filter, on one row. */}
-        <div className="grid gap-2 border-b border-litt-line px-4 py-3">
-          <p id="filter-help" className="sr-only">
-            Changes lists only paths the plan opens, closes, or puts at risk. All paths lists every path from the internet the engine checked.
-          </p>
-          <div className="flex items-center gap-2">
-            <Tooltip content="Changes: only paths the plan opens, closes, or puts at risk. All paths: every path from the internet the engine checked.">
-              <div className="shrink-0">
-                <Segmented<Filter>
-                  legend="Show"
-                  size="sm"
-                  value={filter === "all" ? "all" : "changes"}
-                  onValueChange={setFilter}
-                  options={[
-                    { value: "changes", label: "Changes" },
-                    { value: "all", label: `All · ${result.paths.length}` },
-                  ]}
-                />
-              </div>
-            </Tooltip>
-            {result.paths.length > 0 && (
-              <label className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-[6px] border border-litt-line-strong px-2.5 focus-within:border-litt-fg-subtle focus-within:outline-2 focus-within:outline-offset-1 focus-within:outline-litt-fg">
-                <SearchIcon aria-hidden="true" className="size-4 shrink-0 text-litt-fg-subtle" />
-                <span className="sr-only">Filter paths by resource, port, or CIDR</span>
-                <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Filter" className="h-full min-w-0 flex-1 bg-transparent text-litt-small text-litt-fg outline-none placeholder:text-litt-fg-subtle" />
-              </label>
-            )}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div role="group" aria-label="Counts. Choose one to show only those paths." className="flex flex-wrap gap-1.5">
+              {counters.map((c) => {
+                const on = filter === c.key;
+                return (
+                  <button
+                    key={c.key}
+                    type="button"
+                    disabled={!c.value}
+                    aria-pressed={on}
+                    onClick={() => setFilter(on ? "changes" : c.key)}
+                    title={c.help}
+                    className={`inline-flex h-8 items-center gap-1.5 rounded-[6px] px-2.5 text-litt-caption transition-[background-color,box-shadow,scale] duration-150 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-litt-fg enabled:hover:bg-litt-surface-2 enabled:active:scale-[0.97] disabled:cursor-default ${on ? "bg-litt-surface-2 shadow-[inset_0_0_0_1px_var(--litt-fg-subtle)]" : "shadow-[inset_0_0_0_1px_var(--litt-line)]"}`}
+                  >
+                    <span className={`font-medium tabular-nums ${c.value ? c.tone : "text-litt-fg-subtle"}`}>{c.value}</span>
+                    <span className={c.value ? "text-litt-fg-muted" : "text-litt-fg-subtle"}>{c.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="flex w-full min-w-0 items-center gap-2 sm:w-auto">
+              <p id="filter-help" className="sr-only">
+                Changes lists only paths the plan opens, closes, or puts at risk. All paths lists every path from the internet the engine checked.
+              </p>
+              <Tooltip content="Changes: only paths the plan opens, closes, or puts at risk. All paths: every path from the internet the engine checked.">
+                <div className="shrink-0">
+                  <Segmented<Filter>
+                    legend="Show"
+                    size="sm"
+                    value={filter === "all" ? "all" : "changes"}
+                    onValueChange={setFilter}
+                    options={[
+                      { value: "changes", label: "Changes" },
+                      { value: "all", label: `All · ${result.paths.length}` },
+                    ]}
+                  />
+                </div>
+              </Tooltip>
+              {result.paths.length > 0 && (
+                <label className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-[6px] border border-litt-line-strong px-2.5 focus-within:border-litt-fg-subtle focus-within:outline-2 focus-within:outline-offset-1 focus-within:outline-litt-fg sm:w-56 sm:flex-none">
+                  <SearchIcon aria-hidden="true" className="size-4 shrink-0 text-litt-fg-subtle" />
+                  <span className="sr-only">Filter paths by resource, port, or CIDR</span>
+                  <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Filter by resource, port, CIDR" className="h-full min-w-0 flex-1 bg-transparent text-litt-small text-litt-fg outline-none placeholder:text-litt-fg-subtle" />
+                </label>
+              )}
+            </div>
           </div>
           {only && (
-            <p className="flex items-center justify-between gap-2 text-litt-caption text-litt-fg-muted">
+            <p className="flex items-center gap-2 text-litt-caption text-litt-fg-muted">
               <span>
                 Showing <span className="text-litt-fg">{only.label.toLowerCase()}</span> only
               </span>
@@ -526,107 +553,132 @@ function Workspace({ name, result, sha256: hash, initialPath }: { name: string; 
               </button>
             </p>
           )}
-        </div>
-        {/* The list, then what it leaves out, then what is not modeled. */}
-        <div className="min-h-0 flex-1 overflow-auto">
+        </header>
+
+        {/* The paths, most serious first, then what the list leaves out, then the notes. */}
+        <section aria-label="Paths" className="grid gap-3">
           {visible.length ? (
             <>
-              <ul ref={list} aria-label="Paths" onKeyDown={onKey} className="grid gap-0.5 p-2">
+              {visible.length > 1 && (
+                <div className="flex items-center justify-between gap-3 px-1">
+                  <h2 className="text-litt-caption text-litt-fg-subtle">
+                    {visible.length} paths, most serious first
+                  </h2>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const all = visible.every((p) => openIds.has(p.id));
+                      setOpenIds(all ? new Set() : new Set(visible.map((p) => p.id)));
+                      setLastOpened(all ? undefined : visible[0]?.id);
+                    }}
+                    className="rounded-[6px] px-1.5 py-0.5 text-litt-caption text-litt-fg-muted underline decoration-litt-line-strong underline-offset-4 transition-colors duration-200 hover:text-litt-fg hover:decoration-litt-fg focus-visible:outline-2 focus-visible:outline-litt-focus"
+                  >
+                    {visible.every((p) => openIds.has(p.id)) ? "Close all" : "Open all"}
+                  </button>
+                </div>
+              )}
+              <ul ref={list} onKeyDown={onKey} className="grid gap-3">
                 {visible.map((p) => (
                   <li key={p.id}>
-                    <PathRow path={p} current={p.id === selectedId} onSelect={() => setSelectedId(p.id)} />
+                    <PathCard path={p} open={openIds.has(p.id)} onToggle={() => toggle(p.id)} />
                   </li>
                 ))}
               </ul>
-              <p className="px-4 py-3 text-litt-caption leading-relaxed text-litt-fg-subtle">
+              <p className="px-1 text-litt-caption leading-relaxed text-litt-fg-subtle">
                 {visible.length} of {result.paths.length} {result.paths.length === 1 ? "path" : "paths"} shown.
                 {filter !== "all" && unchanged > 0 && ` All also lists the ${unchanged} that ${unchanged === 1 ? "does" : "do"} not change.`}
               </p>
             </>
           ) : (
-            <div className="grid gap-2 p-4">
-              <p className="text-litt-small font-medium text-litt-fg">{query ? "No path matches" : "No changes from the internet"}</p>
-              <p className="text-litt-small leading-relaxed text-litt-fg-muted">
+            <div className="grid justify-items-start gap-2 rounded-xl border border-dashed border-litt-line-strong p-6">
+              <span aria-hidden="true" className="mb-1 grid size-10 place-items-center rounded-lg border border-litt-line-strong text-litt-fg-subtle">
+                <ShieldIcon className="size-5" />
+              </span>
+              <p className="text-litt-small font-medium text-litt-fg">{query ? "No path matches" : result.paths.length ? "No changes from the internet" : "No path from the internet to check"}</p>
+              <p className="max-w-[68ch] text-litt-small leading-relaxed text-litt-fg-muted">
                 {query
                   ? "Try a resource name, a port such as 5432, or a CIDR."
                   : result.paths.length
                     ? `This plan does not change any path from the internet. All shows the ${unchanged} the engine checked.`
-                    : "No security group in this plan opens a port to a public address, so there is no path from the internet to check."}
+                    : "No security group in this plan opens a port to a public address. vpcdiff checks paths only where a port is open to the internet."}
                 {!query && result.notes.length > 0 && ` ${result.notes.length} ${result.notes.length === 1 ? "resource is" : "resources are"} not modeled yet, so check ${result.notes.length === 1 ? "it" : "them"} by hand.`}
               </p>
+              {!query && result.paths.length > 0 && filter !== "all" && (
+                <Button size="sm" variant="ghost" onClick={() => setFilter("all")} className="mt-1 shadow-[inset_0_0_0_1px_var(--litt-line-strong)] hover:bg-litt-surface-2 active:scale-[0.97] motion-reduce:active:scale-100">
+                  Show all {result.paths.length} paths
+                </Button>
+              )}
             </div>
           )}
-          {result.notes.length > 0 && (
-            <div ref={notesRef} className="border-t border-litt-line px-4">
-              <Accordion type="single" collapsible headingLevel={2} value={notesOpen} onValueChange={setNotesOpen}>
-                <AccordionItem value="notes">
-                  <AccordionTrigger>Not modeled yet · {result.notes.length}</AccordionTrigger>
-                  <AccordionContent>
-                    <ul className="grid gap-2.5 pb-3">
-                      {result.notes.map((n) => (
-                        <li key={n.resource} className="grid gap-0.5">
-                          <span className="font-litt-mono text-litt-caption text-litt-fg">{n.resource}</span>
-                          <span className="text-litt-caption leading-relaxed text-litt-fg-muted">{n.message}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </AccordionContent>
-                </AccordionItem>
-              </Accordion>
-            </div>
-          )}
-        </div>
-      </aside>
-      {selected ? (
-        <PathDetail key={selected.id} path={selected} />
-      ) : (
-        <section id="path-detail" aria-labelledby="detail-title" className="grid min-h-0 place-items-center overflow-auto p-8">
-          <div className="grid max-w-[420px] justify-items-center gap-3 text-center">
-            <span aria-hidden="true" className="grid size-12 place-items-center rounded-lg border border-litt-line-strong text-litt-fg-subtle">
-              <ShieldIcon className="size-5" />
-            </span>
-            <h2 id="detail-title" tabIndex={-1} className="text-litt-small font-medium text-litt-fg outline-none">
-              {result.paths.length ? "Choose a path" : "No path from the internet to check"}
-            </h2>
-            <p className="text-litt-small leading-relaxed text-litt-fg-muted">
-              {result.paths.length
-                ? "Pick a path on the left to see its verdict, the deciding rule, and every hop."
-                : "No security group in this plan opens a port to a public address. vpcdiff checks paths only where a port is open to the internet."}
-            </p>
-            <p className="text-litt-caption text-litt-fg-subtle">Checks {SCOPE} only.</p>
-          </div>
         </section>
-      )}
+        {result.notes.length > 0 && (
+          <div ref={notesRef} className="rounded-xl border border-litt-line px-5">
+            <Accordion type="single" collapsible headingLevel={2} value={notesOpen} onValueChange={setNotesOpen}>
+              <AccordionItem value="notes">
+                <AccordionTrigger>Not modeled yet · {result.notes.length}</AccordionTrigger>
+                <AccordionContent>
+                  <ul className="grid gap-2.5 pb-3">
+                    {result.notes.map((n) => (
+                      <li key={n.resource} className="grid gap-0.5">
+                        <span className="font-litt-mono text-litt-caption text-litt-fg">{n.resource}</span>
+                        <span className="text-litt-caption leading-relaxed text-litt-fg-muted">{n.message}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
 
-function PathRow({ path, current, onSelect }: { path: Path; current: boolean; onSelect: () => void }) {
+/**
+ * One path: a header row that says what changes, and, when open, the verdict and the
+ * evidence. The header of an open card stays at the top while its detail scrolls by.
+ */
+function PathCard({ path, open, onToggle }: { path: Path; open: boolean; onToggle: () => void }) {
   const v = verdictOf(path);
   const src = sourcesOf(path);
+  const body = `path-${path.id}`;
+  const label = path.change === "unchanged" ? (path.outageRisk?.length ? "Outage risk" : "No change") : CHANGE_WORD[path.change];
   return (
-    <button
-      type="button"
-      data-id={path.id}
-      aria-current={current}
-      aria-controls="path-detail"
-      tabIndex={current ? 0 : -1}
-      onClick={onSelect}
-      className={`grid w-full gap-1 rounded-lg px-3 py-2.5 text-left transition-colors duration-150 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-litt-focus ${current ? "bg-litt-surface-2" : "hover:bg-litt-surface-1"}`}
-    >
-      <span className="flex min-w-0 items-center gap-2.5">
-        <TargetIcon type={path.toType} className="size-4" />
-        <span className="truncate font-litt-mono text-litt-small text-litt-fg">{path.to}</span>
-        <span className="ml-auto flex shrink-0 items-center gap-1.5 text-litt-caption text-litt-fg-muted">
-          <span aria-hidden="true" className={`size-1.5 rounded-full ${TONE_BAR[v.tone]}`} />
-          {path.change === "unchanged" ? (path.outageRisk?.length ? "Outage risk" : "No change") : CHANGE_WORD[path.change]}
-        </span>
-      </span>
-      <span className="flex flex-wrap items-center gap-x-2 pl-[26px] text-litt-caption text-litt-fg-muted">
-        <span className="font-litt-mono">{portLabel(path)}</span>
-        {src.length > 0 && <span className="font-litt-mono">from {src.includes("internet") ? "0.0.0.0/0" : src.join(", ")}</span>}
-      </span>
-    </button>
+    <article className={`rounded-xl border transition-colors duration-200 ${open ? "border-litt-line-strong" : "border-litt-line hover:border-litt-line-strong"}`} aria-labelledby={`${body}-title`}>
+      <h2 id={`${body}-title`} className={`sticky top-0 z-20 rounded-t-xl bg-litt-canvas ${open ? "border-b border-litt-line" : "rounded-b-xl"}`}>
+        <button
+          type="button"
+          data-id={path.id}
+          aria-expanded={open}
+          aria-controls={body}
+          onClick={onToggle}
+          className={`group flex w-full min-w-0 items-center gap-3 px-4 py-3 text-left transition-colors duration-150 hover:bg-litt-surface-1 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-litt-focus sm:px-5 ${open ? "rounded-t-xl" : "rounded-xl"}`}
+        >
+          <ArrowRightIcon aria-hidden="true" className={`size-3.5 shrink-0 text-litt-fg-subtle transition-transform duration-300 ${EASE} group-hover:text-litt-fg motion-reduce:transition-none ${open ? "rotate-90" : ""}`} />
+          <span className="grid min-w-0 flex-1 gap-0.5 sm:flex sm:items-center sm:gap-3">
+            <span className="flex min-w-0 items-center gap-2">
+              <TargetIcon type={path.toType} className="size-4" />
+              <span className="sr-only">internet to </span>
+              <span className="truncate font-litt-mono text-litt-small text-litt-fg">{path.to}</span>
+            </span>
+            <span className="flex min-w-0 flex-wrap items-center gap-x-2 pl-6 font-litt-mono text-litt-caption text-litt-fg-muted sm:pl-0">
+              <span>{portLabel(path)}</span>
+              {src.length > 0 && <span className="text-litt-fg-subtle">from {src.includes("internet") ? "0.0.0.0/0" : src.join(", ")}</span>}
+            </span>
+          </span>
+          <span className="hidden shrink-0 text-litt-caption text-litt-fg-subtle md:inline">{changeWords(path)}</span>
+          <span className="flex shrink-0 items-center gap-1.5 text-litt-caption text-litt-fg">
+            <span aria-hidden="true" className={`size-1.5 rounded-full ${TONE_BAR[v.tone]}`} />
+            {label}
+          </span>
+        </button>
+      </h2>
+      {/* Mounted only while open, so a long plan stays light; the detail settles in. */}
+      <div id={body} hidden={!open}>
+        {open && <PathBody path={path} />}
+      </div>
+    </article>
   );
 }
 
@@ -821,7 +873,7 @@ function VerdictPanel({ path }: { path: Path }) {
   );
 }
 
-function PathDetail({ path }: { path: Path }) {
+function PathBody({ path }: { path: Path }) {
   const lanes = useMemo(() => lanesOf(path), [path]);
   const oneSideAbsent = path.before.verdict === "absent" || path.after.verdict === "absent";
   // A row differs when its two cells differ; when the resource exists on one side only,
@@ -861,26 +913,15 @@ function PathDetail({ path }: { path: Path }) {
   const hideSame = changedCount > 0 && !showSame;
 
   return (
-    <section id="path-detail" className="min-h-0 min-w-0 overflow-auto" aria-labelledby="detail-title">
-      <div className="mx-auto grid max-w-[1040px] animate-[detail-in_260ms_cubic-bezier(0.22,1,0.36,1)] gap-6 px-5 py-8 motion-reduce:animate-none sm:px-10 sm:py-10 [&>*]:min-w-0">
-        <header className="grid gap-3">
-          <p className="flex items-center gap-2 text-litt-caption text-litt-fg-subtle">
+    <div className="grid animate-[detail-in_260ms_cubic-bezier(0.22,1,0.36,1)] gap-5 p-4 motion-reduce:animate-none sm:p-5 [&>*]:min-w-0">
+        <p className="flex flex-wrap items-center gap-x-3 gap-y-2 text-litt-caption text-litt-fg-subtle">
+          <span className="flex items-center gap-2">
             <TargetIcon type={path.toType} className="size-4" />
             {TYPE_NAME[path.toType] ?? path.toType}
-          </p>
-          <h2 id="detail-title" tabIndex={-1} className="outline-none font-display text-2xl leading-tight font-normal tracking-[-0.02em] text-litt-fg sm:text-3xl">
-            <span className="text-litt-fg-subtle">internet → </span>
-            <span className="font-litt-mono text-[0.8em] break-all align-baseline">{path.to}</span>
-          </h2>
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-            {path.change !== "unchanged" ? <ChangeTag change={path.change} /> : <span className={`rounded-[4px] border border-litt-line px-2 py-0.5 text-litt-caption ${TONE_TEXT[verdictOf(path).tone]}`}>Outage risk</span>}
-            <span className="rounded-[4px] border border-litt-line px-2 py-0.5 font-litt-mono text-litt-caption text-litt-fg-muted">{portLabel(path)}</span>
-            <span className="text-litt-small text-litt-fg-subtle">
-              {changeWords(path)}
-            </span>
-          </div>
-        </header>
-
+          </span>
+          {path.change !== "unchanged" ? <ChangeTag change={path.change} /> : <span className={`rounded-[4px] border border-litt-line px-2 py-0.5 ${TONE_TEXT[verdictOf(path).tone]}`}>Outage risk</span>}
+          <span className="text-litt-small md:hidden">{changeWords(path)}</span>
+        </p>
         <VerdictPanel path={path} />
 
         {/* One evidence panel: the strip at a glance, then the hops in full. */}
@@ -1030,7 +1071,6 @@ function PathDetail({ path }: { path: Path }) {
             )}
           </ol>
         </section>
-      </div>
-    </section>
+    </div>
   );
 }

@@ -235,10 +235,15 @@ so it counts for Largest Contentful Paint. `src/site/main.tsx` adds the classes;
 - **Start:** a two-tone headline, a framed drop zone on a dot-grid plate with the
   command to make the file, and the example plans as hairline cells, each with a small
   hop strip. A plan can be dropped anywhere on the page at any time.
-- **Path list:** hairline rows; the current row has a 2px bar in its change color, as
-  the landing page's titles do. Up and down arrows move through the list.
-- **Path detail:** the target type, the path as `internet → target`, the change, the
-  port with its service name, and before → after. Then the **verdict** first: what
+- **One review column (ADR 0010):** no sidebar. A plan header, then one card per path,
+  at most 1040 px wide, the same on phones and wide screens.
+- **Path cards:** the header row shows the target, the port with its service name, the
+  sources, before → after, and the change with a small colored dot. A click opens the
+  card; the most serious path starts open, more than one can be open, and "Open all" /
+  "Close all" appears when there is more than one path. An open card's header stays at
+  the top while its detail scrolls. Up, Down, Home, and End move between card headers.
+- **Path detail:** inside the open card, the target type and the change tag. Then the
+  **verdict** first: what
   happens in one sentence, the hop and rule that decide it (copyable), what to do next
   (with a Terraform snippet when there is a standard fix), and "Copy for PR" as
   Markdown. Then the path strip with a legend, and the hop table (ADR 0008): hops that
@@ -253,8 +258,8 @@ so it counts for Largest Contentful Paint. `src/site/main.tsx` adds the classes;
   (strip, then a "Hops" sub-header, then the rows), so the detail reads as two objects:
   the verdict, then the evidence. A chosen path's detail settles in (6 px rise and fade,
   260 ms, off under reduced motion), caused by the choice.
-- **Empty detail:** with no path to show, the right side explains why instead of
-  staying blank.
+- **Empty list:** with no path to show, a dashed panel explains why instead of staying
+  blank, and offers "Show all N paths" when the Changes view hides them.
 - **Controls:** buttons and fields use the landing page's 6 px radius (litt's control
   radius is set to 6 px), lie flat with no glow, and scale to 0.97 on press. Secondary
   buttons are outlines. Tags and chips are 4 px; panels and cells stay square. Color
@@ -272,11 +277,11 @@ so it counts for Largest Contentful Paint. `src/site/main.tsx` adds the classes;
   text from 4.58:1 (subtle) to 18.5:1 (ink); danger 5.6, success 5.1, warning 5.2.
   Outlines that carry meaning (the "Not checked" and "Not in plan" squares) use the
   subtle ink at full strength, 4.58:1, above the 3:1 that WCAG 1.4.11 asks for.
-- **Keyboard and screen readers:** after a plan opens, focus moves to the path title and
+- **Keyboard and screen readers:** after a plan opens, focus moves to the plan verdict and
   a live region says how many paths were checked and the plan verdict. After a failed
   open, focus returns to "Choose a file", next to the message. Closed hop rows are
   inert. Hop cells say "Before:" and "After:" to screen readers. Choosing a hop in the
-  strip moves focus to its row. The path list takes Up, Down, Home, and End. Smooth
+  strip moves focus to its row. Card headers take Up, Down, Home, and End. Smooth
   scrolling and row animations stop under reduced motion.
 - **Trust:** the list is sorted most serious first (opened, unknown, changed, outage
   risk, closed; open to every address before some; admin and database ports first).
@@ -286,11 +291,12 @@ so it counts for Largest Contentful Paint. `src/site/main.tsx` adds the classes;
   says "Partly undecided" with the reason. The PR Markdown escapes every name and
   rule (no links or @-mentions from a plan), and the plan summary ends with the
   vpcdiff version and the plan's SHA-256, computed in the tab.
-- **Path list layout:** one summary block (the plan verdict with "Copy all for PR"
-  beside it, the counts as small filter chips with zeros dimmed, the scope line), one
-  row with the Changes / All toggle and a filter field, then the list. The list ends
-  with "N of M paths shown" and what All adds, then the notes. No bottom bar.
-- **Plan verdict:** the top of the path list says what to do with the pull request:
+- **Plan header layout:** the plan verdict as the page heading with "Copy all for PR"
+  beside it, the detail and scope line under it, then one row with the counts as small
+  filter chips (zeros dimmed) on the left and the Changes / All toggle and a filter
+  field on the right. The list ends with "N of M paths shown" and what All adds, then
+  the notes. No bottom bar.
+- **Plan verdict:** the top of the page says what to do with the pull request:
   "Fix before merge", "Check by hand", "Review before merge", or "No new exposure"
   (never "safe"). The counters under it are filters: choose one to list only those
   paths. Search is always there.
