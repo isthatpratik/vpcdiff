@@ -77,6 +77,8 @@ export function evaluate6(ep: Endpoint | undefined, p: Protocol, ports: Range): 
     add("internet-gateway", vpc.address, "deny", `no internet gateway is attached to ${vpc.address}`);
     return stop("blocked", `no internet gateway is attached to ${vpc.address}`);
   }
+  // Whether the VPC has IPv6 decides the default NACL's IPv6 rule, so it must be known.
+  if (vpc.ipv6 && !vpc.ipv6.ok) return unknownAt("internet-gateway", vpc.address, vpc.ipv6.reason);
   const igw = vpc.igw.value;
   add("internet-gateway", igw, "allow", `${igw} is attached to ${vpc.address}`);
 
@@ -98,16 +100,22 @@ export function evaluate6(ep: Endpoint | undefined, p: Protocol, ports: Range): 
   const names = groups.map((g) => g.address).join(", ");
   let allowed: Set6 = EMPTY6;
   const texts: string[] = [];
+  // A prefix list that cannot be expanded may hold IPv6 sources: undecided, never allowed.
+  const doubt: string[] = [];
   for (const g of groups) {
     if (!g.ingress.ok) return unknownAt("security-group", g.address, g.ingress.reason);
     for (const rule of g.ingress.value) {
-      if (!rule.sources6 || !protoMatches(rule.protocol, p) || !contains(rule.ports, [ports])) continue;
+      if (!protoMatches(rule.protocol, p) || !contains(rule.ports, [ports])) continue;
+      if (rule.listUnresolved) doubt.push(`${rule.text}: ${rule.listUnresolved}`);
+      if (!rule.sources6) continue;
       if (isEmpty6(intersect6(rule.sources6, sources))) continue;
       allowed = union6(allowed, rule.sources6);
       texts.push(rule.text);
     }
   }
   const afterSg = intersect6(sources, allowed);
+  if (isEmpty6(afterSg) && doubt.length) return unknownAt("security-group", names, doubt.join("; "));
+  if (doubt.length && !equals6(afterSg, sources)) undecided.push(`IPv6 sources in ${doubt.join("; ")}`);
   if (isEmpty6(afterSg)) {
     add("security-group", names, "deny", `no ingress rule of ${names} allows ${portText} from the IPv6 internet`);
     return stop("blocked", `no ingress rule of ${names} allows ${portText} from the IPv6 internet`);
@@ -144,15 +152,17 @@ export function evaluate6(ep: Endpoint | undefined, p: Protocol, ports: Range): 
   const table = ep.routeTable.value;
   if (!table.routes.ok) return unknownAt("route", table.resource, table.routes.reason);
   const routes = table.routes.value.filter((r) => r.cidr6).toSorted((a, b) => b.prefix - a.prefix);
+  const listDoubt = table.routes.value.filter((r) => r.listUnresolved).map((r) => `${r.text}: ${r.listUnresolved}`);
   let remaining = sources;
   let viaIgw: Set6 = EMPTY6;
   let unresolved: Set6 = EMPTY6;
   const routeTexts: string[] = [];
   const reasons: string[] = [];
   const dropped: string[] = [];
-  for (const route of routes) {
+  for (const [i, route] of routes.entries()) {
     const m = intersect6(remaining, route.cidr6 as Set6);
     if (isEmpty6(m)) continue;
+    if (routes.some((o, j) => j !== i && equals6(o.cidr6 as Set6, route.cidr6 as Set6))) return unknownAt("route", table.resource, `${table.resource} has more than one IPv6 route for the same destination`);
     routeTexts.push(route.text);
     if (route.target.kind === "igw" && route.target.address === igw) viaIgw = union6(viaIgw, m);
     else if (route.target.kind === "drop") dropped.push(`${route.text}: ${route.target.why}`);
@@ -166,11 +176,12 @@ export function evaluate6(ep: Endpoint | undefined, p: Protocol, ports: Range): 
     remaining = subtract6(remaining, m);
   }
   if (isEmpty6(viaIgw)) {
-    if (!isEmpty6(unresolved)) return unknownAt("route", table.resource, reasons.join("; "));
+    if (!isEmpty6(unresolved) || listDoubt.length) return unknownAt("route", table.resource, [...reasons, ...listDoubt].join("; "));
     const why = dropped.length ? dropped.join("; ") : routeTexts.length ? routeTexts.join("; ") : `${table.resource} has no IPv6 route to the internet`;
     add("route", table.resource, "deny", why);
     return stop("blocked", `the IPv6 response cannot return to the internet: ${why}`);
   }
+  if (listDoubt.length) undecided.push(`IPv6 responses to addresses in a prefix list may use another route: ${listDoubt.join("; ")}`);
   if (!isEmpty6(unresolved)) undecided.push(`IPv6 responses to ${set6ToCidrs(unresolved).slice(0, 6).join(", ")} cannot be decided: ${reasons.join("; ")}`);
   add("route", table.resource, equals6(viaIgw, sources) ? "allow" : "partial", routeTexts.join("; "));
   return { verdict: "allowed", sources: equals6(viaIgw, universe) ? ["internet"] : set6ToCidrs(viaIgw), hops, reason: undecided.join("; ") };
@@ -185,7 +196,7 @@ export function exposedPorts6(ep: Endpoint | undefined, p: Protocol): { lo: numb
   for (const g of ep.securityGroups.value) {
     if (!g.ingress.ok) return [{ lo: 0, hi: 65535 }];
     for (const rule of g.ingress.value) {
-      if (rule.sources6 && protoMatches(rule.protocol, p) && !isEmpty6(intersect6(rule.sources6, universe))) for (const [lo, hi] of rule.ports) out.push({ lo, hi });
+      if (protoMatches(rule.protocol, p) && (rule.listUnresolved || (rule.sources6 && !isEmpty6(intersect6(rule.sources6, universe))))) for (const [lo, hi] of rule.ports) out.push({ lo, hi });
     }
   }
   return out;

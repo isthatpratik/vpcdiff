@@ -48,6 +48,21 @@ describe("IPv6 paths from the internet", () => {
     expect(only(v6(network({ vpc: vpc6, sg: sg6(["::/0"]), instance: u, rt: rt6([igw6]) }))).after.verdict).toBe("unknown");
   });
 
+  it("returns unknown when the VPC's IPv6 blocks are not known", () => {
+    const assoc = res("aws_vpc_ipv6_cidr_block_association", "x", { id: "a-1", vpc_id: "vpc-1" });
+    expect(only(v6(network({ vpc: vpc6, sg: sg6(["::/0"]), instance: inst6, rt: rt6([igw6]) }, [assoc]))).after.verdict).toBe("unknown");
+  });
+
+  it("returns unknown when only a prefix list outside the plan could allow IPv6", () => {
+    const sg = res("aws_security_group", "app", { id: "sg-1", ingress: [{ ...sgRule(443, 443, []), prefix_list_ids: ["pl-aws"] }], egress: [] });
+    expect(only(v6(network({ vpc: vpc6, sg, instance: inst6, rt: rt6([igw6]) }))).after.verdict).toBe("unknown");
+  });
+
+  it("returns unknown for two IPv6 routes with the same destination", () => {
+    const dup = res("aws_route", "dup", { id: "r-6", route_table_id: "rtb-1", destination_cidr_block: null, destination_ipv6_cidr_block: "::/0", egress_only_gateway_id: "eigw-1" });
+    expect(only(v6(network({ vpc: vpc6, sg: sg6(["::/0"]), instance: inst6, rt: rt6([igw6]) }, [dup]))).after.verdict).toBe("unknown");
+  });
+
   it("gives a dual-stack internet-facing load balancer an IPv6 path", () => {
     const lb = res("aws_lb", "web", { id: "arn:lb", internal: false, load_balancer_type: "application", ip_address_type: "dualstack", subnets: ["subnet-1"], security_groups: ["sg-1"], subnet_mapping: [] });
     const p = only(v6(network({ vpc: vpc6, sg: sg6(["::/0"]), instance: null, rt: rt6([igw6]) }, [lb])));
