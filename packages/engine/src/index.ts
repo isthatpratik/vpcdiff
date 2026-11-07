@@ -42,6 +42,8 @@ const MODELED = new Set([
   "aws_lb",
   "aws_lb_listener",
   "aws_nat_gateway",
+  "aws_vpc_endpoint",
+  "aws_vpc_endpoint_route_table_association",
   "aws_ec2_managed_prefix_list",
   "aws_ec2_managed_prefix_list_entry",
   "aws_rds_cluster",
@@ -137,6 +139,10 @@ function notesFor(before: Snapshot, after: Snapshot): Note[] {
       // An ECS service without network_configuration uses bridge or host networking.
       if (r.type === "aws_ecs_service" && !arr(r.values.network_configuration).length && !r.configured.has("network_configuration")) {
         seen.set(r.address, { resource: r.address, message: "aws_ecs_service without awsvpc networking (bridge or host mode) shares the container instance's network interface, which is not modeled yet; paths to its tasks are not reported" });
+        continue;
+      }
+      if (r.type === "aws_vpc_endpoint" && r.values.vpc_endpoint_type === "GatewayLoadBalancer") {
+        seen.set(r.address, { resource: r.address, message: "Gateway Load Balancer endpoints are not modeled yet; routes to them are reported as unknown" });
         continue;
       }
       if (MODELED.has(r.type) || !NETWORK_TYPE.test(r.type)) continue;

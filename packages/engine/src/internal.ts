@@ -1,7 +1,7 @@
 // Paths inside the VPC: from one endpoint in the plan to another, where a security group
 // rule of the target references a group of the source. Semantics and AWS sources:
 // docs/semantics/internal-paths.md.
-import { EPHEMERAL, naclEval, segment } from "./evaluate.js";
+import { EPHEMERAL, naclEval, PRIVATE_IPV4, segment } from "./evaluate.js";
 import { contains, equals, formatPorts, intersect, isEmpty, subtract, union, EMPTY, type IntervalSet, type Range } from "./intervals.js";
 import type { Endpoint, Known, Nacl, NaclRule, RouteTable, SecurityGroup } from "./model.js";
 import type { Hop, HopKind, Outcome, Protocol } from "./types.js";
@@ -66,7 +66,10 @@ function routeStep(table: Known<RouteTable>, at: string, peerCidr: IntervalSet, 
   if (!t.routes.ok) return { decision: "unknown", resource: t.resource, rule: t.routes.reason, reason: t.routes.reason };
   // Longest prefix match. https://docs.aws.amazon.com/vpc/latest/userguide/route-tables-priority.html
   const routes = t.routes.value.toSorted((a, b) => b.prefix - a.prefix);
-  const listDoubt = routes.filter((r) => r.listUnresolved).map((r) => `${r.text}: ${r.listUnresolved}`);
+  // A gateway endpoint's list holds the service's public ranges ("the IP address ranges for
+  // Amazon S3"), so it cannot match a subnet in private address space.
+  // https://docs.aws.amazon.com/vpc/latest/userguide/route-table-options.html#route-tables-nat
+  const listDoubt = routes.filter((r) => r.listUnresolved && !(r.awsService && contains(PRIVATE_IPV4, peerCidr))).map((r) => `${r.text}: ${r.listUnresolved}`);
   let remaining = peerCidr;
   let local: IntervalSet = EMPTY;
   const texts: string[] = [];

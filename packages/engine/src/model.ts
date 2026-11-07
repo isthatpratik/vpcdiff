@@ -68,6 +68,8 @@ export interface Route {
   text: string;
   /** Set when the destination is a prefix list that cannot be expanded; `cidr` is then empty. */
   listUnresolved?: string;
+  /** The list holds an AWS service's public ranges (a gateway endpoint route), never private addresses. */
+  awsService?: boolean;
 }
 
 export interface RouteTable {
@@ -241,6 +243,8 @@ export class ModelBuilder {
   private readonly eips = new Index<string>();
   /** VPC address to internet gateways attached by aws_internet_gateway_attachment. */
   private readonly igwAttach = new Index<string>();
+  /** Route table key to the gateway VPC endpoints associated with it. */
+  private readonly gatewayEndpoints = new Index<string>();
   /** Prefix list address to aws_ec2_managed_prefix_list_entry CIDRs. */
   private readonly plEntries = new Index<string>();
 
@@ -451,6 +455,23 @@ export class ModelBuilder {
         case "aws_eip_association": {
           if (isNull(r, "instance_id") && !isNull(r, "network_interface_id")) this.eips.add(unknown(`${r.address} is associated with a network interface, which is not modeled yet`), known(r.address), r.address);
           else this.eips.add(this.optionalRefTo(r, "instance_id", "aws_instance"), known(r.address), r.address);
+          break;
+        }
+        case "aws_vpc_endpoint": {
+          // A gateway endpoint adds a route to the service's prefix list in each of its route tables.
+          // https://docs.aws.amazon.com/vpc/latest/userguide/route-table-options.html#route-tables-vpce
+          if (isUnknown(r, ["vpc_endpoint_type"]) || String(r.values.vpc_endpoint_type ?? "Gateway") !== "Gateway") break;
+          if (isNull(r, "route_table_ids")) break;
+          for (const ref of resolveRefs(this.snap, r, "route_table_ids", ["aws_route_table", "aws_default_route_table"])) {
+            if (ref.kind === "unknown") this.gatewayEndpoints.add(unknown(ref.reason), known(r.address), r.address);
+            else if (ref.kind === "resource") this.gatewayEndpoints.add(this.canonical(ref.address), known(r.address), r.address);
+          }
+          break;
+        }
+        case "aws_vpc_endpoint_route_table_association": {
+          // https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/vpc_endpoint_route_table_association
+          const ep = this.refTo(r, "vpc_endpoint_id", "aws_vpc_endpoint");
+          this.gatewayEndpoints.add(this.target(r, "route_table_id"), known(ep.ok ? ep.value : `the endpoint of ${r.address}`), r.address);
           break;
         }
         case "aws_ec2_managed_prefix_list_entry": {
@@ -936,7 +957,7 @@ export class ModelBuilder {
 
   /** A route table by key, with the route and main-association resources that shaped it. */
   private routeTable(key: Key, vpc: Vpc, isMain: boolean): RouteTable {
-    return { ...this.routeTableOf(key, vpc, isMain), via: [...this.routes.sources(key), ...(isMain ? this.mainAssoc.sources(vpc.address) : [])] };
+    return { ...this.routeTableOf(key, vpc, isMain), via: [...this.routes.sources(key), ...this.gatewayEndpoints.sources(key), ...(isMain ? this.mainAssoc.sources(vpc.address) : [])] };
   }
 
   /** A route table by key: local routes, inline routes, and aws_route resources. */
@@ -962,7 +983,11 @@ export class ModelBuilder {
     if (!vpc.cidrs.ok) return { resource, routes: unknown(vpc.cidrs.reason) };
     // Every route table has a local route for the VPC CIDR.
     // https://docs.aws.amazon.com/vpc/latest/userguide/RouteTables.html
-    return { resource, routes: known([...localRoutes(vpc, resource, vpc.cidrs.value), ...base.value, ...extra.value.filter((x) => x.cidr.length || x.listUnresolved)]) };
+    // Gateway endpoints: a route to the service's AWS-managed prefix list, which cannot be expanded offline.
+    const gw = this.gatewayEndpoints.get(key);
+    if (!gw.ok) return { resource, routes: unknown(gw.reason) };
+    const endpointRoutes: Route[] = [...new Set(gw.value)].toSorted(cmp).map((e) => ({ cidr: [], prefix: 0, target: { kind: "other", text: "vpc endpoint" }, text: `${resource} route to the prefix list of gateway endpoint ${e} -> vpc endpoint`, listUnresolved: `the service prefix list of ${e} is managed by AWS and cannot be expanded offline`, awsService: true }));
+    return { resource, routes: known([...localRoutes(vpc, resource, vpc.cidrs.value), ...base.value, ...extra.value.filter((x) => x.cidr.length || x.listUnresolved), ...endpointRoutes]) };
   }
 
   /**
@@ -1006,6 +1031,7 @@ export class ModelBuilder {
       ...this.ofType("aws_rds_cluster_instance").flatMap((r) => this.auroraInstance(r)),
       ...this.ofType("aws_ecs_service").flatMap((r) => this.ecsService(r)),
       ...this.ofType("aws_elb").flatMap((r) => this.classicLoadBalancer(r)),
+      ...this.ofType("aws_vpc_endpoint").flatMap((r) => this.interfaceEndpoint(r)),
     ];
   }
 
@@ -1255,6 +1281,26 @@ export class ModelBuilder {
       return known([this.securityGroup(`default-sg:${vpc}`)]);
     };
     return subnetRefs.map((x) => this.place(r, (x as { address: string }).address, publicIp, groups, "the result depends on the subnet ECS places a task in"));
+  }
+
+  /**
+   * Interface VPC endpoint: "For each subnet that you specify from your VPC, we create an
+   * endpoint network interface in the subnet and assign it a private IP address from the
+   * subnet address range." Security groups: "By default, we associate the default security
+   * group for the VPC." It has no public address, so it matters for paths inside the VPC.
+   * https://docs.aws.amazon.com/vpc/latest/privatelink/create-interface-endpoint.html
+   */
+  private interfaceEndpoint(r: Resource): Endpoint[] {
+    if (isUnknown(r, ["vpc_endpoint_type"])) return [this.fail(r, `${r.address}: vpc_endpoint_type is unknown until apply`)];
+    if (String(r.values.vpc_endpoint_type ?? "Gateway") !== "Interface") return [];
+    const refs = resolveRefs(this.snap, r, "subnet_ids", "aws_subnet");
+    const bad = refs.find((x) => x.kind !== "resource");
+    if (bad) return [this.fail(r, bad.kind === "unknown" ? bad.reason : `${r.address}: a subnet is not managed in this plan`)];
+    const groups = (vpc: string): Known<SecurityGroup[]> => {
+      const g = this.groups(r, "security_group_ids", vpc);
+      return g === "empty" ? known([]) : g;
+    };
+    return refs.map((x) => this.place(r, (x as { address: string }).address, () => known(undefined), groups, "the result differs between the endpoint's subnets"));
   }
 
   /**

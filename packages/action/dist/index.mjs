@@ -113,6 +113,7 @@ var DOC = {
 };
 var EPHEMERAL = [[1024, 65535]];
 var NOT_INTERNET = ["0.0.0.0/8", "10.0.0.0/8", "100.64.0.0/10", "127.0.0.0/8", "169.254.0.0/16", "172.16.0.0/12", "192.168.0.0/16", "224.0.0.0/4", "240.0.0.0/4"];
+var PRIVATE_IPV4 = ["10.0.0.0/8", "100.64.0.0/10", "172.16.0.0/12", "192.168.0.0/16"].reduce((set, c) => union(set, cidrToSet(c) ?? EMPTY), EMPTY);
 var PUBLIC_IPV4 = NOT_INTERNET.reduce((set, c) => subtract(set, cidrToSet(c) ?? EMPTY), ALL_IPV4);
 function internetOf(ep) {
   return ep.vpc.ok && ep.vpc.value.cidrs.ok ? subtract(PUBLIC_IPV4, ep.vpc.value.cidrs.value) : PUBLIC_IPV4;
@@ -351,7 +352,7 @@ function routeStep(table, at, peerCidr, peer) {
   const t = table.value;
   if (!t.routes.ok) return { decision: "unknown", resource: t.resource, rule: t.routes.reason, reason: t.routes.reason };
   const routes = t.routes.value.toSorted((a, b) => b.prefix - a.prefix);
-  const listDoubt = routes.filter((r) => r.listUnresolved).map((r) => `${r.text}: ${r.listUnresolved}`);
+  const listDoubt = routes.filter((r) => r.listUnresolved && !(r.awsService && contains(PRIVATE_IPV4, peerCidr))).map((r) => `${r.text}: ${r.listUnresolved}`);
   let remaining = peerCidr;
   let local = EMPTY;
   const texts = [];
@@ -731,6 +732,8 @@ var ModelBuilder = class {
   eips = new Index();
   /** VPC address to internet gateways attached by aws_internet_gateway_attachment. */
   igwAttach = new Index();
+  /** Route table key to the gateway VPC endpoints associated with it. */
+  gatewayEndpoints = new Index();
   /** Prefix list address to aws_ec2_managed_prefix_list_entry CIDRs. */
   plEntries = new Index();
   /** Unmodeled resources whose target cannot be resolved: they may change anything of their kind. */
@@ -897,6 +900,20 @@ var ModelBuilder = class {
         case "aws_eip_association": {
           if (isNull(r, "instance_id") && !isNull(r, "network_interface_id")) this.eips.add(unknown(`${r.address} is associated with a network interface, which is not modeled yet`), known(r.address), r.address);
           else this.eips.add(this.optionalRefTo(r, "instance_id", "aws_instance"), known(r.address), r.address);
+          break;
+        }
+        case "aws_vpc_endpoint": {
+          if (isUnknown(r, ["vpc_endpoint_type"]) || String(r.values.vpc_endpoint_type ?? "Gateway") !== "Gateway") break;
+          if (isNull(r, "route_table_ids")) break;
+          for (const ref of resolveRefs(this.snap, r, "route_table_ids", ["aws_route_table", "aws_default_route_table"])) {
+            if (ref.kind === "unknown") this.gatewayEndpoints.add(unknown(ref.reason), known(r.address), r.address);
+            else if (ref.kind === "resource") this.gatewayEndpoints.add(this.canonical(ref.address), known(r.address), r.address);
+          }
+          break;
+        }
+        case "aws_vpc_endpoint_route_table_association": {
+          const ep = this.refTo(r, "vpc_endpoint_id", "aws_vpc_endpoint");
+          this.gatewayEndpoints.add(this.target(r, "route_table_id"), known(ep.ok ? ep.value : `the endpoint of ${r.address}`), r.address);
           break;
         }
         case "aws_ec2_managed_prefix_list_entry": {
@@ -1330,7 +1347,7 @@ var ModelBuilder = class {
   }
   /** A route table by key, with the route and main-association resources that shaped it. */
   routeTable(key, vpc, isMain) {
-    return { ...this.routeTableOf(key, vpc, isMain), via: [...this.routes.sources(key), ...isMain ? this.mainAssoc.sources(vpc.address) : []] };
+    return { ...this.routeTableOf(key, vpc, isMain), via: [...this.routes.sources(key), ...this.gatewayEndpoints.sources(key), ...isMain ? this.mainAssoc.sources(vpc.address) : []] };
   }
   /** A route table by key: local routes, inline routes, and aws_route resources. */
   routeTableOf(key, vpc, isMain) {
@@ -1352,7 +1369,10 @@ var ModelBuilder = class {
     const extra = this.routes.get(key);
     if (!extra.ok) return { resource, routes: extra };
     if (!vpc.cidrs.ok) return { resource, routes: unknown(vpc.cidrs.reason) };
-    return { resource, routes: known([...localRoutes(vpc, resource, vpc.cidrs.value), ...base.value, ...extra.value.filter((x) => x.cidr.length || x.listUnresolved)]) };
+    const gw = this.gatewayEndpoints.get(key);
+    if (!gw.ok) return { resource, routes: unknown(gw.reason) };
+    const endpointRoutes = [...new Set(gw.value)].toSorted(cmp).map((e) => ({ cidr: [], prefix: 0, target: { kind: "other", text: "vpc endpoint" }, text: `${resource} route to the prefix list of gateway endpoint ${e} -> vpc endpoint`, listUnresolved: `the service prefix list of ${e} is managed by AWS and cannot be expanded offline`, awsService: true }));
+    return { resource, routes: known([...localRoutes(vpc, resource, vpc.cidrs.value), ...base.value, ...extra.value.filter((x) => x.cidr.length || x.listUnresolved), ...endpointRoutes]) };
   }
   /**
    * The route table of a subnet: an explicit association, else the VPC's main route table.
@@ -1393,7 +1413,8 @@ var ModelBuilder = class {
       ...this.ofType("aws_lb").flatMap((r) => this.loadBalancer(r)),
       ...this.ofType("aws_rds_cluster_instance").flatMap((r) => this.auroraInstance(r)),
       ...this.ofType("aws_ecs_service").flatMap((r) => this.ecsService(r)),
-      ...this.ofType("aws_elb").flatMap((r) => this.classicLoadBalancer(r))
+      ...this.ofType("aws_elb").flatMap((r) => this.classicLoadBalancer(r)),
+      ...this.ofType("aws_vpc_endpoint").flatMap((r) => this.interfaceEndpoint(r))
     ];
   }
   fail(r, reason) {
@@ -1622,6 +1643,25 @@ var ModelBuilder = class {
     return subnetRefs.map((x) => this.place(r, x.address, publicIp, groups, "the result depends on the subnet ECS places a task in"));
   }
   /**
+   * Interface VPC endpoint: "For each subnet that you specify from your VPC, we create an
+   * endpoint network interface in the subnet and assign it a private IP address from the
+   * subnet address range." Security groups: "By default, we associate the default security
+   * group for the VPC." It has no public address, so it matters for paths inside the VPC.
+   * https://docs.aws.amazon.com/vpc/latest/privatelink/create-interface-endpoint.html
+   */
+  interfaceEndpoint(r) {
+    if (isUnknown(r, ["vpc_endpoint_type"])) return [this.fail(r, `${r.address}: vpc_endpoint_type is unknown until apply`)];
+    if (String(r.values.vpc_endpoint_type ?? "Gateway") !== "Interface") return [];
+    const refs = resolveRefs(this.snap, r, "subnet_ids", "aws_subnet");
+    const bad = refs.find((x) => x.kind !== "resource");
+    if (bad) return [this.fail(r, bad.kind === "unknown" ? bad.reason : `${r.address}: a subnet is not managed in this plan`)];
+    const groups = (vpc) => {
+      const g = this.groups(r, "security_group_ids", vpc);
+      return g === "empty" ? known([]) : g;
+    };
+    return refs.map((x) => this.place(r, x.address, () => known(void 0), groups, "the result differs between the endpoint's subnets"));
+  }
+  /**
    * Classic Load Balancer in a VPC: a node in each of `subnets`, internet-facing unless
    * `internal`. "If you use the AWS CLI or API create a load balancer in a nondefault
    * VPC, but you don't specify a security group, your load balancer is automatically
@@ -1739,6 +1779,8 @@ var MODELED = /* @__PURE__ */ new Set([
   "aws_lb",
   "aws_lb_listener",
   "aws_nat_gateway",
+  "aws_vpc_endpoint",
+  "aws_vpc_endpoint_route_table_association",
   "aws_ec2_managed_prefix_list",
   "aws_ec2_managed_prefix_list_entry",
   "aws_rds_cluster",
@@ -1808,6 +1850,10 @@ function notesFor(before, after) {
       if (seen.has(r.address)) continue;
       if (r.type === "aws_ecs_service" && !arr2(r.values.network_configuration).length && !r.configured.has("network_configuration")) {
         seen.set(r.address, { resource: r.address, message: "aws_ecs_service without awsvpc networking (bridge or host mode) shares the container instance's network interface, which is not modeled yet; paths to its tasks are not reported" });
+        continue;
+      }
+      if (r.type === "aws_vpc_endpoint" && r.values.vpc_endpoint_type === "GatewayLoadBalancer") {
+        seen.set(r.address, { resource: r.address, message: "Gateway Load Balancer endpoints are not modeled yet; routes to them are reported as unknown" });
         continue;
       }
       if (MODELED.has(r.type) || !NETWORK_TYPE.test(r.type)) continue;

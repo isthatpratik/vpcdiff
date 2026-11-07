@@ -84,8 +84,27 @@ allow list.
 - Like an Application Load Balancer, the engine reports the ports the groups open; it
   does not narrow them to the listener ports.
 
+## Interface VPC endpoint (`aws_vpc_endpoint`, `vpc_endpoint_type = "Interface"`)
+
+- "For each subnet that you specify from your VPC, we create an endpoint network
+  interface in the subnet and assign it a private IP address from the subnet address
+  range." So it is a target for paths inside the VPC, never from the internet.
+- **Security groups:** `security_group_ids`; "By default, we associate the default
+  security group for the VPC."
+  Source: <https://docs.aws.amazon.com/vpc/latest/privatelink/create-interface-endpoint.html>
+
+## Gateway VPC endpoint (`vpc_endpoint_type = "Gateway"`)
+
+- Not an endpoint for paths. AWS adds a route to the service's prefix list in each of
+  its route tables (`route_table_ids`, `aws_vpc_endpoint_route_table_association`).
+  Source: <https://docs.aws.amazon.com/vpc/latest/userguide/route-table-options.html#route-tables-vpce>
+- The list is AWS-managed and cannot be expanded offline. Responses to internet clients
+  in it are undecided. It holds the service's public ranges ("the IP address ranges for
+  Amazon S3"), so it cannot match a subnet in private address space (RFC 1918 or
+  100.64.0.0/10); paths between such subnets get no doubt from it.
+
 ## Not modeled yet
 
-Gateway Load Balancers, ECS services in bridge or host mode, and instances with
+Gateway Load Balancers and their endpoints, ECS services in bridge or host mode, and instances with
 `network_interface` blocks. They get a note, or an `unknown` path when a modeled hop
 depends on them.

@@ -1,0 +1,160 @@
+{
+  "format": "0.2",
+  "summary": {
+    "added": 2,
+    "removed": 0,
+    "changed": 0,
+    "unchanged": 0,
+    "unknown": 0
+  },
+  "paths": [
+    {
+      "id": "internet->aws_instance.app:tcp:443",
+      "from": "internet",
+      "to": "aws_instance.app",
+      "toType": "aws_instance",
+      "protocol": "tcp",
+      "ports": "443",
+      "change": "added",
+      "before": {
+        "verdict": "absent",
+        "sources": [],
+        "hops": [],
+        "reason": "the resource does not exist on this side of the plan"
+      },
+      "after": {
+        "verdict": "allowed",
+        "sources": [
+          "internet"
+        ],
+        "hops": [
+          {
+            "hop": "public-ip",
+            "resource": "aws_instance.app",
+            "decision": "allow",
+            "rule": "aws_instance.app associate_public_ip_address = true",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/VPC_Internet_Gateway.html"
+          },
+          {
+            "hop": "internet-gateway",
+            "resource": "aws_internet_gateway.main",
+            "decision": "allow",
+            "rule": "aws_internet_gateway.main is attached to aws_vpc.main",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/VPC_Internet_Gateway.html"
+          },
+          {
+            "hop": "nacl-inbound",
+            "resource": "default NACL of aws_vpc.main",
+            "decision": "allow",
+            "rule": "default NACL of aws_vpc.main ingress rule 100: allow all traffic (AWS default)",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/nacl-rules.html"
+          },
+          {
+            "hop": "security-group",
+            "resource": "aws_security_group.app",
+            "decision": "allow",
+            "rule": "aws_security_group.app ingress tcp 443 from 0.0.0.0/0",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/security-group-rules.html"
+          },
+          {
+            "hop": "nacl-outbound",
+            "resource": "default NACL of aws_vpc.main",
+            "decision": "allow",
+            "rule": "default NACL of aws_vpc.main egress rule 100: allow all traffic (AWS default)",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/custom-network-acl.html#nacl-ephemeral-ports"
+          },
+          {
+            "hop": "route",
+            "resource": "aws_route_table.app",
+            "decision": "allow",
+            "rule": "aws_route_table.app route 0.0.0.0/0 -> aws_internet_gateway.main",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/route-tables-priority.html"
+          }
+        ],
+        "reason": "responses to addresses in a prefix list may use another route: aws_route_table.app route to the prefix list of gateway endpoint aws_vpc_endpoint.s3 -> vpc endpoint: the service prefix list of aws_vpc_endpoint.s3 is managed by AWS and cannot be expanded offline"
+      }
+    },
+    {
+      "id": "aws_instance.app->aws_vpc_endpoint.ssm:tcp:443",
+      "from": "aws_instance.app",
+      "fromType": "aws_instance",
+      "to": "aws_vpc_endpoint.ssm",
+      "toType": "aws_vpc_endpoint",
+      "protocol": "tcp",
+      "ports": "443",
+      "change": "added",
+      "before": {
+        "verdict": "absent",
+        "sources": [],
+        "hops": [],
+        "reason": "the resource does not exist on this side of the plan"
+      },
+      "after": {
+        "verdict": "allowed",
+        "sources": [
+          "aws_instance.app"
+        ],
+        "hops": [
+          {
+            "hop": "source-security-group",
+            "resource": "aws_security_group.app",
+            "decision": "allow",
+            "rule": "aws_security_group.app egress all traffic to 0.0.0.0/0",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/security-group-rules.html"
+          },
+          {
+            "hop": "source-route",
+            "resource": "aws_route_table.app",
+            "decision": "allow",
+            "rule": "aws_route_table.app local route",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/RouteTables.html"
+          },
+          {
+            "hop": "source-nacl-outbound",
+            "resource": "default NACL of aws_vpc.main",
+            "decision": "allow",
+            "rule": "default NACL of aws_vpc.main egress rule 100: allow all traffic (AWS default)",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/vpc-network-acls.html"
+          },
+          {
+            "hop": "target-nacl-inbound",
+            "resource": "default NACL of aws_vpc.main",
+            "decision": "allow",
+            "rule": "default NACL of aws_vpc.main ingress rule 100: allow all traffic (AWS default)",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/vpc-network-acls.html"
+          },
+          {
+            "hop": "security-group",
+            "resource": "aws_security_group.endpoints",
+            "decision": "allow",
+            "rule": "aws_security_group.endpoints ingress tcp 443 from aws_security_group.app",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/security-group-rules.html"
+          },
+          {
+            "hop": "target-nacl-outbound",
+            "resource": "default NACL of aws_vpc.main",
+            "decision": "allow",
+            "rule": "default NACL of aws_vpc.main egress rule 100: allow all traffic (AWS default)",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/custom-network-acl.html#nacl-ephemeral-ports"
+          },
+          {
+            "hop": "source-nacl-inbound",
+            "resource": "default NACL of aws_vpc.main",
+            "decision": "allow",
+            "rule": "default NACL of aws_vpc.main ingress rule 100: allow all traffic (AWS default)",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/custom-network-acl.html#nacl-ephemeral-ports"
+          },
+          {
+            "hop": "target-route",
+            "resource": "main route table of aws_vpc.main",
+            "decision": "allow",
+            "rule": "main route table of aws_vpc.main local route",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/RouteTables.html"
+          }
+        ],
+        "reason": ""
+      }
+    }
+  ],
+  "notes": []
+}
