@@ -43,17 +43,17 @@ AWS account or credentials, and the viewer never sends your plan anywhere.
   <img alt="The vpcdiff viewer on a plan that opens PostgreSQL to the internet: the plan verdict, the path, the security group rule that decided it, what to do, and the hops before and after" src="docs/assets/viewer.png" width="100%">
 </p>
 
-> **Status:** [v0.1.1](https://github.com/isthatpratik/vpcdiff/releases/tag/v0.1.1) is
-> released. It checks IPv4 paths from the internet to instances, databases, and load
-> balancers (see the [support matrix](#support-matrix)); paths inside the VPC are next on
-> the [roadmap](#roadmap). Design notes are in [`docs/design`](docs/design),
+> **Status:** [v0.2.0](https://github.com/isthatpratik/vpcdiff/releases/tag/v0.2.0) checks
+> paths from the internet (IPv4 and IPv6) and paths inside the VPC, including across VPC
+> peering, for instances, databases, Aurora, ECS services, and load balancers (see the
+> [support matrix](#support-matrix)). Design notes are in [`docs/design`](docs/design),
 > [`docs/adr`](docs/adr), and [`docs/semantics`](docs/semantics).
 
 ## GitHub Action
 
 ```yaml
 - run: terraform show -json tfplan > plan.json
-- uses: isthatpratik/vpcdiff@v0.1.1
+- uses: isthatpratik/vpcdiff@v0.2.0
   with:
     plan: plan.json
     # fail-on: added   # added | changed | unknown | never
@@ -199,12 +199,13 @@ security review, and an updated support matrix.
 
 1. [Paths inside the VPC](https://github.com/isthatpratik/vpcdiff/issues/32): security
    group references, so "load balancer to service" or "web to database" changes show up.
-   In review: #76, #77, and the display PR.
-2. [More AWS networking](https://github.com/isthatpratik/vpcdiff/issues/33): NAT gateways,
-   VPC peering, Transit Gateway, VPC endpoints, IPv6, and prefix lists.
-3. [OpenTofu support](https://github.com/isthatpratik/vpcdiff/issues/34): done. Every
+   Done in v0.2.0.
+2. [More AWS networking](https://github.com/isthatpratik/vpcdiff/issues/33): done in
+   v0.2.0 for NAT gateways, VPC peering, VPC endpoints, IPv6, and prefix lists. Transit
+   Gateway routing stays `unknown`: its route tables usually live outside the plan.
+3. [OpenTofu support](https://github.com/isthatpratik/vpcdiff/issues/34): done in v0.2.0. Every
    fixture is also planned with OpenTofu in CI, and the result must match byte for byte.
-4. [More endpoints](https://github.com/isthatpratik/vpcdiff/issues/35) (done): Aurora, ECS
+4. [More endpoints](https://github.com/isthatpratik/vpcdiff/issues/35), done in v0.2.0: Aurora, ECS
    services, and Classic Load Balancers.
 5. [Azure and Google Cloud](https://github.com/isthatpratik/vpcdiff/issues/36), after v1,
    with an ADR first.
