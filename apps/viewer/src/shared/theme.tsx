@@ -67,7 +67,10 @@ export function ThemeToggle({ className = "" }: { className?: string }) {
   const theme = useResolvedTheme();
   const ref = useRef<HTMLButtonElement>(null);
   const next: Theme = theme === "dark" ? "light" : "dark";
-  const icon = "absolute inset-0 m-auto size-4 transition-[opacity,rotate,scale] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none";
+  // 19 px: the sun and the moon fill less of their box than the GitHub mark beside them,
+  // so they are drawn larger to look the same size. The crescent's weight sits up and to
+  // the left, so the moon moves half a pixel to look centered.
+  const icon = "absolute inset-0 m-auto size-[19px] transition-[opacity,rotate,scale] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none";
   return (
     <button
       ref={ref}
@@ -80,7 +83,7 @@ export function ThemeToggle({ className = "" }: { className?: string }) {
       className={`relative inline-flex size-8 shrink-0 items-center justify-center rounded-full transition-[background-color,color,scale] duration-200 focus-visible:outline-2 focus-visible:outline-litt-focus active:scale-[0.94] motion-reduce:active:scale-100 ${className}`}
     >
       <SunIcon aria-hidden="true" className={`${icon} ${theme === "light" ? "rotate-0 scale-100 opacity-100" : "-rotate-90 scale-50 opacity-0"}`} />
-      <MoonIcon aria-hidden="true" className={`${icon} ${theme === "dark" ? "rotate-0 scale-100 opacity-100" : "rotate-90 scale-50 opacity-0"}`} />
+      <MoonIcon aria-hidden="true" className={`${icon} translate-x-[0.5px] translate-y-[0.5px] ${theme === "dark" ? "rotate-0 scale-100 opacity-100" : "rotate-90 scale-50 opacity-0"}`} />
     </button>
   );
 }

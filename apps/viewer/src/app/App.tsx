@@ -217,7 +217,7 @@ function TopBar({ name, onNew, onTour }: { name?: string | undefined; onNew?: ((
           </Button>
         )}
         <span className="hidden sm:inline-flex">
-          <ThemeToggle className="text-litt-fg-subtle hover:bg-litt-surface-2 hover:text-litt-fg" />
+          <ThemeToggle className="text-litt-fg-muted hover:bg-litt-surface-2 hover:text-litt-fg" />
         </span>
         <span className="hidden sm:inline-flex">
           <GithubLink />

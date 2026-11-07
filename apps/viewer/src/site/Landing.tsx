@@ -237,7 +237,7 @@ function Nav() {
           </a>
           <div className="flex items-center justify-end gap-1">
             <span className="hidden sm:inline-flex">
-              <ThemeToggle className="text-litt-fg-subtle hover:bg-litt-surface-2 hover:text-litt-fg" />
+              <ThemeToggle className="text-litt-fg-muted hover:bg-litt-surface-2 hover:text-litt-fg" />
             </span>
             <span className="hidden sm:inline-flex [&_a]:rounded-full">
               <GithubLink />
@@ -271,7 +271,7 @@ function Nav() {
                 </li>
               ))}
               <li className="flex items-center gap-2 border-t border-litt-line py-3">
-                <ThemeToggle className="text-litt-fg-subtle hover:bg-litt-surface-2 hover:text-litt-fg" />
+                <ThemeToggle className="text-litt-fg-muted hover:bg-litt-surface-2 hover:text-litt-fg" />
                 <GithubLink />
               </li>
             </ul>
