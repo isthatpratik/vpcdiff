@@ -55,6 +55,8 @@ export type RouteTarget =
   | { kind: "local" }
   | { kind: "igw"; address: string }
   | { kind: "other"; text: string }
+  /** A target that never carries traffic back to the internet: NAT gateway, peering, blackhole. */
+  | { kind: "drop"; text: string; why: string }
   | { kind: "unknown"; reason: string };
 
 export interface Route {
@@ -111,6 +113,23 @@ const VPC_DEFAULTS: [string, string][] = [
   ["default_network_acl_id", "default-nacl"],
   ["default_security_group_id", "default-sg"],
 ];
+
+/**
+ * Route targets that cannot carry a response back to a client on the internet.
+ * - NAT gateway: "Connections must always be initiated from within the VPC containing the NAT gateway."
+ *   https://docs.aws.amazon.com/vpc/latest/userguide/vpc-nat-gateway.html
+ * - VPC peering: "If VPC A has an internet gateway, resources in VPC B can't use the internet gateway in VPC A to access the internet."
+ *   https://docs.aws.amazon.com/vpc/latest/peering/vpc-peering-basics.html
+ */
+const DROP: Record<string, { text: string; why: string }> = {
+  nat_gateway_id: { text: "nat gateway", why: "a NAT gateway does not carry traffic for connections that start on the internet" },
+  vpc_peering_connection_id: { text: "vpc peering connection", why: "a peered VPC cannot use another VPC's internet gateway (no edge to edge routing)" },
+};
+const BLACKHOLE = { text: "blackhole", why: "the route's target no longer exists, so AWS drops the traffic (route state blackhole)" };
+const dropOf = (key: string): RouteTarget | undefined => {
+  const d = DROP[key];
+  return d ? { kind: "drop", ...d } : undefined;
+};
 
 /** How a group key reads in a rule: its address, or the VPC's default group. */
 export const groupLabel = (key: string): string => (key.startsWith("default-sg:") ? `default security group of ${key.slice("default-sg:".length)}` : key);
@@ -481,7 +500,11 @@ export class ModelBuilder {
   private gatewayTarget(r: Resource, gw: Known<string | null>, text: string): RouteTarget {
     if (!gw.ok) return { kind: "unknown", reason: gw.reason };
     if (gw.value === null) return { kind: "unknown", reason: `${text}: gateway is not in this plan` };
-    return typeOf(gw.value) === "aws_internet_gateway" ? { kind: "igw", address: gw.value } : { kind: "other", text: typeOf(gw.value).replace(/^aws_/, "").replaceAll("_", " ") };
+    const t = typeOf(gw.value);
+    if (t === "aws_internet_gateway") return { kind: "igw", address: gw.value };
+    // Older configurations put a NAT gateway ID in gateway_id.
+    if (t === "aws_nat_gateway") return dropOf("nat_gateway_id") as RouteTarget;
+    return { kind: "other", text: t.replace(/^aws_/, "").replaceAll("_", " ") };
   }
 
   private routeOf(r: Resource): Known<Route> {
@@ -504,9 +527,12 @@ export class ModelBuilder {
       } else target = this.gatewayTarget(r, this.refTo(r, "gateway_id", ["aws_internet_gateway", "aws_vpn_gateway"]), r.address);
     } else {
       const other = ["nat_gateway_id", "network_interface_id", "transit_gateway_id", "vpc_peering_connection_id", "vpc_endpoint_id", "egress_only_gateway_id", "carrier_gateway_id", "local_gateway_id", "core_network_arn"].find((k) => !isNull(r, k));
-      target = other ? { kind: "other", text: other.replace(/_id$|_arn$/, "").replaceAll("_", " ") } : { kind: "unknown", reason: `${r.address} has no target the engine can read` };
+      target = other ? (dropOf(other) ?? { kind: "other", text: other.replace(/_id$|_arn$/, "").replaceAll("_", " ") }) : { kind: "unknown", reason: `${r.address} has no target the engine can read` };
     }
-    const to = target.kind === "igw" ? target.address : target.kind === "other" ? target.text : target.kind;
+    // A route whose target was deleted keeps its entry with state "blackhole".
+    // https://docs.aws.amazon.com/vpc/latest/userguide/RouteTables.html
+    if (!isUnknown(r, ["state"]) && r.values.state === "blackhole") target = { kind: "drop", ...BLACKHOLE };
+    const to = target.kind === "igw" ? target.address : target.kind === "other" || target.kind === "drop" ? target.text : target.kind;
     return known({ cidr: set, prefix, target, text: `${r.address} ${cidr} -> ${to}` });
   }
 
@@ -772,7 +798,7 @@ export class ModelBuilder {
       return { kind: "unknown", reason: `${r.address}: gateway_id is unknown until apply and its reference is ambiguous` };
     }
     for (const key of ["nat_gateway_id", "network_interface_id", "transit_gateway_id", "vpc_peering_connection_id", "vpc_endpoint_id", "egress_only_gateway_id", "carrier_gateway_id", "local_gateway_id", "core_network_arn"]) {
-      if (str(raw[key]) || isUnknown(r, [...path, key])) return { kind: "other", text: key.replace(/_id$|_arn$/, "").replaceAll("_", " ") };
+      if (str(raw[key]) || isUnknown(r, [...path, key])) return dropOf(key) ?? { kind: "other", text: key.replace(/_id$|_arn$/, "").replaceAll("_", " ") };
     }
     return { kind: "unknown", reason: `${r.address}: route has no target the engine can read` };
   }
@@ -801,7 +827,7 @@ export class ModelBuilder {
       const prefix = cidrPrefixLength(cidr);
       if (!set || prefix === undefined) return unknown(`${r.address}: route ${i} has destination ${cidr}, which the engine cannot read`);
       const target = this.routeTarget(r, raw, ["route", i], unknownGateways, knownGateways);
-      const to = target.kind === "igw" ? target.address : target.kind === "other" ? target.text : target.kind;
+      const to = target.kind === "igw" ? target.address : target.kind === "other" || target.kind === "drop" ? target.text : target.kind;
       routes.push({ cidr: set, prefix, target, text: `${r.address} route ${cidr} -> ${to}` });
     }
     return known(routes);

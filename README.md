@@ -182,7 +182,9 @@ reported as `unknown` with a reason, never as allowed or blocked by guess.
 | `aws_elb` (Classic Load Balancer endpoint in a VPC) | supported |
 | Gateway Load Balancers, ECS services in bridge or host mode | noted |
 | Prefix lists, VPN route propagation, network interface attachments, secondary VPC CIDRs | unknown |
-| NAT gateway, VPC peering, Transit Gateway, VPC endpoints, IPv6 | not yet; unknown or noted |
+| Response routes to a NAT gateway, a VPC peering connection, or a blackhole | supported (they block internet paths) |
+| Transit Gateway, VPN gateway, middlebox network interfaces | unknown (routing continues outside the plan) |
+| VPC endpoints, IPv6 | not yet; unknown or noted |
 
 Paths evaluated: from the internet to each endpoint, for every TCP and UDP port that one
 of its security groups opens to a public address.

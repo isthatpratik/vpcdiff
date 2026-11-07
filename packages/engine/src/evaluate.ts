@@ -187,6 +187,7 @@ export function evaluate(ep: Endpoint | undefined, p: Protocol, ports: Range): O
   let unresolved: IntervalSet = EMPTY;
   const routeTexts: string[] = [];
   const unresolvedReasons: string[] = [];
+  const dropped: string[] = [];
   for (const [i, route] of routes.entries()) {
     const m = intersect(remaining, route.cidr);
     if (isEmpty(m)) continue;
@@ -196,6 +197,8 @@ export function evaluate(ep: Endpoint | undefined, p: Protocol, ports: Range): O
     else if (route.target.kind === "unknown") {
       unresolved = union(unresolved, m);
       unresolvedReasons.push(route.target.reason);
+    } else if (route.target.kind === "drop") {
+      dropped.push(`${route.text}: ${route.target.why}`);
     } else if (route.target.kind === "other") {
       unresolved = union(unresolved, m);
       unresolvedReasons.push(`${route.text}: responses through a ${route.target.text} are not modeled yet`);
@@ -204,7 +207,7 @@ export function evaluate(ep: Endpoint | undefined, p: Protocol, ports: Range): O
   }
   if (isEmpty(viaIgw)) {
     if (!isEmpty(unresolved)) return unknownAt("route", table.resource, unresolvedReasons.join("; "));
-    const why = routeTexts.length ? routeTexts.join("; ") : `${table.resource} has no route to the internet`;
+    const why = dropped.length ? dropped.join("; ") : routeTexts.length ? routeTexts.join("; ") : `${table.resource} has no route to the internet`;
     add("route", table.resource, "deny", why);
     return stop("blocked", `the response cannot return to the internet: ${why}`);
   }

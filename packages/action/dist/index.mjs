@@ -249,6 +249,7 @@ function evaluate(ep, p, ports) {
   let unresolved = EMPTY;
   const routeTexts = [];
   const unresolvedReasons = [];
+  const dropped = [];
   for (const [i, route] of routes.entries()) {
     const m = intersect(remaining, route.cidr);
     if (isEmpty(m)) continue;
@@ -258,6 +259,8 @@ function evaluate(ep, p, ports) {
     else if (route.target.kind === "unknown") {
       unresolved = union(unresolved, m);
       unresolvedReasons.push(route.target.reason);
+    } else if (route.target.kind === "drop") {
+      dropped.push(`${route.text}: ${route.target.why}`);
     } else if (route.target.kind === "other") {
       unresolved = union(unresolved, m);
       unresolvedReasons.push(`${route.text}: responses through a ${route.target.text} are not modeled yet`);
@@ -266,7 +269,7 @@ function evaluate(ep, p, ports) {
   }
   if (isEmpty(viaIgw)) {
     if (!isEmpty(unresolved)) return unknownAt("route", table.resource, unresolvedReasons.join("; "));
-    const why = routeTexts.length ? routeTexts.join("; ") : `${table.resource} has no route to the internet`;
+    const why = dropped.length ? dropped.join("; ") : routeTexts.length ? routeTexts.join("; ") : `${table.resource} has no route to the internet`;
     add("route", table.resource, "deny", why);
     return stop("blocked", `the response cannot return to the internet: ${why}`);
   }
@@ -616,6 +619,15 @@ var VPC_DEFAULTS = [
   ["default_network_acl_id", "default-nacl"],
   ["default_security_group_id", "default-sg"]
 ];
+var DROP = {
+  nat_gateway_id: { text: "nat gateway", why: "a NAT gateway does not carry traffic for connections that start on the internet" },
+  vpc_peering_connection_id: { text: "vpc peering connection", why: "a peered VPC cannot use another VPC's internet gateway (no edge to edge routing)" }
+};
+var BLACKHOLE = { text: "blackhole", why: "the route's target no longer exists, so AWS drops the traffic (route state blackhole)" };
+var dropOf = (key) => {
+  const d = DROP[key];
+  return d ? { kind: "drop", ...d } : void 0;
+};
 var groupLabel = (key) => key.startsWith("default-sg:") ? `default security group of ${key.slice("default-sg:".length)}` : key;
 var fullRefsHasAttr = (refs, ref) => refs.some((o) => o.startsWith(`${ref}.`));
 function subnetCidrOf(s) {
@@ -925,7 +937,10 @@ var ModelBuilder = class {
   gatewayTarget(r, gw, text) {
     if (!gw.ok) return { kind: "unknown", reason: gw.reason };
     if (gw.value === null) return { kind: "unknown", reason: `${text}: gateway is not in this plan` };
-    return typeOf(gw.value) === "aws_internet_gateway" ? { kind: "igw", address: gw.value } : { kind: "other", text: typeOf(gw.value).replace(/^aws_/, "").replaceAll("_", " ") };
+    const t = typeOf(gw.value);
+    if (t === "aws_internet_gateway") return { kind: "igw", address: gw.value };
+    if (t === "aws_nat_gateway") return dropOf("nat_gateway_id");
+    return { kind: "other", text: t.replace(/^aws_/, "").replaceAll("_", " ") };
   }
   routeOf(r) {
     if (hasUnknown(r, ["destination_cidr_block"])) return unknown(`${r.address}: destination is unknown until apply`);
@@ -947,9 +962,10 @@ var ModelBuilder = class {
       } else target = this.gatewayTarget(r, this.refTo(r, "gateway_id", ["aws_internet_gateway", "aws_vpn_gateway"]), r.address);
     } else {
       const other = ["nat_gateway_id", "network_interface_id", "transit_gateway_id", "vpc_peering_connection_id", "vpc_endpoint_id", "egress_only_gateway_id", "carrier_gateway_id", "local_gateway_id", "core_network_arn"].find((k) => !isNull(r, k));
-      target = other ? { kind: "other", text: other.replace(/_id$|_arn$/, "").replaceAll("_", " ") } : { kind: "unknown", reason: `${r.address} has no target the engine can read` };
+      target = other ? dropOf(other) ?? { kind: "other", text: other.replace(/_id$|_arn$/, "").replaceAll("_", " ") } : { kind: "unknown", reason: `${r.address} has no target the engine can read` };
     }
-    const to = target.kind === "igw" ? target.address : target.kind === "other" ? target.text : target.kind;
+    if (!isUnknown(r, ["state"]) && r.values.state === "blackhole") target = { kind: "drop", ...BLACKHOLE };
+    const to = target.kind === "igw" ? target.address : target.kind === "other" || target.kind === "drop" ? target.text : target.kind;
     return known({ cidr: set, prefix, target, text: `${r.address} ${cidr} -> ${to}` });
   }
   vpc(address) {
@@ -1184,7 +1200,7 @@ var ModelBuilder = class {
       return { kind: "unknown", reason: `${r.address}: gateway_id is unknown until apply and its reference is ambiguous` };
     }
     for (const key of ["nat_gateway_id", "network_interface_id", "transit_gateway_id", "vpc_peering_connection_id", "vpc_endpoint_id", "egress_only_gateway_id", "carrier_gateway_id", "local_gateway_id", "core_network_arn"]) {
-      if (str(raw[key]) || isUnknown(r, [...path, key])) return { kind: "other", text: key.replace(/_id$|_arn$/, "").replaceAll("_", " ") };
+      if (str(raw[key]) || isUnknown(r, [...path, key])) return dropOf(key) ?? { kind: "other", text: key.replace(/_id$|_arn$/, "").replaceAll("_", " ") };
     }
     return { kind: "unknown", reason: `${r.address}: route has no target the engine can read` };
   }
@@ -1210,7 +1226,7 @@ var ModelBuilder = class {
       const prefix = cidrPrefixLength(cidr);
       if (!set || prefix === void 0) return unknown(`${r.address}: route ${i} has destination ${cidr}, which the engine cannot read`);
       const target = this.routeTarget(r, raw, ["route", i], unknownGateways, knownGateways);
-      const to = target.kind === "igw" ? target.address : target.kind === "other" ? target.text : target.kind;
+      const to = target.kind === "igw" ? target.address : target.kind === "other" || target.kind === "drop" ? target.text : target.kind;
       routes.push({ cidr: set, prefix, target, text: `${r.address} route ${cidr} -> ${to}` });
     }
     return known(routes);
@@ -1625,6 +1641,7 @@ var MODELED = /* @__PURE__ */ new Set([
   "aws_db_subnet_group",
   "aws_lb",
   "aws_lb_listener",
+  "aws_nat_gateway",
   "aws_rds_cluster",
   "aws_rds_cluster_instance",
   "aws_ecs_service",

@@ -50,10 +50,26 @@ Handled:
   adopts it, then adds its configured routes. Unmanaged, it has only the local route.
   Source: <https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/default_route_table>
 
+Response routes that block (#33):
+
+- **NAT gateway** (`nat_gateway_id`, or a NAT gateway ID in `gateway_id`): "Connections
+  must always be initiated from within the VPC containing the NAT gateway." A response
+  to a client on the internet that is routed to a NAT gateway does not return.
+  Source: <https://docs.aws.amazon.com/vpc/latest/userguide/vpc-nat-gateway.html>
+- **VPC peering connection:** "If VPC A has an internet gateway, resources in VPC B
+  can't use the internet gateway in VPC A to access the internet." (no edge to edge
+  routing). Source: <https://docs.aws.amazon.com/vpc/latest/peering/vpc-peering-basics.html>
+- **Blackhole route** (`state = "blackhole"` on an `aws_route`): the target no longer
+  exists and AWS drops the traffic.
+  Source: <https://docs.aws.amazon.com/vpc/latest/userguide/RouteTables.html>
+
+Sources whose responses use one of these routes are left out of the allowed sources; a
+more specific route to the internet gateway still allows its own sources.
+
 Returns `unknown` with a reason:
 
-- A winning route whose target is not an internet gateway (NAT gateway, instance,
-  network interface, peering, transit gateway, VPC endpoint).
+- A winning route whose target routes on outside the plan: transit gateway, network
+  interface (a middlebox), VPN gateway, VPC endpoint, carrier or local gateway.
 - Prefix list destinations, and IPv6 routes (skipped for IPv4 traffic).
 - Route propagation from a virtual private gateway (`propagating_vgws`,
   `aws_vpn_gateway_route_propagation`).

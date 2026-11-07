@@ -41,6 +41,7 @@ const MODELED = new Set([
   "aws_db_subnet_group",
   "aws_lb",
   "aws_lb_listener",
+  "aws_nat_gateway",
   "aws_rds_cluster",
   "aws_rds_cluster_instance",
   "aws_ecs_service",
