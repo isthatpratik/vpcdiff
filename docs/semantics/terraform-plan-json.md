@@ -49,3 +49,12 @@ Source for every field below: <https://developer.hashicorp.com/terraform/interna
    values. The engine does not need `prior_state` for them.
 2. Sensitive values (`before_sensitive`, `after_sensitive`) are not network fields in
    slice 1. The engine must never print a sensitive value in an explanation.
+
+## OpenTofu
+
+OpenTofu's `tofu show -json` writes the same plan format (`format_version` 1.x,
+`resource_changes`, `configuration`). The one difference the engine meets is the
+provider address: `registry.opentofu.org/hashicorp/aws` instead of
+`registry.terraform.io/hashicorp/aws`. The engine does not read provider addresses, so
+the result is the same. CI checks this for every fixture (`fixtures/opentofu.test.ts`).
+Source: <https://opentofu.org/docs/internals/json-format/>

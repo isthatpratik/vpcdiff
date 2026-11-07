@@ -13,4 +13,9 @@ that plan into a synthetic state (fake IDs, AWS example account `123456789012`),
 plans `after/` against it with `-refresh=false`. The output has a fixed timestamp, and
 the fake provider credentials are removed, so regenerating gives the same file.
 
+`--tofu` plans with OpenTofu instead, and `--out <file>` writes the plan elsewhere.
+`fixtures/opentofu.test.ts` uses both: with `VPCDIFF_TOFU=1` it plans every fixture with
+OpenTofu and checks that the engine result equals `expected.json` byte for byte. The
+OpenTofu workflow runs it in CI.
+
 See [CONTRIBUTING.md](../CONTRIBUTING.md#fixtures) and [ADR 0004](../docs/adr/0004-reachability-analyzer-as-oracle.md).

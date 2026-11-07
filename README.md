@@ -156,6 +156,10 @@ All three use the same engine.
 
 ## Support matrix
 
+Plans from Terraform (`terraform show -json`) and OpenTofu (`tofu show -json`) work the
+same way: OpenTofu writes the same plan JSON format. CI plans every fixture with
+OpenTofu 1.13 and checks that the result matches the Terraform result byte for byte.
+
 What the engine models today. "unknown" means a path that such a resource can change is
 reported as `unknown` with a reason, never as allowed or blocked by guess.
 
@@ -190,8 +194,8 @@ security review, and an updated support matrix.
    In review: #76, #77, and the display PR.
 2. [More AWS networking](https://github.com/isthatpratik/vpcdiff/issues/33): NAT gateways,
    VPC peering, Transit Gateway, VPC endpoints, IPv6, and prefix lists.
-3. [OpenTofu support](https://github.com/isthatpratik/vpcdiff/issues/34): the same plan
-   format, checked against OpenTofu plans in CI.
+3. [OpenTofu support](https://github.com/isthatpratik/vpcdiff/issues/34): done. Every
+   fixture is also planned with OpenTofu in CI, and the result must match byte for byte.
 4. [More endpoints](https://github.com/isthatpratik/vpcdiff/issues/35): Aurora, ECS
    services, and Classic Load Balancers.
 5. [Azure and Google Cloud](https://github.com/isthatpratik/vpcdiff/issues/36), after v1,

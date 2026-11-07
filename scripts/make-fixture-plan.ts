@@ -1,6 +1,10 @@
 // Generates fixtures/<name>/plan.json without an AWS account.
 //
-// Usage: node scripts/make-fixture-plan.ts fixtures/<name>
+// Usage: node scripts/make-fixture-plan.ts fixtures/<name> [--tofu] [--out <file>]
+//
+// --tofu plans with OpenTofu (`tofu`) instead of Terraform. OpenTofu writes the same
+// plan JSON format; scripts/check-opentofu.ts uses this to compare results (#34).
+// --out writes the plan somewhere else than fixtures/<name>/plan.json.
 //
 // Fixture layout:
 //   after/main.tf    the configuration under review (required)
@@ -21,7 +25,13 @@ type Obj = { [key: string]: Json };
 
 const ACCOUNT = "123456789012"; // AWS documentation example account, not a real one.
 const REGION = "us-east-1";
-const AWS = 'provider["registry.terraform.io/hashicorp/aws"]';
+const argv = process.argv.slice(2);
+const TOFU = argv.includes("--tofu");
+const OUT = argv.includes("--out") ? argv[argv.indexOf("--out") + 1] : undefined;
+const BIN = TOFU ? "tofu" : "terraform";
+// Each tool resolves the bare "hashicorp/aws" source against its own registry.
+const REGISTRY = TOFU ? "registry.opentofu.org" : "registry.terraform.io";
+const AWS = `provider["${REGISTRY}/hashicorp/aws"]`;
 
 const PROVIDER_OVERRIDE = `provider "aws" {
   access_key                  = "AKIAFAKEFAKEFAKEFAKE"
@@ -45,12 +55,12 @@ const KINDS: Record<string, [string, string]> = {
   aws_instance: ["i", "instance"],
 };
 
-const cache = join(tmpdir(), "vpcdiff-tf-plugin-cache");
+const cache = join(tmpdir(), TOFU ? "vpcdiff-tofu-plugin-cache" : "vpcdiff-tf-plugin-cache");
 mkdirSync(cache, { recursive: true });
 const env = { ...process.env, TF_PLUGIN_CACHE_DIR: cache, TF_IN_AUTOMATION: "1", CHECKPOINT_DISABLE: "1" };
 
 function tf(cwd: string, args: string[]): string {
-  return execFileSync("terraform", args, { cwd, env, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+  return execFileSync(BIN, args, { cwd, env, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
 }
 
 function plan(configDir: string, state?: Obj): { plan: Obj; dir: string } {
@@ -65,7 +75,7 @@ function plan(configDir: string, state?: Obj): { plan: Obj; dir: string } {
 
 function resourceSchemas(dir: string): Obj {
   const all = JSON.parse(tf(dir, ["providers", "schema", "-json"])) as Obj;
-  const aws = (all.provider_schemas as Obj)["registry.terraform.io/hashicorp/aws"] as Obj;
+  const aws = (all.provider_schemas as Obj)[`${REGISTRY}/hashicorp/aws`] as Obj;
   return aws.resource_schemas as Obj;
 }
 
@@ -181,7 +191,7 @@ function toState(before: Obj, schemas: Obj): Obj {
   };
 }
 
-const fixture = resolve(process.argv[2] ?? "");
+const fixture = resolve(argv.find((a, i) => !a.startsWith("--") && argv[i - 1] !== "--out") ?? "");
 if (!existsSync(join(fixture, "after", "main.tf"))) {
   console.error("Usage: node scripts/make-fixture-plan.ts fixtures/<name>  (needs after/main.tf)");
   process.exit(2);
@@ -244,5 +254,6 @@ const scrubConstants = (node: Json): Json => {
 };
 redacted.configuration = scrubConstants(redacted.configuration ?? null);
 const text = JSON.stringify(redacted, null, 2);
-writeFileSync(join(fixture, "plan.json"), text + "\n");
-console.log(`Wrote ${join(fixture, "plan.json")}`);
+const target = OUT ? resolve(OUT) : join(fixture, "plan.json");
+writeFileSync(target, text + "\n");
+console.log(`Wrote ${target}`);
