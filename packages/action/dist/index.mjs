@@ -1381,7 +1381,10 @@ var ModelBuilder = class {
    */
   auroraInstance(r) {
     const cluster = this.clusterOf(r);
-    if (!cluster.ok) return [this.fail(r, cluster.reason)];
+    if (!cluster.ok) {
+      const private_ = !isUnknown(r, ["publicly_accessible"]) && r.values.publicly_accessible !== true;
+      return [private_ ? { ...this.fail(r, cluster.reason), publicIp: known(void 0) } : this.fail(r, cluster.reason)];
+    }
     const c = cluster.value;
     return this.rds(r, isNull(r, "db_subnet_group_name") ? c : r, c, [c.address]);
   }
@@ -1391,6 +1394,7 @@ var ModelBuilder = class {
     if (!isUnknown(r, ["cluster_identifier"]) && typeof id === "string") {
       const found = this.ofType("aws_rds_cluster").filter((c) => !isUnknown(c, ["cluster_identifier"]) && c.values.cluster_identifier === id);
       if (found.length === 1) return known(found[0]);
+      return unknown(`${r.address}: cluster ${id} is not in this plan`);
     }
     const refs = r.otherRefs.has("cluster_identifier") ? [] : fromConfig(this.snap, r, "cluster_identifier", "aws_rds_cluster");
     if (refs.length === 1 && refs[0]?.kind === "resource") {
@@ -1487,8 +1491,10 @@ var ModelBuilder = class {
     const publicIp = () => {
       if (isUnknown(r, ["network_configuration", 0, "assign_public_ip"])) return unknown(`${r.address}: assign_public_ip is unknown until apply`);
       if (net.assign_public_ip !== true) return known(void 0);
-      if (isUnknown(r, ["launch_type"]) || isUnknown(r, ["capacity_provider_strategy"])) return unknown(`${r.address}: the launch type is unknown until apply`);
+      if (isUnknown(r, ["capacity_provider_strategy"]) && r.configured.has("capacity_provider_strategy")) return unknown(`${r.address}: capacity_provider_strategy is unknown until apply`);
       const providers = arr(r.values.capacity_provider_strategy).map((x) => isObj(x) ? String(x.capacity_provider) : "");
+      if (!providers.length && isUnknown(r, ["launch_type"]) && r.configured.has("launch_type")) return unknown(`${r.address}: launch_type is unknown until apply`);
+      if (!providers.length && isUnknown(r, ["launch_type"])) return unknown(`${r.address}: neither launch_type nor capacity providers are set, so the cluster's default capacity provider decides`);
       const fargate = providers.length ? providers.every((x) => x === "FARGATE" || x === "FARGATE_SPOT") : r.values.launch_type === "FARGATE";
       if (fargate) return known(`${r.address} runs on Fargate with assign_public_ip = true`);
       if (!providers.length && (r.values.launch_type === "EC2" || r.values.launch_type === "EXTERNAL")) return known(void 0);

@@ -33,7 +33,11 @@ describe("Aurora", () => {
   it("returns unknown when the cluster is not in the plan", () => {
     const paths = internet([...noInstance, subnetGroup, inst({ cluster_identifier: "elsewhere" })]);
     expect(paths.map((p) => `${p.protocol}:${p.ports}:${p.after.verdict}`)).toEqual(["tcp:0-65535:unknown", "udp:0-65535:unknown"]);
-    expect(paths[0]?.after.reason).toBe("aws_rds_cluster_instance.a: its aws_rds_cluster is not in this plan");
+    expect(paths[0]?.after.reason).toBe("aws_rds_cluster_instance.a: cluster elsewhere is not in this plan");
+  });
+
+  it("blocks a private cluster instance even when its cluster is not in the plan", () => {
+    expect(internet([...noInstance, subnetGroup, inst({ cluster_identifier: "elsewhere", publicly_accessible: false })]).every((p) => p.after.verdict === "blocked")).toBe(true);
   });
 });
 
@@ -57,6 +61,14 @@ describe("ECS services", () => {
     expect(only(internet([...base, service({}, { launch_type: null, capacity_provider_strategy: fargate })])).after.verdict).toBe("allowed");
     const custom = [{ capacity_provider: "my-asg", weight: 1, base: 0 }];
     expect(only(internet([...base, service({}, { launch_type: null, capacity_provider_strategy: custom })])).after.verdict).toBe("unknown");
+  });
+
+  it("decides from capacity providers when launch_type is computed, as Terraform plans it", () => {
+    const fargate = [{ capacity_provider: "FARGATE", weight: 1, base: 0 }];
+    const s = service({}, { launch_type: null, capacity_provider_strategy: fargate }, { before: null, unknown: { launch_type: true } });
+    expect(only(internet([...base, s])).after.verdict).toBe("allowed");
+    const none = service({}, { launch_type: null }, { before: null, unknown: { launch_type: true } });
+    expect(only(internet([...base, none])).after.reason).toMatch(/default capacity provider decides/);
   });
 
   it("uses the VPC's default group when the service lists none", () => {
