@@ -126,7 +126,7 @@ export class GcpModel {
     if (hasUnknown(r, [...path, "authorized_networks"])) return { ...fail(`${r.address}: an authorized network is unknown until apply`), externalIp: known(publicIp ? `${r.address} has a public IP address (ipv4_enabled)` : undefined) };
     const rules: FwRule[] = [];
     for (const n of Array.isArray(ipc.authorized_networks) ? ipc.authorized_networks : []) {
-      if (!isObj(n) || typeof n.value !== "string") continue;
+      if (!isObj(n) || typeof n.value !== "string") return fail(`${r.address}: an authorized network has no value the engine can read`);
       const set = cidrToSet(n.value.includes("/") ? n.value : `${n.value}/32`);
       if (!set) return fail(`${r.address}: authorized network ${n.value} cannot be read`);
       rules.push({ resource: r.address, priority: 0, allow: true, protocol: "tcp", ports: fromRanges([[port, port]]), sources: set, text: `${r.address} authorized network ${typeof n.name === "string" && n.name ? `${n.name} ` : ""}${n.value} on tcp ${port}` });

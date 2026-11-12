@@ -80,7 +80,8 @@ instance, so there is no `route` hop. The Cloud SQL Auth Proxy and the connector
 gated by IAM, not by the network, and are not modeled.
 
 `unknown` with a reason: `database_version`, `ipv4_enabled`, or an authorized network is
-unknown until apply.
+unknown until apply. An entry's `expiration_time` is ignored: the engine cannot read the
+clock, so an entry counts as allowed until it is removed.
 
 ## Hops
 
