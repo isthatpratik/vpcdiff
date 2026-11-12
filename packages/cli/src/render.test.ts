@@ -41,6 +41,25 @@ describe("the default gate and a widened exposure", () => {
     expect(shouldFail(narrowing, "added")).toBe(false);
   });
 
+  // A rule whose source is a value Terraform learns only at apply time (an unknown element in cidr_blocks).
+  const unknownRule = { ...sgRule(22, 22, []), cidr_blocks: [null] };
+  const unknownSource = { ingress: [{ cidr_blocks: [true] }] };
+
+  it("fails on added when an open path becomes unknown, because it may have widened", () => {
+    const r = analyze(plan(network({ sg: { type: "aws_security_group", name: "app", before: { id: "sg-1", ingress: [sgRule(22, 22, ["203.0.113.5/32"])] }, after: { id: "sg-1", ingress: [unknownRule] }, unknown: unknownSource } })));
+    expect(r.paths.some((p) => p.change === "unknown" && p.before.verdict === "allowed" && p.after.verdict === "unknown")).toBe(true);
+    expect(shouldFail(r, "added")).toBe(true);
+    expect(shouldFail(r, "never")).toBe(false);
+  });
+
+  it("does not fail on added for a new resource whose paths are unknown", () => {
+    const r = analyze(plan(network({ sg: { type: "aws_security_group", name: "app", after: { id: "sg-1", ingress: [unknownRule] }, unknown: unknownSource } })));
+    expect(r.paths.length).toBeGreaterThan(0);
+    expect(r.paths.every((p) => p.change === "unknown" && p.before.verdict !== "allowed")).toBe(true);
+    expect(shouldFail(r, "added")).toBe(false);
+    expect(shouldFail(r, "unknown")).toBe(true);
+  });
+
   it("counts a widened path once at changed", () => {
     expect(shouldFail(widen("203.0.113.5/32", "0.0.0.0/0"), "changed")).toBe(true);
   });

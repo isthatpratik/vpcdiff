@@ -30,7 +30,7 @@ jobs:
 | Input | Default | Meaning |
 |---|---|---|
 | `plan` | (required) | Path to `terraform show -json` output. |
-| `fail-on` | `added` | Fail when the plan has paths of this kind or worse: `added` (a new path from the internet, or one that gets wider, such as a rule that goes from one host to `0.0.0.0/0`), `changed`, `unknown`, `never`. |
+| `fail-on` | `added` | Fail when the plan has paths of this kind or worse: `added` (a new path from the internet, one that gets wider such as a rule that goes from one host to `0.0.0.0/0`, or one that was open and can no longer be decided), `changed`, `unknown`, `never`. |
 | `comment` | `true` | On pull requests, create or update one comment. |
 | `all` | `false` | Also list unchanged paths. |
 | `github-token` | `${{ github.token }}` | Token for the comment. Needs `pull-requests: write`. |

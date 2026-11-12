@@ -132,7 +132,7 @@ ADDED     internet -> aws_instance.db  tcp/5432
 Options: `--format text|json|markdown`, `--all` (also unchanged paths),
 `--fail-on added|changed|unknown|never` (default `added`; `added` also fails when the plan
 widens a path from the internet, for example a rule that goes from one host to
-`0.0.0.0/0`). Set `NO_COLOR=1` to turn color off. Exit codes: `0` no failing paths, `1` failing paths, `2` usage or input
+`0.0.0.0/0`, or when a path that was open can no longer be decided). Set `NO_COLOR=1` to turn color off. Exit codes: `0` no failing paths, `1` failing paths, `2` usage or input
 error.
 
 ## Interfaces

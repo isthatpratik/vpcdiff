@@ -3671,7 +3671,8 @@ function shouldFail(result, failOn) {
   const internet = (p) => p.from === "internet";
   if (failOn === "never") return false;
   const widened = (p) => internet(p) && p.change === "changed" && p.before.verdict === "allowed" && p.after.verdict === "allowed" && (sourcesWiden(p.before.sources, p.after.sources, p.family) || p.after.reason !== "" && p.after.reason !== p.before.reason);
-  const added = count((p) => internet(p) && p.change === "added" || widened(p));
+  const openThenUnknown = (p) => internet(p) && p.change === "unknown" && p.before.verdict === "allowed" && p.after.verdict === "unknown";
+  const added = count((p) => internet(p) && p.change === "added" || widened(p) || openThenUnknown(p));
   if (failOn === "added") return added > 0;
   const changed = count((p) => p.change === "changed" && !widened(p) || !internet(p) && (p.change === "added" || p.change === "removed"));
   if (failOn === "changed") return added + changed > 0;

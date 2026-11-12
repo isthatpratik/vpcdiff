@@ -11,7 +11,7 @@
 
 ## How to use it
 - Make the plan: `terraform plan -out=tfplan`, then `terraform show -json tfplan > plan.json`.
-- GitHub Action: `uses: isthatpratik/vpcdiff@v0.3.0` with `plan: plan.json` and `fail-on: added`. It comments on the pull request and fails the check when a path from the internet is added or gets wider.
+- GitHub Action: `uses: isthatpratik/vpcdiff@v0.3.0` with `plan: plan.json` and `fail-on: added`. It comments on the pull request and fails the check when a path from the internet is added, gets wider, or was open and can no longer be decided.
 - CLI: `node packages/cli/dist/vpcdiff.mjs plan.json`. With no arguments in a terminal, it finds a plan in the folder (or converts `tfplan`, or runs `terraform plan` after you confirm) and walks you through the result. Formats: text, json, markdown. Exit codes: 0 no failing paths, 1 failing paths, 2 usage or input error.
 - Web viewer: [vpcdiff viewer](https://isthatpratik.github.io/vpcdiff/app/) (the plan is analyzed in the browser tab; a Content Security Policy blocks every network request). It starts with one verdict for the plan, then each path with the deciding rule, what to do, and a "Copy for PR" summary.
 
@@ -29,7 +29,7 @@
 - **How is it different from AWS Reachability Analyzer, Google Connectivity Tests, or Azure Network Watcher?** Those tools check a live account, one path at a time, after you deploy. vpcdiff works on the plan, before you apply, for every endpoint at once. Each test fixture includes the steps to check it against the matching cloud tool; those paid checks have not been run yet.
 - **Does it check traffic between my own services?** Yes, on AWS. When a security group allows traffic from another group, such as a load balancer to its service or an app to its database, vpcdiff checks that path too: both groups, the routes, and the network ACLs both ways, also across a VPC peering connection or a transit gateway. A plan that cuts such a path gets a review. Google Cloud and Azure paths start at the internet.
 - **Does it work with OpenTofu?** Yes. OpenTofu writes the same plan JSON as Terraform (tofu show -json). CI plans every test fixture with OpenTofu and checks that the result is byte for byte the same.
-- **Can it block a pull request?** Yes. The GitHub Action fails the check when the plan adds a path from the internet or makes one wider, such as a rule that goes from one host to 0.0.0.0/0 (you choose the level with fail-on; changed also counts other changes, and paths inside the VPC that open or close), writes the report to the job summary, and keeps one comment on the pull request up to date.
+- **Can it block a pull request?** Yes. The GitHub Action fails the check when the plan adds a path from the internet, makes one wider (such as a rule that goes from one host to 0.0.0.0/0), or leaves an open path that can no longer be decided (you choose the level with fail-on; changed also counts other changes, and paths inside the VPC that open or close), writes the report to the job summary, and keeps one comment on the pull request up to date.
 - **What does it cost?** Nothing. vpcdiff is free and open source under the Apache 2.0 license.
 
 ## Links
