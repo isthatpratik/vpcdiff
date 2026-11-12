@@ -3246,7 +3246,9 @@ var RESULT_FORMAT = "0.2";
 // ../engine/src/index.ts
 var MAX_PATHS = 5e5;
 var MAX_SEGMENTS = 1e6;
+var MAX_PAIRS = 25e6;
 var MAX_PLAN_CHARS = 256 * 1024 * 1024;
+var isStackOverflow = (e) => e instanceof RangeError && /call stack/i.test(e.message);
 var PROTOCOLS = ["tcp", "udp"];
 var arr2 = (v) => Array.isArray(v) ? v : [];
 var MODELED = /* @__PURE__ */ new Set([
@@ -3376,9 +3378,9 @@ function notesFor(before, after) {
 }
 function analyze(plan, limits = {}) {
   try {
-    return analyzePlan(plan, { paths: 0, segments: 0, maxPaths: limits.maxPaths ?? MAX_PATHS, maxSegments: limits.maxSegments ?? MAX_SEGMENTS });
+    return analyzePlan(plan, { paths: 0, segments: 0, pairs: 0, maxPaths: limits.maxPaths ?? MAX_PATHS, maxSegments: limits.maxSegments ?? MAX_SEGMENTS, maxPairs: limits.maxPairs ?? MAX_PAIRS });
   } catch (e) {
-    if (e instanceof RangeError) throw new PlanError("The plan is nested too deeply, or is too large, to analyze.");
+    if (isStackOverflow(e)) throw new PlanError("The plan is nested too deeply to analyze.");
     throw e;
   }
 }
@@ -3433,6 +3435,7 @@ function analyzePlan(plan, budget) {
   for (const from of addresses) {
     for (const to of addresses) {
       if (from === to) continue;
+      if (++budget.pairs > budget.maxPairs) throw new PlanError(`The plan has more than ${budget.maxPairs.toLocaleString("en-US")} pairs of resources to check. Split the plan.`);
       const fb = epBefore.get(from);
       const fa = epAfter.get(from);
       const tb = epBefore.get(to);
