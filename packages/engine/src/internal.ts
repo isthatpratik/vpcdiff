@@ -58,8 +58,11 @@ function sgStep(groups: SecurityGroup[], dir: "ingress" | "egress", peerKeys: st
       if (contains(rule.sources, peerCidr) || (byGroup && refs.use === true)) allowing.push(rule.text);
       else if (byGroup && refs.use === "unknown") doubt.push(`${rule.text} names a group of ${peer}: ${refs.why}`);
       else if (byGroup && refs.use === false) {
+        // The group cannot match, but the rule's other sources still can.
         ignored.push(`${rule.text} names a group of ${peer}, but ${refs.why}`);
         if (!isEmpty(intersect(rule.sources, peerCidr))) doubt.push(`${rule.text} covers only part of the subnet of ${peer}, and its address is not known before apply`);
+        else if (rule.unresolved) doubt.push(`${rule.text}: ${rule.unresolved}`);
+        else if (rule.listUnresolved) doubt.push(`${rule.text}: ${rule.listUnresolved}`);
       }
       else if (!isEmpty(intersect(rule.sources, peerCidr))) doubt.push(`${rule.text} covers only part of the subnet of ${peer}, and its address is not known before apply`);
       else if (rule.unresolved) doubt.push(`${rule.text}: ${rule.unresolved}`);

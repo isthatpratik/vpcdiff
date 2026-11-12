@@ -1239,6 +1239,19 @@ export class ModelBuilder {
       // https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/ec2_transit_gateway
       gateways.set(g.address, { sgRefs: this.option(g, "security_group_referencing_support", false), assoc: this.option(g, "default_route_table_association", true), prop: this.option(g, "default_route_table_propagation", true) });
     }
+    // "if either route propagation or route table association is enabled, AWS then creates a
+    // default route table". The provider then associates (and propagates) each attachment
+    // whose transit_gateway_default_route_table_* flag is true, whatever the gateway's own
+    // default_route_table_* option says, and removes the association when the flag is false.
+    // https://docs.aws.amazon.com/vpc/latest/tgw/how-transit-gateways-work.html
+    // https://github.com/hashicorp/terraform-provider-aws/blob/v6.72.0/internal/service/ec2/transitgateway_vpc_attachment.go
+    const hasDefault = (gw: { assoc: Known<boolean>; prop: Known<boolean> }): Known<boolean> => {
+      if (gw.assoc.ok && gw.assoc.value) return known(true);
+      if (gw.prop.ok && gw.prop.value) return known(true);
+      if (!gw.assoc.ok) return gw.assoc;
+      if (!gw.prop.ok) return gw.prop;
+      return known(false);
+    };
     const names = new Map<string, string>();
     for (const g of gateways.keys()) names.set(`tgw-default-rt:${g}`, `default route table of ${g}`);
     for (const t of this.ofType("aws_ec2_transit_gateway_route_table")) names.set(t.address, t.address);
@@ -1295,7 +1308,8 @@ export class ModelBuilder {
       }
       // One associated route table: an explicit association, else the default one.
       const explicit = assocOf.get(a.address) ?? [];
-      const byDefault = !gw.assoc.ok ? gw.assoc : !gw.assoc.value ? known(false) : this.option(a, "transit_gateway_default_route_table_association", true);
+      const table = hasDefault(gw);
+      const byDefault = !table.ok ? table : table.value ? this.option(a, "transit_gateway_default_route_table_association", true) : known(false);
       let association: Known<string | null>;
       if (explicit.length > 1) association = unknown(`${a.address} has ${explicit.length} route table associations`);
       else if (explicit[0] && (explicit[0].replace || (byDefault.ok && !byDefault.value))) association = known(explicit[0].table);
@@ -1308,7 +1322,8 @@ export class ModelBuilder {
     for (const att of attachments) {
       const gw = gateways.get(att.tgw);
       const r = this.get(att.address) as Resource;
-      const prop = !gw?.prop.ok ? gw?.prop : !gw.prop.value ? known(false) : this.option(r, "transit_gateway_default_route_table_propagation", true);
+      const has = gw ? hasDefault(gw) : known(false);
+      const prop = !has.ok ? has : !has.value ? known(false) : this.option(r, "transit_gateway_default_route_table_propagation", true);
       const key = `tgw-default-rt:${att.tgw}`;
       if (prop && !prop.ok) propsOf.set(key, [...(propsOf.get(key) ?? []), `unknown:${prop.reason}`]);
       else if (prop?.value) propsOf.set(key, [...(propsOf.get(key) ?? []), att.address]);

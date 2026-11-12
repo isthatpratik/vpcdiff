@@ -112,6 +112,21 @@ describe("paths between VPCs through a transit gateway", () => {
     expect(p.after.reason).toMatch(/not associated with a transit gateway route table/);
   });
 
+  it("follows the attachment flags when the gateway turns off auto-association but has a default table", () => {
+    // The provider associates and propagates each attachment whose flags are true.
+    expect(inside(transit({ tgw: { default_route_table_association: "disable" } })).after.verdict).toBe("allowed");
+    const none = inside(transit({ tgw: { default_route_table_association: "disable", default_route_table_propagation: "disable" } }));
+    expect(none.after.verdict).toBe("blocked");
+    expect(none.after.reason).toMatch(/not associated/);
+  });
+
+  it("keeps an outbound rule with a group and an unresolved prefix list unknown", () => {
+    const egress = { ...sgRule(5432, 5432, []), security_groups: ["sg-db"], prefix_list_ids: ["pl-elsewhere"] };
+    const p = inside(transit({ webEgress: [egress] }));
+    expect(p.after.verdict).toBe("unknown");
+    expect(hop(p, "source-security-group")?.decision).toBe("unknown");
+  });
+
   it("follows explicit associations and propagations; an isolated table blocks the response", () => {
     const explicit = { transit_gateway_default_route_table_association: false, transit_gateway_default_route_table_propagation: false };
     const tables = [

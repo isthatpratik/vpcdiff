@@ -615,6 +615,8 @@ function sgStep(groups, dir, peerKeys, peerCidr, peer, p, ports, refs = USE_GROU
       else if (byGroup && refs.use === false) {
         ignored.push(`${rule.text} names a group of ${peer}, but ${refs.why}`);
         if (!isEmpty(intersect(rule.sources, peerCidr))) doubt.push(`${rule.text} covers only part of the subnet of ${peer}, and its address is not known before apply`);
+        else if (rule.unresolved) doubt.push(`${rule.text}: ${rule.unresolved}`);
+        else if (rule.listUnresolved) doubt.push(`${rule.text}: ${rule.listUnresolved}`);
       } else if (!isEmpty(intersect(rule.sources, peerCidr))) doubt.push(`${rule.text} covers only part of the subnet of ${peer}, and its address is not known before apply`);
       else if (rule.unresolved) doubt.push(`${rule.text}: ${rule.unresolved}`);
       else if (rule.listUnresolved) doubt.push(`${rule.text}: ${rule.listUnresolved}`);
@@ -1975,6 +1977,13 @@ var ModelBuilder = class {
     for (const g of this.ofType("aws_ec2_transit_gateway").toSorted((a, b) => cmp(a.address, b.address))) {
       gateways.set(g.address, { sgRefs: this.option(g, "security_group_referencing_support", false), assoc: this.option(g, "default_route_table_association", true), prop: this.option(g, "default_route_table_propagation", true) });
     }
+    const hasDefault = (gw) => {
+      if (gw.assoc.ok && gw.assoc.value) return known(true);
+      if (gw.prop.ok && gw.prop.value) return known(true);
+      if (!gw.assoc.ok) return gw.assoc;
+      if (!gw.prop.ok) return gw.prop;
+      return known(false);
+    };
     const names = /* @__PURE__ */ new Map();
     for (const g of gateways.keys()) names.set(`tgw-default-rt:${g}`, `default route table of ${g}`);
     for (const t of this.ofType("aws_ec2_transit_gateway_route_table")) names.set(t.address, t.address);
@@ -2026,7 +2035,8 @@ var ModelBuilder = class {
         subnets = why ? unknown(why) : known(list.toSorted((x, y) => cmp(x.address, y.address)));
       }
       const explicit = assocOf.get(a.address) ?? [];
-      const byDefault = !gw.assoc.ok ? gw.assoc : !gw.assoc.value ? known(false) : this.option(a, "transit_gateway_default_route_table_association", true);
+      const table = hasDefault(gw);
+      const byDefault = !table.ok ? table : table.value ? this.option(a, "transit_gateway_default_route_table_association", true) : known(false);
       let association;
       if (explicit.length > 1) association = unknown(`${a.address} has ${explicit.length} route table associations`);
       else if (explicit[0] && (explicit[0].replace || byDefault.ok && !byDefault.value)) association = known(explicit[0].table);
@@ -2037,7 +2047,8 @@ var ModelBuilder = class {
     for (const att of attachments) {
       const gw = gateways.get(att.tgw);
       const r = this.get(att.address);
-      const prop = !gw?.prop.ok ? gw?.prop : !gw.prop.value ? known(false) : this.option(r, "transit_gateway_default_route_table_propagation", true);
+      const has = gw ? hasDefault(gw) : known(false);
+      const prop = !has.ok ? has : !has.value ? known(false) : this.option(r, "transit_gateway_default_route_table_propagation", true);
       const key = `tgw-default-rt:${att.tgw}`;
       if (prop && !prop.ok) propsOf.set(key, [...propsOf.get(key) ?? [], `unknown:${prop.reason}`]);
       else if (prop?.value) propsOf.set(key, [...propsOf.get(key) ?? [], att.address]);

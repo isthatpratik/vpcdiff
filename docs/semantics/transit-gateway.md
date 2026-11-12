@@ -23,12 +23,15 @@ leaves the VPC, and the engine does not follow it to another VPC's internet gate
    route table, so the transit gateway drops its traffic.
    Source: <https://docs.aws.amazon.com/vpc/latest/tgw/how-transit-gateways-work.html#tgw-route-table-association-overview>
 3. **Default route table.** "By default, this route table is the default association
-   route table and the default propagation route table." An attachment uses it when the
-   transit gateway has `default_route_table_association` (or `_propagation`) `enable`
-   and the attachment has `transit_gateway_default_route_table_association` (or
-   `_propagation`) `true`. Both are the defaults.
+   route table and the default propagation route table." "If either route propagation or
+   route table association is enabled, AWS then creates a default route table." When the
+   default table exists, the Terraform provider associates an attachment with it, and
+   propagates the attachment to it, when the attachment has
+   `transit_gateway_default_route_table_association` (or `_propagation`) `true`, the
+   default. It does this whatever the gateway's own `default_route_table_association`
+   says, and it removes the association when the flag is `false`.
    Source: <https://docs.aws.amazon.com/vpc/latest/tgw/how-transit-gateways-work.html>
-   Source: <https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/ec2_transit_gateway_vpc_attachment>
+   Source: <https://github.com/hashicorp/terraform-provider-aws/blob/v6.72.0/internal/service/ec2/transitgateway_vpc_attachment.go>
 4. **Propagated routes.** "For a VPC attachment, the CIDR blocks of the VPC are
    propagated to the transit gateway route table."
    Source: <https://docs.aws.amazon.com/vpc/latest/tgw/how-transit-gateways-work.html#tgw-route-propagation-overview>
