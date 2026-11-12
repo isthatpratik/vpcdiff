@@ -120,7 +120,7 @@ node packages/cli/dist/vpcdiff.mjs            # guided mode, in a terminal
 | `aws_vpc_endpoint` Interface (target inside the VPC) and Gateway (prefix list route; its addresses undecided) | supported |
 | IPv6 from the internet to EC2 instances and dual-stack load balancers; egress-only internet gateways | supported (paths inside the VPC are IPv4 only) |
 
-Google Cloud (first scope): `google_compute_instance` from the internet through `google_compute_firewall` ingress rules (priority, deny wins a tie, implied deny, target tags, service accounts, source ranges), the external IP from `access_config`, and the network's default route. The `default` network, firewall policies, custom routes to other next hops, and more than one network interface are unknown. Paths carry `"provider": "gcp"`.
+Google Cloud (first scope): `google_compute_instance` from the internet through `google_compute_firewall` ingress rules (priority, deny wins a tie, implied deny, target tags, service accounts, source ranges), the external IP from `access_config`, and the network's default route. The `default` network, firewall policies, custom routes to other next hops, and more than one network interface are unknown. Cloud SQL (`google_sql_database_instance`) from the internet through its authorized networks on the engine's port. Paths carry `"provider": "gcp"`.
 
 ## Roadmap
 

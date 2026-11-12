@@ -204,7 +204,8 @@ of its security groups opens to a public address.
 | `google_compute_network` (system default route, `delete_default_routes_on_create`), `google_compute_subnetwork`, `google_compute_route` to the default internet gateway | supported; other custom routes and a deleted default route are unknown |
 | The `default` network or any network outside the plan | unknown (its pre-populated rules are not in the plan) |
 | Network and hierarchical firewall policies, policy-based routes | unknown when in the plan; organization and folder policies are never seen |
-| IPv6, load balancers, Cloud SQL, paths between VMs | not modeled yet |
+| `google_sql_database_instance` (public IP from `ipv4_enabled`, `authorized_networks` on the engine's port: PostgreSQL, MySQL, SQL Server) | supported; the Cloud SQL Auth Proxy and connectors (IAM) are not modeled |
+| IPv6, load balancers, Cloud SQL private IP, paths between VMs | not modeled yet |
 
 Google Cloud paths carry `"provider": "gcp"` in the JSON result ([ADR 0011](docs/adr/0011-multi-cloud.md)).
 

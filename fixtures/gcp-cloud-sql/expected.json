@@ -1,0 +1,52 @@
+{
+  "format": "0.2",
+  "summary": {
+    "added": 1,
+    "removed": 0,
+    "changed": 0,
+    "unchanged": 0,
+    "unknown": 0
+  },
+  "paths": [
+    {
+      "id": "internet->google_sql_database_instance.orders:tcp:5432",
+      "from": "internet",
+      "provider": "gcp",
+      "to": "google_sql_database_instance.orders",
+      "toType": "google_sql_database_instance",
+      "protocol": "tcp",
+      "ports": "5432",
+      "change": "added",
+      "before": {
+        "verdict": "absent",
+        "sources": [],
+        "hops": [],
+        "reason": "the resource does not exist on this side of the plan"
+      },
+      "after": {
+        "verdict": "allowed",
+        "sources": [
+          "203.0.113.0/24"
+        ],
+        "hops": [
+          {
+            "hop": "public-ip",
+            "resource": "google_sql_database_instance.orders",
+            "decision": "allow",
+            "rule": "google_sql_database_instance.orders has a public IP address (ipv4_enabled)",
+            "doc": "https://docs.cloud.google.com/sql/docs/postgres/authorize-networks"
+          },
+          {
+            "hop": "firewall",
+            "resource": "google_sql_database_instance.orders",
+            "decision": "partial",
+            "rule": "google_sql_database_instance.orders authorized network office 203.0.113.0/24 on tcp 5432; no authorized network: Cloud SQL refuses the connection",
+            "doc": "https://docs.cloud.google.com/sql/docs/postgres/authorize-networks"
+          }
+        ],
+        "reason": ""
+      }
+    }
+  ],
+  "notes": []
+}
