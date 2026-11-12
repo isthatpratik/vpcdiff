@@ -59,7 +59,7 @@ jobs:
           terraform -chdir=infra init -input=false
           terraform -chdir=infra plan -input=false -out=tfplan
           terraform -chdir=infra show -json tfplan > "$RUNNER_TEMP/plan.json"
-      - uses: isthatpratik/vpcdiff@v0.2.0
+      - uses: isthatpratik/vpcdiff@v0.3.0
         with:
           plan: ${{ runner.temp }}/plan.json
           # fail-on: added     # added | changed | unknown | never
@@ -132,14 +132,16 @@ security review, and an updated support matrix.
 1. [Paths inside the VPC](https://github.com/isthatpratik/vpcdiff/issues/32): security
    group references, so "load balancer to service" or "web to database" changes show up.
 2. [More AWS networking](https://github.com/isthatpratik/vpcdiff/issues/33): done in
-   v0.2.0 for NAT gateways, VPC peering, VPC endpoints, IPv6, and prefix lists. Paths
-   between VPCs through a transit gateway in the plan: next release (#94).
+   v0.2.0 for NAT gateways, VPC peering, VPC endpoints, IPv6, and prefix lists. Secondary
+   VPC CIDRs, network interfaces, and paths between VPCs through a transit gateway: done in
+   v0.3.0 (#93, #94).
 3. [OpenTofu support](https://github.com/isthatpratik/vpcdiff/issues/34): done in v0.2.0. Every
    fixture is also planned with OpenTofu in CI, and the result must match byte for byte.
 4. [More endpoints](https://github.com/isthatpratik/vpcdiff/issues/35), done in v0.2.0: Aurora, ECS
    services, and Classic Load Balancers.
-5. [Azure and Google Cloud](https://github.com/isthatpratik/vpcdiff/issues/36), after v1,
-   with an ADR first.
+5. [Azure and Google Cloud](https://github.com/isthatpratik/vpcdiff/issues/36): done in
+   v0.3.0 ([ADR 0011](docs/adr/0011-multi-cloud.md)). Google Cloud VMs and Cloud SQL, and
+   Azure VMs, from the internet (#95, #96).
 
 ## Questions
 - **Does vpcdiff need AWS credentials or an AWS account?** No. It reads the JSON that terraform show produces. Terraform needs credentials to make the plan; vpcdiff does not.

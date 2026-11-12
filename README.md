@@ -43,17 +43,18 @@ AWS account or credentials, and the viewer never sends your plan anywhere.
   <img alt="The vpcdiff viewer on a plan that opens PostgreSQL to the internet: the plan verdict, the path, the security group rule that decided it, what to do, and the hops before and after" src="docs/assets/viewer.png" width="100%">
 </p>
 
-> **Status:** [v0.2.0](https://github.com/isthatpratik/vpcdiff/releases/tag/v0.2.0) checks
-> paths from the internet (IPv4 and IPv6) and paths inside the VPC, including across VPC
-> peering, for instances, databases, Aurora, ECS services, and load balancers (see the
-> [support matrix](#support-matrix)). Design notes are in [`docs/design`](docs/design),
+> **Status:** [v0.3.0](https://github.com/isthatpratik/vpcdiff/releases/tag/v0.3.0) checks
+> AWS paths from the internet (IPv4 and IPv6) and paths inside the VPC, including across VPC
+> peering and transit gateways, for instances, databases, Aurora, ECS services, and load
+> balancers; and paths from the internet to Google Cloud VMs and Cloud SQL, and to Azure VMs
+> (see the [support matrix](#support-matrix)). Design notes are in [`docs/design`](docs/design),
 > [`docs/adr`](docs/adr), and [`docs/semantics`](docs/semantics).
 
 ## GitHub Action
 
 ```yaml
 - run: terraform show -json tfplan > plan.json
-- uses: isthatpratik/vpcdiff@v0.2.0
+- uses: isthatpratik/vpcdiff@v0.3.0
   with:
     plan: plan.json
     # fail-on: added   # added | changed | unknown | never
@@ -231,14 +232,16 @@ security review, and an updated support matrix.
    group references, so "load balancer to service" or "web to database" changes show up.
    Done in v0.2.0.
 2. [More AWS networking](https://github.com/isthatpratik/vpcdiff/issues/33): done in
-   v0.2.0 for NAT gateways, VPC peering, VPC endpoints, IPv6, and prefix lists. Paths
-   between VPCs through a transit gateway in the plan: next release (#94).
+   v0.2.0 for NAT gateways, VPC peering, VPC endpoints, IPv6, and prefix lists. Secondary
+   VPC CIDRs, network interfaces, and paths between VPCs through a transit gateway: done in
+   v0.3.0 (#93, #94).
 3. [OpenTofu support](https://github.com/isthatpratik/vpcdiff/issues/34): done in v0.2.0. Every
    fixture is also planned with OpenTofu in CI, and the result must match byte for byte.
 4. [More endpoints](https://github.com/isthatpratik/vpcdiff/issues/35), done in v0.2.0: Aurora, ECS
    services, and Classic Load Balancers.
-5. [Azure and Google Cloud](https://github.com/isthatpratik/vpcdiff/issues/36), after v1,
-   with an ADR first.
+5. [Azure and Google Cloud](https://github.com/isthatpratik/vpcdiff/issues/36): done in
+   v0.3.0 ([ADR 0011](docs/adr/0011-multi-cloud.md)). Google Cloud VMs and Cloud SQL, and
+   Azure VMs, from the internet (#95, #96).
 
 ## Repository layout
 

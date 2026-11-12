@@ -42,7 +42,7 @@ const STEPS: Step[] = [
     rest: "in CI, a terminal, or a tab",
     body: "Add the GitHub Action to check every pull request, run the CLI, or drop the file on the viewer. The engine is the same in all three.",
     panelTitle: ".github/workflows/plan.yml",
-    panel: <Code lines={[{ t: "- run: terraform show -json tfplan > plan.json" }, { t: "- uses: isthatpratik/vpcdiff@v0.2.0", tone: "strong" }, { t: "  with:" }, { t: "    plan: plan.json" }, { t: "    fail-on: added" }, { t: "" }, { t: "# or, in a terminal", tone: "muted" }, { t: "$ node packages/cli/dist/vpcdiff.mjs plan.json", tone: "strong" }]} />,
+    panel: <Code lines={[{ t: "- run: terraform show -json tfplan > plan.json" }, { t: "- uses: isthatpratik/vpcdiff@v0.3.0", tone: "strong" }, { t: "  with:" }, { t: "    plan: plan.json" }, { t: "    fail-on: added" }, { t: "" }, { t: "# or, in a terminal", tone: "muted" }, { t: "$ node packages/cli/dist/vpcdiff.mjs plan.json", tone: "strong" }]} />,
   },
   {
     id: "read",
