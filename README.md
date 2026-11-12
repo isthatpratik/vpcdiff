@@ -209,6 +209,19 @@ of its security groups opens to a public address.
 
 Google Cloud paths carry `"provider": "gcp"` in the JSON result ([ADR 0011](docs/adr/0011-multi-cloud.md)).
 
+### Azure (first scope, [docs/semantics/azure.md](docs/semantics/azure.md))
+
+| Resource or behavior | Status |
+|---|---|
+| `azurerm_linux_virtual_machine`, `azurerm_windows_virtual_machine` (endpoint; one network interface with one IP configuration) | supported; more are unknown |
+| `azurerm_public_ip` on the interface (Standard SKU, closed unless an NSG allows) | supported; Basic SKU (retired) is unknown |
+| `azurerm_network_security_group` (inline rules), `azurerm_network_security_rule`, subnet and interface associations, default rules, priority order, service tags `Internet`, `VirtualNetwork`, `AzureLoadBalancer` | supported; other service tags, application security groups as destination, and partial destinations are unknown |
+| System routes, `azurerm_route_table` (inline), `azurerm_route`, `azurerm_subnet_route_table_association` | supported; a more specific route to an appliance or gateway is undecided |
+| Load balancers, NAT gateways, Azure Firewall, peering, Virtual Network Manager admin rules, IPv6 | not modeled yet |
+
+Azure paths carry `"provider": "azure"`. Fixture plans use a local stand-in for the Azure
+endpoints, so no Azure account is used.
+
 ## Roadmap
 
 In order. Each item lands with a spec, unit tests, fixture tests with written proofs, a

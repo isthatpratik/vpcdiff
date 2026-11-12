@@ -15,4 +15,5 @@ returns `unknown` with a reason.
 - [internal-paths.md](internal-paths.md): paths between endpoints inside a VPC, from security group references
 - [transit-gateway.md](transit-gateway.md): paths between VPCs through a transit gateway
 - [gcp.md](gcp.md): Google Cloud, internet to Compute Engine VMs through VPC firewall rules
+- [azure.md](azure.md): Azure, internet to virtual machines through network security groups
 - [terraform-plan-json.md](terraform-plan-json.md): `actions`, `before`, `after`, `after_unknown`, replacements

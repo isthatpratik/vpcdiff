@@ -122,6 +122,8 @@ node packages/cli/dist/vpcdiff.mjs            # guided mode, in a terminal
 
 Google Cloud (first scope): `google_compute_instance` from the internet through `google_compute_firewall` ingress rules (priority, deny wins a tie, implied deny, target tags, service accounts, source ranges), the external IP from `access_config`, and the network's default route. The `default` network, firewall policies, custom routes to other next hops, and more than one network interface are unknown. Cloud SQL (`google_sql_database_instance`) from the internet through its authorized networks on the engine's port. Paths carry `"provider": "gcp"`.
 
+Azure (first scope): Linux and Windows VMs from the internet through a Standard public IP, the subnet's and the interface's network security groups (priority order, default rules, Internet/VirtualNetwork/AzureLoadBalancer tags), and the subnet's routes. Basic public IPs, other service tags, and more than one interface are unknown. Paths carry `"provider": "azure"`.
+
 ## Roadmap
 
 In order. Each item lands with a spec, unit tests, fixture tests with written proofs, a

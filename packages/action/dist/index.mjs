@@ -1034,9 +1034,9 @@ function parsePlan(input2) {
       [before, rc.change.before, false],
       [after, rc.change.after, rc.change.after_unknown ?? false]
     ];
-    for (const [snap, values, unknown3] of sides) {
+    for (const [snap, values, unknown4] of sides) {
       if (!isObj(values)) continue;
-      snap.resources.set(address, { address, type, values, unknown: unknown3, refs: info.refs, fullRefs: info.fullRefs, configured: info.configured, otherRefs: info.otherRefs, actions });
+      snap.resources.set(address, { address, type, values, unknown: unknown4, refs: info.refs, fullRefs: info.fullRefs, configured: info.configured, otherRefs: info.otherRefs, actions });
       if (typeof values.id === "string") snap.byId.set(values.id, address);
       const list = snap.instancesOf.get(base) ?? [];
       list.push(address);
@@ -1073,20 +1073,20 @@ function resolveRefs(snap, r, attr, targetType) {
   if (!isUnknown(r, [attr])) {
     if (value === null || value === void 0) return [];
     const items = Array.isArray(value) ? value : [value];
-    const known3 = [];
+    const known4 = [];
     let unknownCount = 0;
     items.forEach((v, i) => {
       if (typeof v === "string" && !isUnknown(r, Array.isArray(value) ? [attr, i] : [attr])) {
         const address = snap.byId.get(v);
-        known3.push(address ? { kind: "resource", address } : { kind: "external", id: v });
+        known4.push(address ? { kind: "resource", address } : { kind: "external", id: v });
       } else unknownCount++;
     });
-    if (!unknownCount) return known3.toSorted((a, b) => cmp(refOrder(a), refOrder(b)));
+    if (!unknownCount) return known4.toSorted((a, b) => cmp(refOrder(a), refOrder(b)));
     if (r.otherRefs.has(attr)) return fail(`${r.address}: ${attr} uses values that are unknown until apply`);
-    const knownAddresses = new Set(known3.flatMap((k) => k.kind === "resource" ? [stripKeys(k.address)] : []));
+    const knownAddresses = new Set(known4.flatMap((k) => k.kind === "resource" ? [stripKeys(k.address)] : []));
     const rest = fromConfig(snap, r, attr, targetType).filter((x) => !(x.kind === "resource" && knownAddresses.has(stripKeys(x.address))));
     if (rest.length !== unknownCount || rest.some((x) => x.kind !== "resource")) return fail(`${r.address}: ${attr} has elements that are unknown until apply and cannot be matched to resources`);
-    return [...known3, ...rest].toSorted((a, b) => cmp(refOrder(a), refOrder(b)));
+    return [...known4, ...rest].toSorted((a, b) => cmp(refOrder(a), refOrder(b)));
   }
   if (r.otherRefs.has(attr)) return fail(`${r.address}: ${attr} uses values that are unknown until apply`);
   return fromConfig(snap, r, attr, targetType).toSorted((a, b) => cmp(refOrder(a), refOrder(b)));
@@ -2888,6 +2888,352 @@ var hasAnyUnknown = (r, attrs) => attrs.some((a) => hasUnknown(r, [a]));
 var PRIVATE = fromRanges(["10.0.0.0/8", "100.64.0.0/10", "172.16.0.0/12", "192.168.0.0/16"].flatMap((c) => cidrToSet(c) ?? []));
 var isPrivate = (set) => set.every(([lo, hi]) => PRIVATE.some(([plo, phi]) => lo >= plo && hi <= phi));
 
+// ../engine/src/azure/model.ts
+var known3 = (value) => ({ ok: true, value });
+var unknown3 = (reason) => ({ ok: false, reason });
+var VMS = ["azurerm_linux_virtual_machine", "azurerm_windows_virtual_machine"];
+var PLATFORM = cidrToSet("168.63.129.16/32") ?? EMPTY;
+var DROPPED = ["157.59.0.0/16", "104.147.0.0/16", "104.146.0.0/17"];
+var strs = (...vs) => vs.flatMap((v) => Array.isArray(v) ? v : [v]).filter((x) => typeof x === "string" && x !== "");
+var setOf = (cidrs) => {
+  let out = EMPTY;
+  for (const c of cidrs) {
+    const s = cidrToSet(c.includes("/") ? c : `${c}/32`);
+    if (!s) return void 0;
+    out = union(out, s);
+  }
+  return out;
+};
+var prefixOf = (c) => Number(c.split("/")[1] ?? 32);
+function portsOf2(list) {
+  if (!list.length || list.includes("*")) return ALL_PORTS;
+  const ranges = [];
+  for (const p of list) {
+    const m = /^(\d+)(?:-(\d+))?$/.exec(p.trim());
+    if (!m) return void 0;
+    ranges.push([Number(m[1]), Number(m[2] ?? m[1])]);
+  }
+  return fromRanges(ranges);
+}
+var protocolOf = (p) => {
+  const s = String(p).toLowerCase();
+  return s === "*" ? "all" : s === "tcp" ? "tcp" : s === "udp" ? "udp" : "other";
+};
+var AzureModel = class {
+  constructor(snap) {
+    this.snap = snap;
+    let space = EMPTY;
+    let why;
+    for (const n of this.ofType("azurerm_virtual_network")) {
+      if (hasUnknown(n, ["address_space"])) why ??= `${n.address}: address_space is unknown until apply`;
+      const s = setOf(strs(n.values.address_space));
+      if (!s) why ??= `${n.address}: address_space cannot be read`;
+      else space = union(space, s);
+    }
+    this.vnetSpace = why ? unknown3(why) : known3(space);
+  }
+  snap;
+  vnetSpace;
+  ofType(type) {
+    return [...this.snap.resources.values()].filter((r) => r.type === type).toSorted((a, b) => cmp(a.address, b.address));
+  }
+  /** A resource that an ID attribute names: a known ID, else one configuration reference. */
+  byRef(r, attr, value, unknownValue, type) {
+    if (!unknownValue && typeof value === "string" && value) {
+      const a = this.snap.byId.get(value);
+      const found = a ? this.snap.resources.get(a) : void 0;
+      return found && found.type === type ? known3(found) : unknown3(`${r.address}: ${value} is not a ${type} in this plan`);
+    }
+    if (r.otherRefs.has(attr)) return unknown3(`${r.address}: ${attr} uses values that are unknown until apply`);
+    const refs = fromConfig(this.snap, r, attr, type);
+    const one = refs.length === 1 && refs[0]?.kind === "resource" ? this.snap.resources.get(refs[0].address) : void 0;
+    return one ? known3(one) : unknown3(`${r.address}: its ${type} is unknown until apply and cannot be matched to one resource`);
+  }
+  /** A resource named by `name` and `resource_group_name` (rule resources), else one configuration reference. */
+  byName(r, attr, type) {
+    const name = r.values[attr];
+    const rg = r.values.resource_group_name;
+    if (!isUnknown(r, [attr]) && typeof name === "string" && !isUnknown(r, ["resource_group_name"]) && typeof rg === "string") {
+      const found = this.ofType(type).filter((x) => x.values.name === name && x.values.resource_group_name === rg && !isUnknown(x, ["name"]));
+      if (found.length === 1) return known3(found[0]);
+    }
+    const refs = fromConfig(this.snap, r, attr, type);
+    const one = refs.length === 1 && refs[0]?.kind === "resource" ? this.snap.resources.get(refs[0].address) : void 0;
+    return one ? known3(one) : unknown3(`${r.address}: ${attr} cannot be matched to one ${type} in this plan`);
+  }
+  vms() {
+    return VMS.flatMap((t) => this.ofType(t)).toSorted((a, b) => cmp(a.address, b.address)).map((r) => this.vm(r));
+  }
+  vm(r) {
+    const universe = subtract(subtract(subtract(PUBLIC_IPV4, PLATFORM), DROPPED_SET), this.vnetSpace.ok ? this.vnetSpace.value : EMPTY);
+    const fail = (reason) => ({ address: r.address, type: r.type, publicIp: unknown3(reason), subnetNsg: unknown3(reason), nicNsg: unknown3(reason), routes: unknown3(reason), universe });
+    if (!this.vnetSpace.ok) return fail(this.vnetSpace.reason);
+    const nics = resolveRefs(this.snap, r, "network_interface_ids", "azurerm_network_interface");
+    if (nics.length !== 1) return fail(`${r.address} has ${nics.length} network interfaces; only VMs with one are modeled`);
+    const ref = nics[0];
+    if (ref?.kind !== "resource") return fail(ref?.kind === "unknown" ? ref.reason : `${r.address}: its network interface is not in this plan`);
+    const nic = this.snap.resources.get(ref.address);
+    if (isUnknown(nic, ["ip_configuration"])) return fail(`${nic.address}: ip_configuration is unknown until apply`);
+    const configs = Array.isArray(nic.values.ip_configuration) ? nic.values.ip_configuration : [];
+    if (configs.length !== 1 || !isObj(configs[0])) return fail(`${nic.address} has ${configs.length} IP configurations; only one is modeled`);
+    const ipc = configs[0];
+    const subnet = this.byRef(nic, "ip_configuration", ipc.subnet_id, isUnknown(nic, ["ip_configuration", 0, "subnet_id"]), "azurerm_subnet");
+    if (!subnet.ok) return fail(subnet.reason);
+    const s = subnet.value;
+    if (hasUnknown(s, ["address_prefixes"])) return fail(`${s.address}: address_prefixes is unknown until apply`);
+    const subnetSet = setOf(strs(s.values.address_prefixes));
+    if (!subnetSet || isEmpty(subnetSet)) return fail(`${s.address}: address_prefixes cannot be read`);
+    return {
+      address: r.address,
+      type: r.type,
+      publicIp: this.publicIp(nic, ipc),
+      subnetNsg: this.associated("azurerm_subnet_network_security_group_association", "subnet_id", "azurerm_subnet", s, subnetSet),
+      nicNsg: this.associated("azurerm_network_interface_security_group_association", "network_interface_id", "azurerm_network_interface", nic, subnetSet),
+      routes: this.routes(s),
+      universe
+    };
+  }
+  /** Rules 1 and 2: a Standard public IP on the interface's IP configuration. */
+  publicIp(nic, ipc) {
+    const path = ["ip_configuration", 0, "public_ip_address_id"];
+    if (!isUnknown(nic, path) && (ipc.public_ip_address_id === null || ipc.public_ip_address_id === void 0 || ipc.public_ip_address_id === "")) return known3(void 0);
+    const pip = this.byRef(nic, "ip_configuration", ipc.public_ip_address_id, isUnknown(nic, path), "azurerm_public_ip");
+    if (!pip.ok) return unknown3(pip.reason);
+    const p = pip.value;
+    if (isUnknown(p, ["sku"]) && p.configured.has("sku")) return unknown3(`${p.address}: sku is unknown until apply`);
+    const sku = typeof p.values.sku === "string" ? p.values.sku : "Standard";
+    if (sku !== "Standard") return unknown3(`${p.address} has the ${sku} SKU; Basic public IPs are retired and open by default, which is not modeled`);
+    return known3(`${p.address} (Standard) is on ${nic.address}`);
+  }
+  /** The NSG an association resource attaches to `target` (a subnet or an interface), or null. */
+  associated(type, attr, targetType, target, subnet) {
+    const found = [];
+    for (const a of this.ofType(type)) {
+      const t = this.byRef(a, attr, a.values[attr], isUnknown(a, [attr]), targetType);
+      if (!t.ok) return unknown3(t.reason);
+      if (t.value.address !== target.address) continue;
+      const nsg2 = this.byRef(a, "network_security_group_id", a.values.network_security_group_id, isUnknown(a, ["network_security_group_id"]), "azurerm_network_security_group");
+      if (!nsg2.ok) return unknown3(nsg2.reason);
+      found.push(nsg2.value);
+    }
+    if (found.length > 1) return unknown3(`${target.address} has ${found.length} network security group associations`);
+    const nsg = found[0];
+    return known3(nsg ? { resource: nsg.address, rules: this.rules(nsg, subnet) } : null);
+  }
+  /** The NSG's inbound rules for a VM in `subnet` (rules 4 to 6), with the default rules. */
+  rules(nsg, subnet) {
+    if (hasUnknown(nsg, ["security_rule"]) && nsg.configured.has("security_rule")) return unknown3(`${nsg.address}: security_rule is unknown until apply`);
+    const raw = [];
+    for (const b of !isUnknown(nsg, ["security_rule"]) && Array.isArray(nsg.values.security_rule) ? nsg.values.security_rule : []) if (isObj(b)) raw.push({ values: b, label: `${nsg.address} rule ${String(b.name)}` });
+    for (const r of this.ofType("azurerm_network_security_rule")) {
+      const owner = this.byName(r, "network_security_group_name", "azurerm_network_security_group");
+      if (!owner.ok) return unknown3(owner.reason);
+      if (owner.value.address !== nsg.address) continue;
+      if (hasUnknown(r, ["priority", "direction", "access", "protocol", "source_address_prefix", "source_address_prefixes", "destination_address_prefix", "destination_address_prefixes", "destination_port_range", "destination_port_ranges", "source_port_range", "source_port_ranges"])) return unknown3(`${r.address}: a field is unknown until apply`);
+      raw.push({ values: r.values, label: r.address });
+    }
+    const vnet = this.vnetSpace.ok ? this.vnetSpace.value : EMPTY;
+    const out = [];
+    for (const { values: v, label } of raw) {
+      if (String(v.direction) !== "Inbound") continue;
+      const priority = typeof v.priority === "number" ? v.priority : NaN;
+      if (!Number.isFinite(priority)) return unknown3(`${label}: priority cannot be read`);
+      const ports = portsOf2(strs(v.destination_port_range, v.destination_port_ranges));
+      if (!ports) return unknown3(`${label}: destination ports cannot be read`);
+      const text = `${label} priority ${priority}: ${String(v.access).toLowerCase()} ${String(v.protocol)} ${strs(v.destination_port_range, v.destination_port_ranges).join(", ") || "*"} from ${strs(v.source_address_prefix, v.source_address_prefixes).join(", ") || "application security groups"}`;
+      const doubts = [];
+      const srcPorts = strs(v.source_port_range, v.source_port_ranges);
+      if (srcPorts.length && !srcPorts.includes("*")) doubts.push("its source ports depend on the client");
+      if (strs(v.destination_application_security_group_ids).length) doubts.push("its destination is an application security group, which is not modeled yet");
+      else {
+        let covers = false;
+        for (const d of strs(v.destination_address_prefix, v.destination_address_prefixes)) {
+          if (["*", "Any", "VirtualNetwork", "0.0.0.0/0"].includes(d)) covers = true;
+          else if (d === "Internet" || /^[A-Za-z]/.test(d)) continue;
+          else {
+            const set = setOf([d]);
+            if (!set) return unknown3(`${label}: destination ${d} cannot be read`);
+            if (contains(set, subnet)) covers = true;
+            else if (!isEmpty(intersect(set, subnet))) doubts.push(`its destination ${d} covers only part of the subnet, and the VM's address is not known before apply`);
+          }
+        }
+        if (!covers && !doubts.length) continue;
+        if (covers) doubts.splice(0, doubts.length, ...doubts.filter((d) => d.startsWith("its source ports")));
+      }
+      let sources = EMPTY;
+      for (const src of strs(v.source_address_prefix, v.source_address_prefixes)) {
+        if (["*", "Any", "Internet", "0.0.0.0/0"].includes(src)) sources = ALL_IPV4_SET;
+        else if (src === "AzureLoadBalancer") sources = union(sources, PLATFORM);
+        else if (src === "VirtualNetwork") {
+          if (!isEmpty(intersect(vnet, PUBLIC_IPV4))) doubts.push("VirtualNetwork includes a public address space");
+          sources = union(sources, vnet);
+        } else if (/^[A-Za-z]/.test(src)) doubts.push(`its source is the service tag ${src}, whose addresses are not in the plan`);
+        else {
+          const set = setOf([src]);
+          if (!set) return unknown3(`${label}: source ${src} cannot be read`);
+          sources = union(sources, set);
+        }
+      }
+      out.push({ priority, allow: String(v.access) === "Allow", protocol: protocolOf(v.protocol), ports, sources, text, ...doubts.length ? { doubt: `${label}: ${doubts.join("; ")}` } : {} });
+    }
+    out.push(
+      { priority: 65e3, allow: true, protocol: "all", ports: ALL_PORTS, sources: vnet, text: `${nsg.address} default rule AllowVnetInBound (65000): allow from VirtualNetwork` },
+      { priority: 65001, allow: true, protocol: "all", ports: ALL_PORTS, sources: PLATFORM, text: `${nsg.address} default rule AllowAzureLoadBalancerInBound (65001): allow from AzureLoadBalancer` },
+      { priority: 65500, allow: false, protocol: "all", ports: ALL_PORTS, sources: ALL_IPV4_SET, text: `${nsg.address} default rule DenyAllInbound (65500): deny all` }
+    );
+    return known3(out.toSorted((a, b) => a.priority - b.priority || cmp(a.text, b.text)));
+  }
+  /** The subnet's routes: system routes and the user-defined routes of its route table (rule 8). */
+  routes(s) {
+    const system = [
+      { cidr: cidrToSet("0.0.0.0/0") ?? EMPTY, prefix: 0, hop: "Internet", user: false, text: "system route 0.0.0.0/0 -> Internet" },
+      ...DROPPED.map((c) => ({ cidr: cidrToSet(c) ?? EMPTY, prefix: prefixOf(c), hop: "None", user: false, text: `system route ${c} -> None` }))
+    ];
+    const tables = [];
+    for (const a of this.ofType("azurerm_subnet_route_table_association")) {
+      const t = this.byRef(a, "subnet_id", a.values.subnet_id, isUnknown(a, ["subnet_id"]), "azurerm_subnet");
+      if (!t.ok) return unknown3(t.reason);
+      if (t.value.address !== s.address) continue;
+      const table2 = this.byRef(a, "route_table_id", a.values.route_table_id, isUnknown(a, ["route_table_id"]), "azurerm_route_table");
+      if (!table2.ok) return unknown3(table2.reason);
+      tables.push(table2.value);
+    }
+    if (tables.length > 1) return unknown3(`${s.address} has ${tables.length} route table associations`);
+    const table = tables[0];
+    if (!table) return known3(system);
+    if (hasUnknown(table, ["route"]) && table.configured.has("route")) return unknown3(`${table.address}: route is unknown until apply`);
+    const user = (!isUnknown(table, ["route"]) && Array.isArray(table.values.route) ? table.values.route : []).filter(isObj).map((v) => ({ v, label: `${table.address} route ${String(v.name)}` }));
+    for (const r of this.ofType("azurerm_route")) {
+      const owner = this.byName(r, "route_table_name", "azurerm_route_table");
+      if (!owner.ok) return unknown3(owner.reason);
+      if (owner.value.address !== table.address) continue;
+      if (hasUnknown(r, ["address_prefix", "next_hop_type"])) return unknown3(`${r.address}: address_prefix or next_hop_type is unknown until apply`);
+      user.push({ v: r.values, label: r.address });
+    }
+    const out = [];
+    for (const { v, label } of user) {
+      const c = typeof v.address_prefix === "string" ? v.address_prefix : "";
+      if (/^[A-Za-z]/.test(c)) return unknown3(`${label}: a service tag prefix (${c}) is not modeled yet`);
+      const set = cidrToSet(c);
+      if (!set) continue;
+      out.push({ cidr: set, prefix: prefixOf(c), hop: String(v.next_hop_type), user: true, text: `${label} ${c} -> ${String(v.next_hop_type)}` });
+    }
+    return known3([...out, ...system.filter((x) => !out.some((u) => u.prefix === x.prefix && contains(u.cidr, x.cidr) && contains(x.cidr, u.cidr)))]);
+  }
+};
+var ALL_IPV4_SET = cidrToSet("0.0.0.0/0") ?? EMPTY;
+var DROPPED_SET = DROPPED.reduce((acc, c) => union(acc, cidrToSet(c) ?? EMPTY), EMPTY);
+var DROPPED_TEXT = `system routes drop ${DROPPED.join(", ")}`;
+
+// ../engine/src/azure/evaluate.ts
+var DOC5 = {
+  "public-ip": "https://learn.microsoft.com/en-us/azure/virtual-network/ip-services/public-ip-addresses",
+  nsg: "https://learn.microsoft.com/en-us/azure/virtual-network/network-security-group-how-it-works",
+  route: "https://learn.microsoft.com/en-us/azure/virtual-network/virtual-networks-udr-overview"
+};
+var absent5 = { verdict: "absent", sources: [], hops: [], reason: "the resource does not exist on this side of the plan" };
+var protoMatches5 = (rule, p) => rule === "all" || rule === p;
+function nsgEval(nsg, addrs, p, ports) {
+  if (!nsg.rules.ok) return { error: nsg.rules.reason };
+  let remaining = addrs;
+  let allowed = EMPTY;
+  const texts = [];
+  for (const rule of nsg.rules.value) {
+    if (isEmpty(remaining)) break;
+    if (!protoMatches5(rule.protocol, p) || !contains(rule.ports, [ports])) continue;
+    if (rule.doubt) return { allowed, texts, doubt: rule.doubt };
+    const m = intersect(remaining, rule.sources);
+    if (isEmpty(m)) continue;
+    if (rule.allow) allowed = union(allowed, m);
+    texts.push(rule.text);
+    remaining = subtract(remaining, m);
+  }
+  return { allowed, texts };
+}
+function evaluateAzure(vm, p, ports) {
+  if (!vm) return absent5;
+  const hops = [];
+  const add = (hop, resource, decision, rule) => hops.push({ hop, resource, decision, rule, doc: DOC5[hop] });
+  const stop = (verdict, reason) => ({ verdict, sources: [], hops, reason });
+  const unknownAt = (hop, resource, reason) => {
+    add(hop, resource, "unknown", reason);
+    return stop("unknown", reason);
+  };
+  const portText = `${p}/${formatPorts([ports])}`;
+  const universe = vm.universe;
+  if (!vm.publicIp.ok) return unknownAt("public-ip", vm.address, vm.publicIp.reason);
+  if (!vm.publicIp.value) {
+    add("public-ip", vm.address, "deny", `${vm.address} has no public IP address on its network interface`);
+    return stop("blocked", `${vm.address} has no public IP address`);
+  }
+  add("public-ip", vm.address, "allow", vm.publicIp.value);
+  if (!vm.subnetNsg.ok) return unknownAt("nsg", vm.address, vm.subnetNsg.reason);
+  if (!vm.nicNsg.ok) return unknownAt("nsg", vm.address, vm.nicNsg.reason);
+  const levels = [vm.subnetNsg.value, vm.nicNsg.value].filter((n) => n !== null);
+  const names = levels.map((n) => n.resource).join(", ");
+  if (!levels.length) {
+    const why = `no network security group is associated with the subnet or the network interface of ${vm.address}; a Standard public IP is secure by default and closed to inbound traffic`;
+    add("nsg", vm.address, "deny", why);
+    return stop("blocked", why);
+  }
+  let sources = universe;
+  const texts = [];
+  for (const nsg of levels) {
+    const r = nsgEval(nsg, sources, p, ports);
+    if ("error" in r) return unknownAt("nsg", nsg.resource, r.error);
+    texts.push(...r.texts);
+    if (r.doubt) return unknownAt("nsg", nsg.resource, r.doubt);
+    sources = r.allowed;
+    if (isEmpty(sources)) {
+      add("nsg", names, "deny", texts.join("; "));
+      return stop("blocked", `${nsg.resource} does not allow ${portText} from the internet (${r.texts.at(-1) ?? "DenyAllInbound"})`);
+    }
+  }
+  add("nsg", names, equals(sources, universe) ? "allow" : "partial", texts.join("; "));
+  if (!vm.routes.ok) return unknownAt("route", vm.address, vm.routes.reason);
+  const routes = vm.routes.value.toSorted((a, b) => b.prefix - a.prefix || Number(b.user) - Number(a.user));
+  let remaining = sources;
+  let out = EMPTY;
+  const routeTexts = [];
+  const undecided = [];
+  for (const route of routes) {
+    const m = intersect(remaining, route.cidr);
+    if (isEmpty(m)) continue;
+    routeTexts.push(route.text);
+    remaining = subtract(remaining, m);
+    if (route.hop === "Internet") out = union(out, m);
+    else if (route.hop === "None") continue;
+    else if (route.prefix === 0) {
+      const why = `${route.text}: with 0.0.0.0/0 sent to a ${route.hop}, resources in the subnet can no longer be reached directly from the internet`;
+      add("route", route.text, "deny", why);
+      return stop("blocked", why);
+    } else undecided.push(`responses to ${setToCidrs(m).join(", ")} use ${route.text}, which is not modeled yet`);
+  }
+  if (isEmpty(out)) {
+    if (undecided.length) return unknownAt("route", vm.address, undecided.join("; "));
+    add("route", vm.address, "deny", routeTexts.join("; "));
+    return stop("blocked", `the response cannot return to the internet: ${routeTexts.join("; ")}`);
+  }
+  add("route", vm.address, equals(out, sources) ? "allow" : "partial", [...routeTexts, `${DROPPED_TEXT}, so clients there are not internet sources`].join("; "));
+  return { verdict: "allowed", sources: equals(out, universe) ? ["internet"] : setToCidrs(out), hops, reason: undecided.join("; ") };
+}
+function azureExposed(vm, p) {
+  if (!vm) return EMPTY;
+  if (!vm.subnetNsg.ok || !vm.nicNsg.ok) return ALL_PORTS;
+  let out = EMPTY;
+  for (const nsg of [vm.subnetNsg.value, vm.nicNsg.value]) {
+    if (!nsg) continue;
+    if (!nsg.rules.ok) return ALL_PORTS;
+    for (const r of nsg.rules.value) if ((r.allow || r.doubt) && protoMatches5(r.protocol, p) && (r.doubt || !isEmpty(intersect(r.sources, vm.universe)))) out = union(out, r.ports);
+  }
+  return out;
+}
+function azureCuts(vm) {
+  const cuts = [];
+  for (const n of vm?.subnetNsg.ok && vm.nicNsg.ok ? [vm.subnetNsg.value, vm.nicNsg.value] : []) if (n?.rules.ok) cuts.push(...n.rules.value.map((r) => r.ports));
+  return cuts;
+}
+
 // ../engine/src/types.ts
 var RESULT_FORMAT = "0.2";
 
@@ -3103,6 +3449,27 @@ function analyze(plan) {
         cuts: [...gcpCuts(b), ...gcpCuts(a)],
         before: (p, seg) => evaluateGcp(b, p, seg),
         after: (p, seg) => evaluateGcp(a, p, seg),
+        risk: () => []
+      })
+    );
+  }
+  const azOf2 = (snap) => new Map(new AzureModel(snap).vms().map((v) => [v.address, v]));
+  const azBefore = azOf2(before);
+  const azAfter = azOf2(after);
+  for (const address of [.../* @__PURE__ */ new Set([...azBefore.keys(), ...azAfter.keys()])].toSorted(cmp)) {
+    const b = azBefore.get(address);
+    const a = azAfter.get(address);
+    paths.push(
+      ...pathsOf({
+        id: `internet->${address}`,
+        from: "internet",
+        provider: "azure",
+        to: address,
+        toType: (a ?? b)?.type ?? "",
+        candidates: (p) => union(azureExposed(b, p), azureExposed(a, p)),
+        cuts: [...azureCuts(b), ...azureCuts(a)],
+        before: (p, seg) => evaluateAzure(b, p, seg),
+        after: (p, seg) => evaluateAzure(a, p, seg),
         risk: () => []
       })
     );
