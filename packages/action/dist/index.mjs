@@ -784,7 +784,7 @@ var PlanError = class extends Error {
 };
 var isObj = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
 var stripKeys = (address) => address.replace(/\[[^\]]*\]/g, "");
-var RESOURCE_REF = /^(?:aws|google|azurerm)_\w+\.[\w-]+(?:\[[^\]]+\])?(?:\.|$)/;
+var RESOURCE_REF = /^aws_\w+\.[\w-]+(?:\[[^\]]+\])?(?:\.|$)/;
 function configRefs(plan) {
   const out = /* @__PURE__ */ new Map();
   const walkModule = (mod, prefix) => {
@@ -797,7 +797,7 @@ function configRefs(plan) {
         const found = /* @__PURE__ */ new Set();
         const full = /* @__PURE__ */ new Set();
         collect(expr, (ref) => {
-          const m = /^((?:aws|google|azurerm)_\w+\.[\w-]+(?:\[[^\]]+\])?)$/.exec(ref);
+          const m = /^(aws_\w+\.[\w-]+(?:\[[^\]]+\])?)$/.exec(ref);
           if (m) found.add(prefix + m[1]);
           if (RESOURCE_REF.test(ref)) full.add(prefix + ref);
           else info.otherRefs.add(attr);
@@ -900,7 +900,7 @@ function resolveRefs(snap, r, attr, targetType) {
   if (r.otherRefs.has(attr)) return fail(`${r.address}: ${attr} uses values that are unknown until apply`);
   return fromConfig(snap, r, attr, targetType).toSorted((a, b) => cmp(refOrder(a), refOrder(b)));
 }
-var ADDRESS = /^(.*?)((?:aws|google|azurerm)_\w+\.[\w-]+(?:\[[^\]]+\])?(?:\.\w+)?)$/;
+var ADDRESS = /^(.*?)(aws_\w+\.[\w-]+(?:\[[^\]]+\])?(?:\.\w+)?)$/;
 function localize(from, ref) {
   const prefix = ADDRESS.exec(from)?.[1] ?? "";
   return prefix + (ADDRESS.exec(ref)?.[2] ?? ref);

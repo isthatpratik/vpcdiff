@@ -68,22 +68,6 @@ function tf(cwd: string, args: string[]): string {
   return execFileSync(BIN, args, { cwd, env, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
 }
 
-// Provider settings for a plan that never reaches a real account. They live here, not in
-// the fixture's main.tf, so a fixture never holds a token, even a fake one (the guard test
-// in fixtures/sandbox.test.ts checks that).
-const GOOGLE_OVERRIDE = `provider "google" {
-  project      = "demo-project"
-  region       = "us-central1"
-  access_token = "fake-token-for-planning"
-}
-`;
-
-/** The override file for the clouds a configuration uses. */
-function overrideFor(configDir: string): string {
-  const text = readdirSync(configDir).filter((f) => f.endsWith(".tf")).map((f) => readFileSync(join(configDir, f), "utf8")).join("\n");
-  return [PROVIDER_OVERRIDE, /hashicorp\/google\b/.test(text) ? GOOGLE_OVERRIDE : ""].join("\n");
-}
-
 /**
  * A lock file kept from the first verified install of a set of providers. With it,
  * `init` uses the plugin cache and still checks the provider's hash, instead of
@@ -97,7 +81,7 @@ function lockPath(configDir: string): string {
 function plan(configDir: string, state?: Obj): { plan: Obj; dir: string } {
   const dir = mkdtempSync(join(tmpdir(), "vpcdiff-fixture-"));
   for (const f of readdirSync(configDir)) if (f.endsWith(".tf")) cpSync(join(configDir, f), join(dir, f));
-  writeFileSync(join(dir, "fixture_override.tf"), overrideFor(configDir));
+  writeFileSync(join(dir, "fixture_override.tf"), PROVIDER_OVERRIDE);
   if (state) writeFileSync(join(dir, "terraform.tfstate"), JSON.stringify(state, null, 2));
   const lock = lockPath(configDir);
   if (existsSync(lock)) cpSync(lock, join(dir, ".terraform.lock.hcl"));
