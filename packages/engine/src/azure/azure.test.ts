@@ -54,8 +54,8 @@ describe("Azure VMs from the internet", () => {
   });
 
   it("stops at the first matching priority", () => {
-    const deny = rule("deny-range", 90, { access: "Deny", source_address_prefix: "198.51.100.0/24" });
-    const p = one(base({ nsgRules: [rule("ssh", 100), deny] }));
+    const deny = rule("deny-range", 100, { access: "Deny", source_address_prefix: "198.51.100.0/24" });
+    const p = one(base({ nsgRules: [rule("ssh", 110), deny] }));
     expect(p.after.verdict).toBe("allowed");
     expect(p.after.hops[1]?.decision).toBe("partial");
     expect(p.after.sources).not.toContain("198.51.100.0/24");

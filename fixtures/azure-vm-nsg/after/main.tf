@@ -1,6 +1,6 @@
 # Fixture azure-vm-nsg: two Azure VMs with Standard public IPs.
 # - web: the subnet's NSG allows SSH from the internet; the NIC's NSG denies one range
-#   first (priority 90), then allows SSH.
+#   first (priority 100), then allows SSH (110).
 # - behind: its subnet sends 0.0.0.0/0 to a virtual appliance, so it cannot be reached
 #   directly from the internet, although its NSG allows HTTPS.
 # Synthetic values only. Everything is created by this plan. Planned against a local
@@ -80,7 +80,7 @@ resource "azurerm_network_security_group" "web_nic" {
 # A lower number is processed first: this range never reaches SSH.
 resource "azurerm_network_security_rule" "deny_range" {
   name                        = "deny-range"
-  priority                    = 90
+  priority                    = 100
   direction                   = "Inbound"
   access                      = "Deny"
   protocol                    = "Tcp"
@@ -94,7 +94,7 @@ resource "azurerm_network_security_rule" "deny_range" {
 
 resource "azurerm_network_security_rule" "ssh_nic" {
   name                        = "ssh"
-  priority                    = 100
+  priority                    = 110
   direction                   = "Inbound"
   access                      = "Allow"
   protocol                    = "Tcp"
