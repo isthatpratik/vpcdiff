@@ -23,9 +23,23 @@ describe("vpcdiff CLI", () => {
     // The table keeps its five columns: the pipe in the name is escaped.
     expect(row.split(/(?<!\\)\|/).length).toBe(7);
     // Outside code (the hop details), Markdown is escaped and the mention is broken.
-    const rest = out.split("\n").filter((l) => !l.startsWith("| 🔴")).join("\n");
+    // The summary lines are raw HTML blocks (checked in the test below): Markdown is not rendered there.
+    const rest = out.split("\n").filter((l) => !l.startsWith("| 🔴") && !l.startsWith("<details><summary>")).join("\n");
     expect(rest).not.toMatch(/(?<![\\`])\[Approve\]\(/);
     expect(rest).not.toContain("@someone");
+  });
+
+  it("never lets an address start a real HTML tag in the hop details", async () => {
+    const { readFileSync } = await import("node:fs");
+    const evil = readFileSync(fixture("sg-5432-opened"), "utf8").replaceAll("aws_instance.db", 'aws_instance.db[\\"x</summary></details><img src=https://evil.example/p.png> @someone\\"]');
+    const out = cli(["--format", "markdown", "-"], evil).out;
+    const summaries = out.split("\n").filter((l) => l.startsWith("<details><summary>"));
+    expect(summaries.length).toBeGreaterThan(0);
+    for (const line of summaries) {
+      expect(line).not.toMatch(/<img/i);
+      expect(line.match(/<\/summary>/g)).toHaveLength(1);
+      expect(line).not.toContain("@someone");
+    }
   });
 
   it("never prints a terminal escape sequence from the plan", async () => {

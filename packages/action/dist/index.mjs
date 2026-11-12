@@ -3572,7 +3572,10 @@ function mdCode(value) {
   return `${fence}${pad}${text}${pad}${fence}`;
 }
 function mdText(value) {
-  return value.replace(/[\r\n]+/g, " ").replace(/[\\`*_{}[\]()<>#+!|~]/g, (c) => `\\${c}`).replace(/@/g, "@\u200B");
+  return value.replace(/[\r\n]+/g, " ").replace(/[\\`*_{}[\]()<>#+!|~]/g, (c) => `\\${c}`).replace(/@/g, "@\u200B").replace(/\b(https?|ftp):\/\//gi, "$1:\u200B//").replace(/\bwww\./gi, "www\u200B.");
+}
+function htmlText(value) {
+  return value.replace(/[\r\n]+/g, " ").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replace(/@/g, "@\u200B").replace(/\b(https?|ftp):\/\//gi, "$1:\u200B//").replace(/\bwww\./gi, "www\u200B.");
 }
 
 // ../cli/src/render.ts
@@ -3613,7 +3616,7 @@ function renderMarkdown(result, opts) {
     for (const p of paths) {
       const explain = p.after.verdict === "absent" ? p.before : p.after;
       if (!explain.hops.length) continue;
-      lines.push(`<details><summary>${p.from === "internet" ? "" : `${md(p.from)} \u2192 `}${md(p.to)} ${p.protocol}/${p.ports}: hops (${p.after.verdict === "absent" ? "before" : "after"})</summary>`, "", "| Hop | Decision | Rule |", "|---|---|---|");
+      lines.push(`<details><summary>${p.from === "internet" ? "" : `${htmlText(p.from)} \u2192 `}${htmlText(p.to)} ${p.protocol}/${p.ports}: hops (${p.after.verdict === "absent" ? "before" : "after"})</summary>`, "", "| Hop | Decision | Rule |", "|---|---|---|");
       for (const h of explain.hops) lines.push(`| [${h.hop}](${h.doc}) | ${h.decision} | ${md(h.rule)} |`);
       lines.push("", "</details>", "");
     }
