@@ -24,6 +24,9 @@ updates:
     ignore:
       - dependency-name: "*"
         update-types: ["version-update:semver-major"]
+      # Pinned to an exact version on purpose: the viewer's icons are part of its look, and a
+      # 0.x minor can redraw them. An upgrade is a deliberate change with a visual check.
+      - dependency-name: "lucide-react"
     groups:
       dev-dependencies:
         dependency-type: development
