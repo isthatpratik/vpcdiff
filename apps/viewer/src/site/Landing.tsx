@@ -10,6 +10,7 @@ import gcp from "../logos/googlecloud-icon-mono.svg?url";
 import actions from "../logos/github-actions-icon-mono.svg?url";
 import nodejs from "../logos/nodejs-icon-mono.svg?url";
 import terraform from "../logos/terraform-icon-mono.svg?url";
+import { AZURE_COLUMNS, COLUMNS, GCP_COLUMNS } from "@vpcdiff/engine/lanes";
 import { Mark, REPO, Wordmark } from "../shared/brand.tsx";
 import { GithubLink } from "../shared/github.tsx";
 import { ThemeToggle } from "../shared/theme.tsx";
@@ -173,11 +174,16 @@ function Logos() {
   );
 }
 
-const COVERAGE: { group: string; items: string[] }[] = [
-  { group: "Endpoints", items: ["aws_instance", "aws_db_instance", "aws_rds_cluster_instance", "aws_ecs_service", "aws_lb", "aws_elb", "aws_vpc_endpoint", "google_compute_instance", "google_sql_database_instance", "azurerm_linux_virtual_machine", "azurerm_windows_virtual_machine"] },
-  { group: "Routing", items: ["aws_vpc", "aws_subnet", "aws_internet_gateway", "aws_nat_gateway", "aws_vpc_peering_connection", "aws_route_table", "aws_route", "aws_main_route_table_association", "aws_default_route_table", "aws_ec2_transit_gateway", "google_compute_network", "google_compute_route", "azurerm_route_table", "azurerm_route"] },
-  { group: "Filters", items: ["aws_security_group", "aws_security_group_rule", "aws_vpc_security_group_ingress_rule", "aws_vpc_security_group_egress_rule", "aws_default_security_group", "aws_network_acl", "aws_network_acl_rule", "aws_default_network_acl", "aws_ec2_managed_prefix_list", "google_compute_firewall", "azurerm_network_security_group", "azurerm_network_security_rule"] },
-  { group: "Addresses and listeners", items: ["aws_eip", "aws_eip_association", "aws_lb_listener", "aws_db_subnet_group", "azurerm_public_ip", "IPv6 addresses"] },
+/**
+ * One row per cloud. The hops are the engine's own column lists (src/lanes.ts), so a hop
+ * added there shows up here; the rest is short plain words, so the section does not grow
+ * with every resource type (the full list is the README support matrix).
+ */
+const hopsOf = (cols: { key: string; label: string }[]) => cols.filter((c) => c.key !== "source" && c.key !== "target").map((c) => c.label);
+const CLOUDS: { name: string; src: string; wordmark?: boolean; hops: string[]; reaches: string; also: string }[] = [
+  { name: "AWS", src: aws, wordmark: true, hops: hopsOf(COLUMNS), reaches: "Instances, RDS and Aurora, ECS, load balancers, VPC endpoints", also: "Also paths inside a VPC, across peering and a transit gateway, and IPv6" },
+  { name: "Google Cloud", src: gcp, hops: hopsOf(GCP_COLUMNS), reaches: "Compute Engine VMs and Cloud SQL", also: "Firewall rules by priority, network tags, and the default route" },
+  { name: "Azure", src: azure, hops: hopsOf(AZURE_COLUMNS), reaches: "Linux and Windows VMs", also: "Subnet and interface NSGs, default rules, and route tables" },
 ];
 
 /** Not modeled yet (README support matrix); paths through them are reported as unknown. */
@@ -320,7 +326,7 @@ function Hero() {
           </span>
         </h1>
         <div className="intro-fade grid gap-8 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end" style={{ "--intro-d": "450ms" } as React.CSSProperties}>
-          <p className="max-w-[560px] text-lg leading-relaxed text-litt-fg-muted">vpcdiff reads your plan before you apply it and shows every path it opens or closes, from the internet and between your own services, with the security group, network ACL, and route that decides each hop.</p>
+          <p className="max-w-[560px] text-lg leading-relaxed text-litt-fg-muted">vpcdiff reads your plan before you apply it and shows every path it opens or closes, from the internet and between your own services, on AWS, Google Cloud, and Azure, with the rule and route that decide each hop.</p>
           <div className="grid justify-items-start gap-4 lg:justify-items-end">
             <div className="flex flex-wrap gap-3">
               <Cta href={APP} primary>
@@ -379,7 +385,7 @@ export function Landing() {
         <Rail label="Why vpcdiff">
           <div className={`${PAD} pt-24 pb-16 md:pt-28 md:pb-20`}>
             <SectionHead eyebrow="Why vpcdiff" title="Review the effect of a change," rest="not just its lines." bar>
-              A rule change is easy to read. What it opens is not: that depends on routes, network ACLs, public addresses, and every other group on the resource.
+              A rule change is easy to read. What it opens is not: that depends on routes, firewalls, public addresses, and every other rule on the resource.
             </SectionHead>
           </div>
           <Features />
@@ -432,26 +438,37 @@ export function Landing() {
               Anything else that can change a path is reported as unknown with the reason, so a gap never hides an open port.
             </SectionHead>
           </div>
-          <div className="grid gap-px border-t border-litt-line bg-litt-line md:grid-cols-2">
-            {COVERAGE.map((c) => (
-              <div key={c.group} className="grid content-start gap-5 bg-litt-canvas px-6 py-10 md:px-16 md:py-12">
-                <h3 className="font-display text-lg font-normal text-litt-fg">{c.group}</h3>
-                <ul className="flex flex-wrap gap-2">
-                  {c.items.map((i) => (
-                    <li key={i}>
-                      <Tag raised className="font-litt-mono">
-                        {i}
-                      </Tag>
+          <ul className="grid gap-px border-t border-litt-line bg-litt-line" aria-label="What each cloud checks">
+            {CLOUDS.map((c) => (
+              <li key={c.name} className="grid gap-6 bg-litt-canvas px-6 py-8 md:grid-cols-[10rem_minmax(0,1.6fr)_minmax(0,1fr)] md:items-center md:gap-12 md:px-16 md:py-10">
+                <div className="flex items-center gap-3">
+                  <span aria-hidden="true" className={`bg-litt-fg ${c.wordmark ? "h-6 w-10" : "h-5 w-6"}`} style={{ mask: `url("${c.src}") center / contain no-repeat`, WebkitMask: `url("${c.src}") center / contain no-repeat` }} />
+                  <h3 className="font-display text-lg font-normal text-litt-fg">{c.name}</h3>
+                </div>
+                <ol className="flex flex-wrap items-center gap-y-2" aria-label={`Hops checked on ${c.name}`}>
+                  {c.hops.map((h, i) => (
+                    <li key={h} className="flex items-center">
+                      <span className="rounded-[6px] border border-litt-line-strong px-2 py-0.5 font-litt-mono text-xs text-litt-fg">{h}</span>
+                      {i < c.hops.length - 1 && <span aria-hidden="true" className="mx-2 h-px w-3 bg-litt-line-strong" />}
                     </li>
                   ))}
-                </ul>
-              </div>
+                </ol>
+                <p className="grid gap-1 text-litt-small text-litt-fg-subtle">
+                  <span className="text-litt-fg-muted">{c.reaches}</span>
+                  <span>{c.also}</span>
+                </p>
+              </li>
             ))}
-          </div>
+          </ul>
           {/* What is not modeled yet, in the viewer's language for "not checked": a dashed
               line and dashed outlines. Paths through these are reported as unknown. */}
           <div className={`${PAD} grid gap-4 border-t border-dashed border-litt-line-strong py-8 md:grid-cols-[auto_minmax(0,1fr)] md:items-center md:gap-8`}>
-            <p className="text-litt-small text-litt-fg-subtle">Not yet, reported as unknown</p>
+            <p className="text-litt-small text-litt-fg-subtle">
+              Not yet, reported as unknown.{" "}
+              <a href={`${REPO}#support-matrix`} className="text-litt-fg underline underline-offset-4">
+                Full support matrix
+              </a>
+            </p>
             <ul className="flex flex-wrap gap-2">
               {NOT_YET.map((i) => (
                 <li key={i} className="rounded-[6px] border border-dashed border-litt-line-strong px-2 py-0.5 font-litt-mono text-xs text-litt-fg-subtle">

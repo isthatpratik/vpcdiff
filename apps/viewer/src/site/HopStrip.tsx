@@ -168,9 +168,9 @@ function BeforeAfter() {
 }
 
 const CELLS: { label: string; lead: string; body: string; art: () => ReactNode }[] = [
-  { label: "Route tables", lead: "The most specific route wins.", body: "vpcdiff follows the route AWS would pick.", art: Routes },
-  { label: "Security groups", lead: "Every rule counts.", body: "All groups on the resource are checked together, as AWS does.", art: Groups },
-  { label: "Network ACLs", lead: "The first match decides.", body: "Rules run in number order, in and out.", art: Acls },
+  { label: "Route tables", lead: "The most specific route wins.", body: "vpcdiff follows the route the cloud would pick.", art: Routes },
+  { label: "Security groups", lead: "Every rule counts.", body: "All groups on the resource are checked together, as the cloud does.", art: Groups },
+  { label: "Network ACLs", lead: "The first match decides.", body: "Rules run in order, in and out. Azure and Google Cloud run them by priority.", art: Acls },
   { label: "Before and after", lead: "Both sides of the plan.", body: "Each path is checked twice, and the hop that changed is shown.", art: BeforeAfter },
 ];
 
