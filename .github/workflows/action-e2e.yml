@@ -1,0 +1,18 @@
+# Temporary: an end to end test of the Action on a real pull request. Not for merge.
+name: action-e2e
+on: pull_request
+permissions:
+  contents: read
+  pull-requests: write
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./
+        with:
+          plan: fixtures/sg-5432-opened/plan.json
+          fail-on: never
