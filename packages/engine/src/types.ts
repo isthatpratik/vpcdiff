@@ -22,7 +22,9 @@ export type HopKind =
   | "source-nacl-inbound"
   | "target-route"
   // Google Cloud (docs/semantics/gcp.md, ADR 0011).
-  | "firewall";
+  | "firewall"
+  // Azure (docs/semantics/azure.md): the subnet's and the interface's network security groups.
+  | "nsg";
 
 export interface Hop {
   hop: HopKind;

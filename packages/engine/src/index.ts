@@ -3,6 +3,8 @@ import { evaluate6, exposedPorts6 } from "./evaluate6.js";
 import { evaluateInternal, internalCuts, referencedPorts } from "./internal.js";
 import { evaluateGcp, gcpCuts, gcpExposed } from "./gcp/evaluate.js";
 import { GcpModel, type GcpVm } from "./gcp/model.js";
+import { azureCuts, azureExposed, evaluateAzure } from "./azure/evaluate.js";
+import { AzureModel, type AzVm } from "./azure/model.js";
 import { formatPorts, union, type IntervalSet, type Range } from "./intervals.js";
 import { ModelBuilder, type Endpoint } from "./model.js";
 import { cmp, parsePlan, type Snapshot } from "./plan.js";
@@ -269,6 +271,29 @@ export function analyze(plan: unknown): Result {
         cuts: [...gcpCuts(b), ...gcpCuts(a)],
         before: (p, seg) => evaluateGcp(b, p, seg),
         after: (p, seg) => evaluateGcp(a, p, seg),
+        risk: () => [],
+      }),
+    );
+  }
+
+  // Azure: internet to each virtual machine (docs/semantics/azure.md).
+  const azOf = (snap: Snapshot) => new Map(new AzureModel(snap).vms().map((v) => [v.address, v]));
+  const azBefore = azOf(before);
+  const azAfter = azOf(after);
+  for (const address of [...new Set([...azBefore.keys(), ...azAfter.keys()])].toSorted(cmp)) {
+    const b: AzVm | undefined = azBefore.get(address);
+    const a: AzVm | undefined = azAfter.get(address);
+    paths.push(
+      ...pathsOf({
+        id: `internet->${address}`,
+        from: "internet",
+        provider: "azure",
+        to: address,
+        toType: (a ?? b)?.type ?? "",
+        candidates: (p) => union(azureExposed(b, p), azureExposed(a, p)),
+        cuts: [...azureCuts(b), ...azureCuts(a)],
+        before: (p, seg) => evaluateAzure(b, p, seg),
+        after: (p, seg) => evaluateAzure(a, p, seg),
         risk: () => [],
       }),
     );

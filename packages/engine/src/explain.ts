@@ -69,8 +69,15 @@ export function fromText(path: Pick<Path, "from">): string {
 /** A hop's definition for this path's kind: the source column differs inside the VPC. */
 export function hopHelp(path: Pick<Path, "from" | "provider">, key: ColumnKey): string {
   if (path.provider === "gcp" && GCP_HELP[key]) return GCP_HELP[key];
+  if (path.provider === "azure" && AZURE_HELP[key]) return AZURE_HELP[key];
   return key === "source" && !isInternet(path) ? "Where the traffic starts: a resource in the VPC, from its private address." : HOP_HELP[key];
 }
+
+/** Azure words for the hops that differ from AWS (docs/semantics/azure.md). */
+const AZURE_HELP: Partial<Record<ColumnKey, string>> = {
+  "public-ip": "Does the VM's network interface have a Standard public IP address? Without one, the internet cannot address it.",
+  route: "Can the reply find its way back? The subnet's routes must send it to the Internet next hop.",
+};
 
 /** Google Cloud words for the hops that differ from AWS (docs/semantics/gcp.md). */
 const GCP_HELP: Partial<Record<ColumnKey, string>> = {
@@ -95,6 +102,7 @@ export const HOP_HELP: Record<ColumnKey, string> = {
   "target-nacl-outbound": "The target subnet's firewall for the reply, outgoing, on an ephemeral port (1024 to 65535).",
   "source-nacl-inbound": "The source subnet's firewall for the reply, incoming, on an ephemeral port (1024 to 65535).",
   "target-route": "Can the reply find its way back? The target's route table must use the local route to the source's subnet.",
+  nsg: "Azure network security groups: the subnet's, then the network interface's. The lowest priority number that matches decides; both must allow.",
   firewall: "Google Cloud VPC firewall rules of the network. The lowest priority number that matches decides; a deny wins a tie; no match is denied.",
 };
 
@@ -183,7 +191,7 @@ function baseVerdict(path: Path): Verdict {
     const cells = lanes[side].cells;
     const deny = cells.findIndex((c) => c.state === "deny");
     if (deny >= 0) return deny;
-    return lanes.columns.findIndex((c) => c.key === "security-group" || c.key === "firewall");
+    return lanes.columns.findIndex((c) => c.key === "security-group" || c.key === "firewall" || c.key === "nsg");
   };
 
   const from = fromText(path);
@@ -362,7 +370,7 @@ export function pathMarkdown(path: Path): string {
 }
 
 /** What the engine checks, for the scope line in the viewer and the Markdown. */
-export const SCOPE = "AWS paths from the internet (IPv4 and IPv6) and inside the VPC (IPv4); Google Cloud paths from the internet to VMs and Cloud SQL (IPv4)";
+export const SCOPE = "AWS paths from the internet (IPv4 and IPv6) and inside the VPC (IPv4); Google Cloud paths from the internet to VMs and Cloud SQL (IPv4); Azure paths from the internet to VMs (IPv4)";
 
 /**
  * The whole plan as Markdown: the counts, the scope, every path that changes or carries a

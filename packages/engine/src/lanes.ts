@@ -51,12 +51,21 @@ export const GCP_SQL_COLUMNS: Column[] = [
   { key: "target", label: "Target" },
 ];
 
+/** Columns of an Azure path from the internet (docs/semantics/azure.md). */
+export const AZURE_COLUMNS: Column[] = [
+  { key: "source", label: "Internet" },
+  { key: "public-ip", label: "Public IP" },
+  { key: "nsg", label: "NSGs (subnet, NIC)" },
+  { key: "target", label: "Target" },
+  { key: "route", label: "Return route" },
+];
+
 /** True for a path from the internet; false for a path inside the VPC. */
 export const isInternet = (path: Pick<Path, "from">): boolean => path.from === "internet";
 
 /** The columns for a path's kind. */
 export const columnsOf = (path: Pick<Path, "from" | "provider"> & Partial<Pick<Path, "toType">>): Column[] =>
-  path.provider === "gcp" ? (path.toType === "google_sql_database_instance" ? GCP_SQL_COLUMNS : GCP_COLUMNS) : isInternet(path) ? COLUMNS : INTERNAL_COLUMNS;
+  path.provider === "gcp" ? (path.toType === "google_sql_database_instance" ? GCP_SQL_COLUMNS : GCP_COLUMNS) : path.provider === "azure" ? AZURE_COLUMNS : isInternet(path) ? COLUMNS : INTERNAL_COLUMNS;
 
 export type CellState = Decision | "not-reached" | "absent";
 
@@ -117,7 +126,7 @@ export function lanesOf(path: Path): Lanes {
   });
   const firstChanged = changed.indexOf(true);
   const reached = (lane: Lane) => lane.cells.reduce((last, c, i) => (c.state !== "not-reached" && c.state !== "absent" ? i : last), 0);
-  const sg = COLUMNS.findIndex((c) => c.key === "security-group" || c.key === "firewall");
+  const sg = COLUMNS.findIndex((c) => c.key === "security-group" || c.key === "firewall" || c.key === "nsg");
   // A path with outage risk opens on the hop whose resource the plan replaces.
   const risky = path.outageRisk ? after.cells.findIndex((c) => (path.outageRisk ?? []).some((r) => c.resource.split(", ").includes(r) || c.rule.includes(r))) : -1;
   const focus = oneSideAbsent ? sg : firstChanged >= 0 ? firstChanged : risky >= 0 ? risky : Math.max(reached(before), reached(after));

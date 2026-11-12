@@ -743,6 +743,7 @@ const HOP_ICON: Partial<Record<ColumnKey, typeof GlobeIcon>> = {
   "source-nacl-inbound": FilterIcon,
   "target-route": GitBranchIcon,
   firewall: ShieldIcon,
+  nsg: ShieldIcon,
 };
 
 function HopName({ col, type, fromType, help, className = "" }: { col: Column; type: string; fromType?: string | undefined; help: string; className?: string }) {
