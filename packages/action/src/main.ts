@@ -48,14 +48,29 @@ async function comment(env: Env, body: string): Promise<void> {
   const headers = { authorization: `Bearer ${token}`, accept: "application/vnd.github+json", "x-github-api-version": "2022-11-28", "content-type": "application/json" };
   const text = `${MARKER}\n${body}`;
   let existing: number | undefined;
+  // Comments that start with the marker and a person wrote: ours only if the token is theirs.
+  const byPeople: { id: number; login?: string }[] = [];
   for (let page = 1; page <= 10 && existing === undefined; page++) {
     const res = await env.fetch(`${api}/repos/${repo}/issues/${number}/comments?per_page=100&page=${page}`, { headers });
     if (!res.ok) throw new Error(`listing comments failed: HTTP ${res.status}`);
-    const list = (await res.json()) as { id: number; body?: string; user?: { type?: string } }[];
-    // Only a comment that a bot wrote: anyone can post a comment that starts with the marker,
-    // and the report must never land in (or be editable from) a person's comment.
-    existing = list.find((c) => c.user?.type === "Bot" && c.body?.startsWith(MARKER))?.id;
+    const list = (await res.json()) as { id: number; body?: string; user?: { type?: string; login?: string } }[];
+    // The report must never land in (or be editable from) a comment that someone else wrote:
+    // anyone can post a comment that starts with the marker. GITHUB_TOKEN and apps post as a bot.
+    for (const c of list) {
+      if (!c.body?.startsWith(MARKER)) continue;
+      if (c.user?.type === "Bot") existing ??= c.id;
+      else byPeople.push({ id: c.id, ...(c.user?.login ? { login: c.user.login } : {}) });
+    }
     if (list.length < 100) break;
+  }
+  // A personal access token posts as its user, so its own comments are ours. GET /user works
+  // for such a token and is refused for GITHUB_TOKEN; ask only when a candidate exists.
+  if (existing === undefined && byPeople.length) {
+    const me = await env.fetch(`${api}/user`, { headers });
+    if (me.ok) {
+      const login = ((await me.json()) as { login?: string }).login;
+      existing = login ? byPeople.find((c) => c.login === login)?.id : undefined;
+    }
   }
   const res = existing === undefined
     ? await env.fetch(`${api}/repos/${repo}/issues/${number}/comments`, { method: "POST", headers, body: JSON.stringify({ body: text }) })

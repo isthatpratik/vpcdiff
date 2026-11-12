@@ -67,9 +67,21 @@ describe("vpcdiff action", () => {
 
   it("never writes into a person's comment that copies the marker", async () => {
     const list = JSON.stringify([{ id: 7, body: `${MARKER}\nfake report: no changes`, user: { type: "User" } }]);
-    const { e, calls } = env({ INPUT_PLAN: "/plan.json", ...prVars }, { "/plan.json": plan("sg-5432-opened"), ...pr }, [new Response(list), new Response("{}")]);
+    // GET /user is refused for GITHUB_TOKEN, so nobody's personal comment is ours.
+    const { e, calls } = env({ INPUT_PLAN: "/plan.json", ...prVars }, { "/plan.json": plan("sg-5432-opened"), ...pr }, [new Response(list), new Response("{}", { status: 403 }), new Response("{}")]);
     await run(e);
-    expect(calls[1]).toMatchObject({ method: "POST", url: "https://api.test/repos/octo/repo/issues/7/comments" });
+    expect(calls.at(-1)).toMatchObject({ method: "POST", url: "https://api.test/repos/octo/repo/issues/7/comments" });
+  });
+
+  it("updates the comment of the token's own user (a personal access token), not another person's", async () => {
+    const list = JSON.stringify([
+      { id: 5, body: `${MARKER}\nfake`, user: { type: "User", login: "mallory" } },
+      { id: 6, body: `${MARKER}\nold report`, user: { type: "User", login: "octocat" } },
+    ]);
+    const { e, calls } = env({ INPUT_PLAN: "/plan.json", ...prVars }, { "/plan.json": plan("sg-5432-opened"), ...pr }, [new Response(list), new Response(JSON.stringify({ login: "octocat" })), new Response("{}")]);
+    await run(e);
+    expect(calls.map((c) => `${c.method} ${c.url}`)).toContain("GET https://api.test/user");
+    expect(calls.at(-1)).toMatchObject({ method: "PATCH", url: "https://api.test/repos/octo/repo/issues/comments/6" });
   });
 
   it("warns instead of failing when the token cannot write comments", async () => {

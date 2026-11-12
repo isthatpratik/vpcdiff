@@ -3668,12 +3668,24 @@ async function comment(env, body) {
   const text = `${MARKER}
 ${body}`;
   let existing;
+  const byPeople = [];
   for (let page = 1; page <= 10 && existing === void 0; page++) {
     const res2 = await env.fetch(`${api}/repos/${repo}/issues/${number}/comments?per_page=100&page=${page}`, { headers });
     if (!res2.ok) throw new Error(`listing comments failed: HTTP ${res2.status}`);
     const list = await res2.json();
-    existing = list.find((c) => c.user?.type === "Bot" && c.body?.startsWith(MARKER))?.id;
+    for (const c of list) {
+      if (!c.body?.startsWith(MARKER)) continue;
+      if (c.user?.type === "Bot") existing ??= c.id;
+      else byPeople.push({ id: c.id, ...c.user?.login ? { login: c.user.login } : {} });
+    }
     if (list.length < 100) break;
+  }
+  if (existing === void 0 && byPeople.length) {
+    const me = await env.fetch(`${api}/user`, { headers });
+    if (me.ok) {
+      const login = (await me.json()).login;
+      existing = login ? byPeople.find((c) => c.login === login)?.id : void 0;
+    }
   }
   const res = existing === void 0 ? await env.fetch(`${api}/repos/${repo}/issues/${number}/comments`, { method: "POST", headers, body: JSON.stringify({ body: text }) }) : await env.fetch(`${api}/repos/${repo}/issues/comments/${existing}`, { method: "PATCH", headers, body: JSON.stringify({ body: text }) });
   if (res.status === 403 || res.status === 404) {
