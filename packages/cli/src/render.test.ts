@@ -27,6 +27,20 @@ describe("the default gate and a widened exposure", () => {
     expect(shouldFail(widen("0.0.0.0/0", "203.0.113.5/32"), "changed")).toBe(true);
   });
 
+  it("fails on added when the plan adds sources that no hop could decide", () => {
+    // The sources are the same, but the after side has new undecided sources (for example a
+    // prefix list that cannot be expanded): that may be a widening, so the gate fails closed.
+    const narrowing = widen("0.0.0.0/0", "203.0.113.5/32");
+    const path = narrowing.paths[0];
+    if (!path) throw new Error("expected one path");
+    expect(shouldFail(narrowing, "added")).toBe(false);
+    path.after.reason = "sources in aws_security_group.app: prefix list pl-1 is not in this plan";
+    expect(shouldFail(narrowing, "added")).toBe(true);
+    // The same undecided sources before and after are not new.
+    path.before.reason = path.after.reason;
+    expect(shouldFail(narrowing, "added")).toBe(false);
+  });
+
   it("counts a widened path once at changed", () => {
     expect(shouldFail(widen("203.0.113.5/32", "0.0.0.0/0"), "changed")).toBe(true);
   });

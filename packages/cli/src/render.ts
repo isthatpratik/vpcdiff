@@ -102,7 +102,11 @@ export function shouldFail(result: Result, failOn: FailOn): boolean {
   const count = (f: (p: Path) => boolean) => result.paths.filter(f).length;
   const internet = (p: Path) => p.from === "internet";
   if (failOn === "never") return false;
-  const widened = (p: Path) => internet(p) && p.change === "changed" && p.before.verdict === "allowed" && p.after.verdict === "allowed" && sourcesWiden(p.before.sources, p.after.sources, p.family);
+  // `reason` on an allowed path lists sources that some hop could not decide (they are not in
+  // `sources`). A new or different one may be a widening that the sources do not show yet, so
+  // it counts as one: the gate fails closed.
+  const widened = (p: Path) =>
+    internet(p) && p.change === "changed" && p.before.verdict === "allowed" && p.after.verdict === "allowed" && (sourcesWiden(p.before.sources, p.after.sources, p.family) || (p.after.reason !== "" && p.after.reason !== p.before.reason));
   const added = count((p) => (internet(p) && p.change === "added") || widened(p));
   if (failOn === "added") return added > 0;
   const changed = count((p) => (p.change === "changed" && !widened(p)) || (!internet(p) && (p.change === "added" || p.change === "removed")));
