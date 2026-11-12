@@ -1,0 +1,24 @@
+# Keeps the pinned GitHub Actions (full commit SHAs) and the npm dependencies current, so
+# a fix for a known issue arrives as a pull request. Each update is reviewed like any other
+# change: CI must pass, and the committed Action bundle must still match its sources.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: "chore(deps)"
+  - package-ecosystem: npm
+    directories: ["/", "/packages/*", "/apps/*"]
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      dev-dependencies:
+        dependency-type: development
+    commit-message:
+      prefix: "chore(deps)"

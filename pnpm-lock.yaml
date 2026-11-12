@@ -74,9 +74,6 @@ importers:
       react-dom:
         specifier: ^19.3.1
         version: 19.3.1(react@19.3.1)
-      sugar-high:
-        specifier: ^2.6.4
-        version: 2.6.4
       tailwind-merge:
         specifier: ^3.7.0
         version: 3.7.0
@@ -1550,9 +1547,6 @@ packages:
   std-env@4.3.0:
     resolution: {integrity: sha512-OtU/EgQ1kIm5KwqQpBC6ZEMXrZRui11w8zgfTWp8cdO9B8OaPsbA8bTHO2P+HNo1VlUTGMVBwPhydu6poeXiag==}
 
-  sugar-high@2.6.4:
-    resolution: {integrity: sha512-GJkKsIyzqPMCJabhM8c4IKBg3aKUtI62DMPGdgFuXDo0Z5LY+q3SIT3PsSjGkOT9IglhCR6dZBDVQYmdIfumsw==}
-
   tailwind-merge@3.7.0:
     resolution: {integrity: sha512-XPPUyAc+cvspz3lHTcR/QgPfW2A0lv/xQNIjX3HGhLR+Nq2lHaLq5MtTesHn8GUr3W3DguT2KT5x3NVgRtYwmA==}
 
@@ -2984,8 +2978,6 @@ snapshots:
   source-map-js@1.2.2: {}
 
   std-env@4.3.0: {}
-
-  sugar-high@2.6.4: {}
 
   tailwind-merge@3.7.0: {}
 
