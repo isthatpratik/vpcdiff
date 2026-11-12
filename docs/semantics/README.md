@@ -13,4 +13,5 @@ returns `unknown` with a reason.
 - [endpoints.md](endpoints.md): EC2 instances, RDS DB instances, load balancers
 - [ipv6.md](ipv6.md): IPv6 paths from the internet, egress-only internet gateways
 - [internal-paths.md](internal-paths.md): paths between endpoints inside a VPC, from security group references
+- [transit-gateway.md](transit-gateway.md): paths between VPCs through a transit gateway
 - [terraform-plan-json.md](terraform-plan-json.md): `actions`, `before`, `after`, `after_unknown`, replacements

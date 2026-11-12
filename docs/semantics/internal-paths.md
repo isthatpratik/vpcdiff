@@ -77,9 +77,9 @@ subnet:
 
 ## Returns `unknown` with a reason
 
-- `A` and `T` are in different VPCs and a route to the other subnet does not use a VPC
-  peering connection (Transit Gateway, VPN, and other targets are not modeled for paths
-  between VPCs).
+- `A` and `T` are in different VPCs and a route to the other subnet uses neither a VPC
+  peering connection nor a transit gateway (VPN and other targets are not modeled for
+  paths between VPCs). Transit gateway paths: [transit-gateway.md](transit-gateway.md).
 - A peering connection that is not accepted in the plan (no `auto_accept`, no
   `aws_vpc_peering_connection_accepter`, no `active` status), or VPCs with overlapping
   CIDR blocks ("You cannot create a VPC peering connection between VPCs that have

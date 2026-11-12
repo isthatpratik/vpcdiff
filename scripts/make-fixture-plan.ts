@@ -175,9 +175,11 @@ function toState(before: Obj, schemas: Obj): Obj {
           if (g.length === 1) return g[0] as string;
           throw new Error(`${address}: cannot fill ${path.join(".")}: the block references ${g.length} resources of that kind`);
         }
-        if (key?.endsWith("_id") || key === "vpc_security_group_ids") {
+        // A list of IDs (`vpc_security_group_ids`, `subnet_ids`): every resource it references.
+        const list = path.length === 1 && key?.endsWith("_ids");
+        if (key?.endsWith("_id") || list) {
           const targets = referencedResources(refs[path[0] as string]).map((a) => ids.get(a)).filter(Boolean) as string[];
-          if (key === "vpc_security_group_ids") return targets;
+          if (list) return targets;
           if (targets.length === 1) return targets[0] as string;
         }
         return path.length === 1 && key ? emptyValue(schemas[type] as Obj | undefined, key) : null;

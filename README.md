@@ -174,7 +174,7 @@ reported as `unknown` with a reason, never as allowed or blocked by guess.
 | `aws_network_acl` (inline), `aws_network_acl_rule`, `aws_network_acl_association`, `aws_default_network_acl`, unmanaged default NACL | supported |
 | `aws_instance` (endpoint), `aws_eip`, `aws_eip_association` | supported |
 | Egress rules: inline `egress`, `aws_security_group_rule`, `aws_vpc_security_group_egress_rule` | supported for paths inside the VPC; internet paths do not need them (security groups are stateful) |
-| Paths inside the VPC: endpoint to endpoint through a security group reference (`security_groups`, `source_security_group_id`, `referenced_security_group_id`, `self`) | supported in one VPC and across an active VPC peering connection (`aws_vpc_peering_connection`, `_accepter`); Transit Gateway and middlebox routes are unknown |
+| Paths inside the VPC: endpoint to endpoint through a security group reference (`security_groups`, `source_security_group_id`, `referenced_security_group_id`, `self`) | supported in one VPC, across an active VPC peering connection (`aws_vpc_peering_connection`, `_accepter`), and through a transit gateway in the plan (IPv4); middlebox routes are unknown |
 | `aws_db_instance` (endpoint; `publicly_accessible`, `aws_db_subnet_group`) | supported |
 | `aws_lb` (endpoint; internet-facing ALB and NLB, `aws_lb_listener` for NLBs without groups) | supported |
 | `aws_rds_cluster_instance` (Aurora endpoint; groups and subnet group from `aws_rds_cluster`) | supported |
@@ -187,7 +187,8 @@ reported as `unknown` with a reason, never as allowed or blocked by guess.
 | Instances with a `network_interface` block, `aws_network_interface`, `aws_network_interface_sg_attachment`, Elastic IPs on an interface | supported for the primary interface; more than one is unknown |
 | VPN route propagation, `aws_network_interface_attachment` | unknown |
 | Response routes to a NAT gateway, a VPC peering connection, or a blackhole | supported (they block internet paths) |
-| Transit Gateway, VPN gateway, middlebox network interfaces | unknown (routing continues outside the plan) |
+| Transit Gateway: `aws_ec2_transit_gateway`, `_vpc_attachment`, `_route_table`, `_route`, `_route_table_association`, `_route_table_propagation`, default association and propagation, security group referencing | supported for paths inside the VPC between VPCs; internet paths through a transit gateway, peering/VPN/Connect attachments, and default route table or prefix list reference resources are unknown |
+| VPN gateway, middlebox network interfaces | unknown (routing continues outside the plan) |
 | `aws_vpc_endpoint` Interface (target inside the VPC) and Gateway (prefix list route; its addresses undecided) | supported |
 | IPv6 from the internet to EC2 instances and dual-stack load balancers; egress-only internet gateways | supported (paths inside the VPC are IPv4 only) |
 
@@ -203,8 +204,8 @@ security review, and an updated support matrix.
    group references, so "load balancer to service" or "web to database" changes show up.
    Done in v0.2.0.
 2. [More AWS networking](https://github.com/isthatpratik/vpcdiff/issues/33): done in
-   v0.2.0 for NAT gateways, VPC peering, VPC endpoints, IPv6, and prefix lists. Transit
-   Gateway routing stays `unknown`: its route tables usually live outside the plan.
+   v0.2.0 for NAT gateways, VPC peering, VPC endpoints, IPv6, and prefix lists. Paths
+   between VPCs through a transit gateway in the plan: next release (#94).
 3. [OpenTofu support](https://github.com/isthatpratik/vpcdiff/issues/34): done in v0.2.0. Every
    fixture is also planned with OpenTofu in CI, and the result must match byte for byte.
 4. [More endpoints](https://github.com/isthatpratik/vpcdiff/issues/35), done in v0.2.0: Aurora, ECS

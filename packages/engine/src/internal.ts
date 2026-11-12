@@ -369,7 +369,7 @@ export function evaluateInternal(a: Endpoint | undefined, t: Endpoint | undefine
   if (!t.vpc.ok) return fail("source-route", t.address, t.vpc.reason);
   const peered = a.vpc.value.address !== t.vpc.value.address;
   const cross = (from: Endpoint, to: Endpoint, cidr: IntervalSet, own: Vpc, other: Vpc): Step =>
-    transitOf(from.routeTable, cidr) ? { ...transitStep(from.routeTable, from.address, cidr, to.address, own, other, from.az, from.transit), doc: TGW_DOC } : peeringStep(from.routeTable, from.address, cidr, to.address, own, other);
+    transitOf(from.routeTable, cidr) ? { ...transitStep(from.routeTable, from.subnet.ok ? from.subnet.value : from.address, cidr, to.address, own, other, from.az, from.transit), doc: TGW_DOC } : peeringStep(from.routeTable, from.address, cidr, to.address, own, other);
   const r1 = run("source-route", peered ? cross(a, t, tCidr, a.vpc.value, t.vpc.value) : routeStep(a.routeTable, a.address, tCidr, t.address));
   if (r1) return r1;
 

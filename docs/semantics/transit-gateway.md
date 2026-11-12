@@ -93,7 +93,7 @@ Security groups (hops 1 and 5) across a transit gateway:
 - The transit gateway, an attachment, or a transit gateway route table is not in the
   plan, or a reference to one is unknown until apply and cannot be matched to one
   resource.
-- The sender's VPC has more than one attachment to `X`.
+- The sender's VPC has no attachment or more than one attachment to `X`.
 - The Availability Zone of the sender's subnet or of an attachment subnet is unknown
   until apply.
 - An attachment has both the default association and an explicit association without
