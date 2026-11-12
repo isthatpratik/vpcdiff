@@ -61,6 +61,14 @@ describe("instances with a network interface", () => {
     expect(without.after.hops[0]?.hop).toBe("public-ip");
   });
 
+  it("counts an Elastic IP on the instance: it goes to the primary interface", () => {
+    for (const ip of [eip({ instance: "i-1" }), res("aws_eip_association", "ip", { id: "eipassoc-1", instance_id: "i-1", network_interface_id: null })]) {
+      const p = only(analyze(plan(base([eni(), inst(), ip]))).paths);
+      expect(p.after.verdict).toBe("allowed");
+      expect(p.after.hops[0]?.rule).toBe(`${ip.type}.ip is associated with aws_instance.app`);
+    }
+  });
+
   it("does not use the subnet's map_public_ip_on_launch for an existing interface", () => {
     const subnetOn = res("aws_subnet", "a", { id: "subnet-1", vpc_id: "vpc-1", cidr_block: "10.0.1.0/24", map_public_ip_on_launch: true });
     const r = analyze(plan(network({ instance: null, subnet: subnetOn }, [eni(), inst()])));

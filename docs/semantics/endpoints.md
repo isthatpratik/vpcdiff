@@ -21,8 +21,9 @@ already exists.
 
 - **Subnet and groups:** the interface's `subnet_id`, and its `security_groups` plus any
   `aws_network_interface_sg_attachment`. No groups at all means the VPC's default group.
-- **Public IPv4 address:** only from an Elastic IP on the interface (`aws_eip` or
-  `aws_eip_association` with the interface). "The public IP address can only be assigned
+- **Public IPv4 address:** only from an Elastic IP: one on the interface (`aws_eip` or
+  `aws_eip_association` with the interface), or one on the instance (`instance`,
+  `instance_id`), which AWS associates with the primary interface. "The public IP address can only be assigned
   to a network interface for eth0, and can only be assigned to a new network interface,
   not an existing one", so neither `associate_public_ip_address` nor the subnet's
   `map_public_ip_on_launch` gives one.

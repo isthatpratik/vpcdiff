@@ -1998,9 +1998,15 @@ var ModelBuilder = class {
     const subnet = this.refTo(e, "subnet_id", "aws_subnet");
     if (!subnet.ok) return this.fail(r, subnet.reason);
     const publicIp = () => {
-      const eips = this.eniEips.get(e.address);
-      if (!eips.ok) return unknown(eips.reason);
-      return known(eips.value.length ? `${eips.value.toSorted(cmp).join(", ")} is associated with ${e.address}` : void 0);
+      const onEni = this.eniEips.get(e.address);
+      if (!onEni.ok) return unknown(onEni.reason);
+      const onInstance = this.eips.get(r.address);
+      if (!onInstance.ok) return unknown(onInstance.reason);
+      const texts = [
+        ...onEni.value.length ? [`${onEni.value.toSorted(cmp).join(", ")} is associated with ${e.address}`] : [],
+        ...onInstance.value.length ? [`${onInstance.value.toSorted(cmp).join(", ")} is associated with ${r.address}`] : []
+      ];
+      return known(texts.length ? texts.join("; ") : void 0);
     };
     const publicIp6 = () => {
       if (isUnknown(e, ["ipv6_address_count"]) && e.configured.has("ipv6_address_count") || isUnknown(e, ["ipv6_addresses"]) && e.configured.has("ipv6_addresses")) return unknown(`${e.address}: its IPv6 addresses are unknown until apply`);
@@ -2016,7 +2022,7 @@ var ModelBuilder = class {
       const keys = [.../* @__PURE__ */ new Set([...mine.map((g) => g.key), ...extra.value])].toSorted(cmp);
       return known(keys.length ? keys.map((k) => mine.find((g) => g.key === k) ?? this.securityGroup(k)) : [this.securityGroup(`default-sg:${vpc}`)]);
     };
-    return this.place(r, subnet.value, publicIp, groups, void 0, [e.address, ...this.eniEips.sources(e.address), ...this.eniGroups.sources(e.address)], publicIp6);
+    return this.place(r, subnet.value, publicIp, groups, void 0, [e.address, ...this.eniEips.sources(e.address), ...this.eips.sources(r.address), ...this.eniGroups.sources(e.address)], publicIp6);
   }
   /**
    * RDS: the DB instance gets a public address only when publicly_accessible is true, and
