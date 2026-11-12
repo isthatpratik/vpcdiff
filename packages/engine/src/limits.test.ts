@@ -1,7 +1,7 @@
 // A crafted plan must not use all memory or time, and must never read as "safe": the engine
 // stops with a PlanError. The limits are lowered here so the tests stay small.
 import { describe, expect, it } from "vitest";
-import { analyze, MAX_PATHS, MAX_SEGMENTS, PlanError } from "./index.js";
+import { analyze, isStackOverflow, MAX_PAIRS, MAX_PATHS, MAX_SEGMENTS, PlanError } from "./index.js";
 import { plan, type Res } from "./testkit.js";
 
 /** n instances in one subnet that share a security group with a rule that references itself. */
@@ -20,6 +20,21 @@ describe("limits", () => {
   it("has limits far above real use", () => {
     expect(MAX_PATHS).toBeGreaterThanOrEqual(500_000);
     expect(MAX_SEGMENTS).toBeGreaterThanOrEqual(1_000_000);
+    expect(MAX_PAIRS).toBeGreaterThanOrEqual(25_000_000);
+  });
+
+  it("stops when the pairs of resources to check exceed the limit, even when no path comes out", () => {
+    // Twelve instances with no group reference: no path, but 132 pairs are looked at.
+    const lonely = shared(12).filter((r) => r.type !== "aws_security_group").map((r) => (r.type === "aws_instance" ? { ...r, after: { ...r.after, vpc_security_group_ids: [] } } : r));
+    expect(() => analyze(plan(lonely), { maxPairs: 100 })).toThrow(/more than 100 pairs/);
+    expect(() => analyze(plan(lonely), { maxPairs: 1000 })).not.toThrow();
+  });
+
+  it("converts only a real stack overflow, so other RangeErrors stay visible", () => {
+    expect(isStackOverflow(new RangeError("Maximum call stack size exceeded"))).toBe(true);
+    expect(isStackOverflow(new RangeError("Invalid array length"))).toBe(false);
+    expect(isStackOverflow(new RangeError("Invalid string length"))).toBe(false);
+    expect(isStackOverflow(new Error("Maximum call stack size exceeded"))).toBe(false);
   });
 
   it("stops when the paths to report exceed the limit", () => {

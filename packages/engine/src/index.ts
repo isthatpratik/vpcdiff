@@ -21,15 +21,21 @@ export { PlanError } from "./plan.js";
  */
 export const MAX_PATHS = 500_000;
 export const MAX_SEGMENTS = 1_000_000;
+export const MAX_PAIRS = 25_000_000;
 export const MAX_PLAN_CHARS = 256 * 1024 * 1024;
 
 /** Work done so far in one analysis, and the limits (tests lower them). */
 interface Budget {
   paths: number;
   segments: number;
+  pairs: number;
   maxPaths: number;
   maxSegments: number;
+  maxPairs: number;
 }
+
+/** True for the error a recursive walk throws when the plan's JSON is nested too deeply. */
+export const isStackOverflow = (e: unknown): boolean => e instanceof RangeError && /call stack/i.test(e.message);
 export * from "./types.js";
 
 /** Version of the engine package. */
@@ -197,12 +203,13 @@ function notesFor(before: Snapshot, after: Snapshot): Note[] {
  * Internet-to-resource reachability before and after a Terraform plan.
  * `plan` is the parsed output of `terraform show -json <planfile>`.
  */
-export function analyze(plan: unknown, limits: { maxPaths?: number; maxSegments?: number } = {}): Result {
+export function analyze(plan: unknown, limits: { maxPaths?: number; maxSegments?: number; maxPairs?: number } = {}): Result {
   try {
-    return analyzePlan(plan, { paths: 0, segments: 0, maxPaths: limits.maxPaths ?? MAX_PATHS, maxSegments: limits.maxSegments ?? MAX_SEGMENTS });
+    return analyzePlan(plan, { paths: 0, segments: 0, pairs: 0, maxPaths: limits.maxPaths ?? MAX_PATHS, maxSegments: limits.maxSegments ?? MAX_SEGMENTS, maxPairs: limits.maxPairs ?? MAX_PAIRS });
   } catch (e) {
     // Deeply nested JSON overflows the stack in a recursive walk: still a plan we cannot read.
-    if (e instanceof RangeError) throw new PlanError("The plan is nested too deeply, or is too large, to analyze.");
+    // Any other RangeError is a defect in the engine and must stay visible, not get a wrong cause.
+    if (isStackOverflow(e)) throw new PlanError("The plan is nested too deeply to analyze.");
     throw e;
   }
 }
@@ -265,6 +272,8 @@ function analyzePlan(plan: unknown, budget: Budget): Result {
   for (const from of addresses) {
     for (const to of addresses) {
       if (from === to) continue;
+      // The loop is quadratic in the endpoints, so it has its own budget (about 0.7 µs a pair).
+      if (++budget.pairs > budget.maxPairs) throw new PlanError(`The plan has more than ${budget.maxPairs.toLocaleString("en-US")} pairs of resources to check. Split the plan.`);
       const fb = epBefore.get(from);
       const fa = epAfter.get(from);
       const tb = epBefore.get(to);
