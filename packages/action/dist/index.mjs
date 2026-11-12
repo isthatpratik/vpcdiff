@@ -3649,7 +3649,7 @@ function shouldFail(result, failOn) {
   const count = (f) => result.paths.filter(f).length;
   const internet = (p) => p.from === "internet";
   if (failOn === "never") return false;
-  const widened = (p) => internet(p) && p.change === "changed" && p.before.verdict === "allowed" && p.after.verdict === "allowed" && sourcesWiden(p.before.sources, p.after.sources, p.family);
+  const widened = (p) => internet(p) && p.change === "changed" && p.before.verdict === "allowed" && p.after.verdict === "allowed" && (sourcesWiden(p.before.sources, p.after.sources, p.family) || p.after.reason !== "" && p.after.reason !== p.before.reason);
   const added = count((p) => internet(p) && p.change === "added" || widened(p));
   if (failOn === "added") return added > 0;
   const changed = count((p) => p.change === "changed" && !widened(p) || !internet(p) && (p.change === "added" || p.change === "removed"));
