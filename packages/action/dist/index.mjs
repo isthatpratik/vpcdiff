@@ -595,20 +595,27 @@ var DOC3 = {
 };
 var SAME_SUBNET = "same subnet: no network ACL applies";
 var protoMatches3 = (rule, p) => rule === "all" || rule === p;
+var USE_GROUPS = { use: true };
 function groupKeys(ep) {
   return ep.securityGroups.ok ? { ok: true, value: ep.securityGroups.value.map((g) => g.key) } : ep.securityGroups;
 }
-function sgStep(groups, dir, peerKeys, peerCidr, peer, p, ports) {
+function sgStep(groups, dir, peerKeys, peerCidr, peer, p, ports, refs = USE_GROUPS) {
   const names = groups.map((g) => g.address).join(", ") || "no security groups";
   const allowing = [];
   const doubt = [];
+  const ignored = [];
   for (const g of groups) {
     const rules = g[dir];
     if (!rules.ok) return { decision: "unknown", resource: g.address, rule: rules.reason, reason: rules.reason };
     for (const rule of rules.value) {
       if (!protoMatches3(rule.protocol, p) || !contains(rule.ports, [ports])) continue;
-      if (rule.groups.some((k) => peerKeys.includes(k)) || contains(rule.sources, peerCidr)) allowing.push(rule.text);
-      else if (!isEmpty(intersect(rule.sources, peerCidr))) doubt.push(`${rule.text} covers only part of the subnet of ${peer}, and its address is not known before apply`);
+      const byGroup = rule.groups.some((k) => peerKeys.includes(k));
+      if (contains(rule.sources, peerCidr) || byGroup && refs.use === true) allowing.push(rule.text);
+      else if (byGroup && refs.use === "unknown") doubt.push(`${rule.text} names a group of ${peer}: ${refs.why}`);
+      else if (byGroup && refs.use === false) {
+        ignored.push(`${rule.text} names a group of ${peer}, but ${refs.why}`);
+        if (!isEmpty(intersect(rule.sources, peerCidr))) doubt.push(`${rule.text} covers only part of the subnet of ${peer}, and its address is not known before apply`);
+      } else if (!isEmpty(intersect(rule.sources, peerCidr))) doubt.push(`${rule.text} covers only part of the subnet of ${peer}, and its address is not known before apply`);
       else if (rule.unresolved) doubt.push(`${rule.text}: ${rule.unresolved}`);
       else if (rule.listUnresolved) doubt.push(`${rule.text}: ${rule.listUnresolved}`);
     }
@@ -616,7 +623,7 @@ function sgStep(groups, dir, peerKeys, peerCidr, peer, p, ports) {
   const portText = `${p}/${formatPorts([ports])}`;
   if (allowing.length) return { decision: "allow", resource: names, rule: allowing.join("; ") };
   if (doubt.length) return { decision: "unknown", resource: names, rule: doubt.join("; "), reason: doubt.join("; ") };
-  const what = dir === "egress" ? `no egress rule of ${names} allows ${portText} to ${peer}` : `no ingress rule of ${names} allows ${portText} from ${peer}`;
+  const what = (dir === "egress" ? `no egress rule of ${names} allows ${portText} to ${peer}` : `no ingress rule of ${names} allows ${portText} from ${peer}`) + (ignored.length ? ` (${ignored.join("; ")})` : "");
   return { decision: "deny", resource: names, rule: what, reason: what };
 }
 function routeStep(table, at, peerCidr, peer) {
@@ -690,6 +697,123 @@ function peeringStep(table, at, peerCidr, peer, own, peerVpc) {
   if (!p.active.ok) return fail("unknown", pcx, p.active.reason);
   return { decision: "allow", resource: t.resource, rule: `${texts.join("; ")} (${p.active.value})` };
 }
+var TGW_DOC = "https://docs.aws.amazon.com/vpc/latest/tgw/how-transit-gateways-work.html";
+function transitOf(table, peerCidr) {
+  if (!table.ok || !table.value.routes.ok) return void 0;
+  const routes = table.value.routes.value.filter((r) => !isEmpty(intersect(r.cidr, peerCidr))).toSorted((a, b) => b.prefix - a.prefix);
+  let remaining = peerCidr;
+  const via = [];
+  for (const r of routes) {
+    const m = intersect(remaining, r.cidr);
+    if (isEmpty(m)) continue;
+    if (r.target.kind !== "other" || !r.target.tgw) return void 0;
+    via.push(r.target.tgw);
+    remaining = subtract(remaining, m);
+  }
+  const first = via[0];
+  if (!first) return void 0;
+  if (!first.ok) return first;
+  return via.every((v) => v.ok && v.value === first.value) ? first : void 0;
+}
+function attachmentOf(transit, tgw, vpc) {
+  const list = transit.attachments.filter((a) => a.tgw === tgw && a.vpc === vpc);
+  if (list.length === 1) return { ok: true, value: list[0] };
+  return { ok: false, reason: list.length ? `${vpc} has ${list.length} attachments to ${tgw}` : `${vpc} has no attachment to ${tgw} in this plan` };
+}
+function transitGroupRefs(transit, tgw, a, t) {
+  if (!transit?.ok || !tgw.ok) return { use: "unknown", why: "the transit gateway is not known" };
+  const gw = transit.value.gateways.get(tgw.value);
+  const atA = attachmentOf(transit.value, tgw.value, a.address);
+  const atT = attachmentOf(transit.value, tgw.value, t.address);
+  if (!gw || !atA.ok || !atT.ok) return { use: "unknown", why: "the transit gateway attachments are not known" };
+  const flags = [[tgw.value, gw.sgRefs], [atA.value.address, atA.value.sgRefs], [atT.value.address, atT.value.sgRefs]];
+  const unsure = flags.find(([, f]) => !f.ok);
+  if (unsure && !unsure[1].ok) return { use: "unknown", why: unsure[1].reason };
+  const off = flags.filter(([, f]) => f.ok && !f.value).map(([n]) => n);
+  return off.length ? { use: false, why: `security group referencing is not enabled on ${off.join(", ")}` } : USE_GROUPS;
+}
+function transitStep(table, at, peerCidr, peer, own, peerVpc, ownAz, transit) {
+  const fail = (decision, resource, why) => ({ decision, resource, rule: why, reason: why });
+  if (!table.ok) return fail("unknown", at, table.reason);
+  const t = table.value;
+  if (!t.routes.ok) return fail("unknown", t.resource, t.routes.reason);
+  if (own.cidrs.ok && peerVpc.cidrs.ok && !isEmpty(intersect(own.cidrs.value, peerVpc.cidrs.value))) return fail("unknown", own.address, `${own.address} and ${peerVpc.address} have overlapping CIDR blocks; a transit gateway does not route between them`);
+  const routes = t.routes.value.toSorted((a, b) => b.prefix - a.prefix);
+  let remaining = peerCidr;
+  const texts = [];
+  let tgw;
+  for (const [i, route] of routes.entries()) {
+    const m = intersect(remaining, route.cidr);
+    if (isEmpty(m)) continue;
+    if (routes.some((o, j) => j !== i && equals(o.cidr, route.cidr))) return fail("unknown", t.resource, `${t.resource} has more than one route for the same destination`);
+    texts.push(route.text);
+    const target = route.target;
+    if (target.kind === "other" && target.tgw) {
+      if (!target.tgw.ok) return fail("unknown", t.resource, target.tgw.reason);
+      if (tgw && tgw !== target.tgw.value) return fail("unknown", t.resource, `${t.resource} sends the subnet of ${peer} to more than one transit gateway`);
+      tgw = target.tgw.value;
+    } else if (target.kind === "drop") return fail(equals(m, peerCidr) ? "deny" : "unknown", t.resource, `${route.text}: ${target.why}${equals(m, peerCidr) ? "" : `, for part of the subnet of ${peer}`}`);
+    else if (target.kind === "unknown") return fail("unknown", t.resource, target.reason);
+    else return fail("unknown", t.resource, `${route.text} sends part of the subnet of ${peer} to a ${target.kind === "other" ? target.text : target.kind}, so the path through the transit gateway is not the only one`);
+    remaining = subtract(remaining, m);
+  }
+  if (!isEmpty(remaining) || !tgw) return fail("deny", t.resource, `${t.resource} has no route to the subnet of ${peer} in ${peerVpc.address}`);
+  if (!transit) return fail("unknown", tgw, "transit gateways are not known");
+  if (!transit.ok) return fail("unknown", tgw, transit.reason);
+  const tr = transit.value;
+  if (!tr.gateways.has(tgw)) return fail("unknown", tgw, `${tgw} is not a transit gateway in this plan`);
+  const mine = attachmentOf(tr, tgw, own.address);
+  if (!mine.ok) return fail("unknown", tgw, mine.reason);
+  const att = mine.value;
+  if (!ownAz) return fail("unknown", at, `the Availability Zone of ${at} is not known`);
+  if (!ownAz.ok) return fail("unknown", at, ownAz.reason);
+  if (!att.subnets.ok) return fail("unknown", att.address, att.subnets.reason);
+  const zones = att.subnets.value.map((s) => s.az);
+  if (!zones.some((z) => z.ok && z.value === ownAz.value)) {
+    const unsure = zones.find((z) => !z.ok);
+    if (unsure && !unsure.ok) return fail("unknown", att.address, unsure.reason);
+    return fail("deny", att.address, `${at} is in ${ownAz.value}, where ${att.address} has no subnet; only resources in Availability Zones with a transit gateway attachment can reach the transit gateway`);
+  }
+  if (!att.association.ok) return fail("unknown", att.address, att.association.reason);
+  const key = att.association.value;
+  if (key === null) return fail("deny", att.address, `${att.address} is not associated with a transit gateway route table, so ${tgw} has no route for its traffic`);
+  const name = tr.names.get(key) ?? key;
+  const tgwRoutes = tr.routes.get(key);
+  if (!tgwRoutes) return fail("unknown", name, `${name} is not in this plan`);
+  if (!tgwRoutes.ok) return fail("unknown", name, tgwRoutes.reason);
+  const live = tgwRoutes.value.filter((r) => r.static || !tgwRoutes.value.some((o) => o.static && equals(o.cidr, r.cidr)));
+  const ordered = live.toSorted((a, b) => b.prefix - a.prefix);
+  let rest = peerCidr;
+  const tgwTexts = [];
+  let peerAtt;
+  for (const [i, route] of ordered.entries()) {
+    const m = intersect(rest, route.cidr);
+    if (isEmpty(m)) continue;
+    if (ordered.some((o, j) => j !== i && equals(o.cidr, route.cidr))) return fail("unknown", name, `${name} has more than one route for the same destination`);
+    const clash = route.from ? ordered.find((o) => o.from && o.from !== route.from && !isEmpty(intersect(intersect(o.cidr, route.cidr), peerCidr))) : void 0;
+    if (clash) return fail("unknown", name, `${route.text} overlaps ${clash.text}; a transit gateway propagates only the route of the VPC attached first`);
+    tgwTexts.push(route.text);
+    const target = route.target;
+    const whole = equals(m, peerCidr);
+    if (target.kind === "blackhole") return fail(whole ? "deny" : "unknown", name, `${route.text}: the transit gateway drops traffic that matches a blackhole route${whole ? "" : `, for part of the subnet of ${peer}`}`);
+    if (target.kind === "unknown") return fail("unknown", name, target.reason);
+    const dest = tr.attachments.find((a) => a.address === target.address);
+    if (!dest) return fail("unknown", name, `${target.address} is not a VPC attachment in this plan`);
+    if (dest.vpc !== peerVpc.address) return fail(whole ? "deny" : "unknown", name, `${route.text} sends the subnet of ${peer} to ${dest.address} of ${dest.vpc}, not to ${peerVpc.address}`);
+    if (peerAtt && peerAtt !== dest.address) return fail("unknown", name, `${name} sends the subnet of ${peer} to more than one attachment`);
+    peerAtt = dest.address;
+    rest = subtract(rest, m);
+  }
+  if (!isEmpty(rest) || !peerAtt) return fail("deny", name, `${name} has no route to the subnet of ${peer}`);
+  const entry = tr.attachments.find((a) => a.address === peerAtt);
+  if (!entry.subnets.ok) return fail("unknown", entry.address, entry.subnets.reason);
+  for (const s of entry.subnets.value) {
+    const step = routeStep(s.table, s.address, peerCidr, peer);
+    if (step.decision !== "allow") return fail("unknown", entry.address, `traffic from ${tgw} can enter ${peerVpc.address} at ${s.address}, and there: ${step.reason ?? step.rule}`);
+  }
+  const zone = `${att.address} has a subnet in ${ownAz.value}`;
+  return { decision: "allow", resource: t.resource, rule: `${texts.join("; ")}; ${zone}; ${att.address} uses ${name}: ${tgwTexts.join("; ")}` };
+}
 function naclStep(nacl, at, dir, peerCidr, peer, p, ports, ephemeral) {
   if (!nacl.ok) return { decision: "unknown", resource: at, rule: nacl.reason, reason: nacl.reason };
   const n = nacl.value;
@@ -719,7 +843,7 @@ function evaluateInternal(a, t, p, ports) {
   const doubts = [];
   const run2 = (hop, s) => {
     if (s.doubt) doubts.push(s.doubt);
-    hops.push({ hop, resource: s.resource, decision: s.decision, rule: s.rule, doc: DOC3[hop] ?? SG_DOC });
+    hops.push({ hop, resource: s.resource, decision: s.decision, rule: s.rule, doc: s.doc ?? DOC3[hop] ?? SG_DOC });
     if (s.decision === "deny") return { verdict: "blocked", sources: [], hops, reason: s.reason ?? s.rule };
     if (s.decision === "unknown") return { verdict: "unknown", sources: [], hops, reason: s.reason ?? s.rule };
     return void 0;
@@ -733,12 +857,16 @@ function evaluateInternal(a, t, p, ports) {
   const tKeys = t.securityGroups.value.map((g) => g.key);
   const aCidr = a.subnetCidr.value;
   const tCidr = t.subnetCidr.value;
-  const out = run2("source-security-group", sgStep(a.securityGroups.value, "egress", tKeys, tCidr, t.address, p, ports));
+  const crossVpc = a.vpc.ok && t.vpc.ok && a.vpc.value.address !== t.vpc.value.address;
+  const viaTgw = crossVpc ? transitOf(a.routeTable, tCidr) : void 0;
+  const egressRefs = viaTgw ? { use: false, why: "outbound rules cannot reference security groups across a transit gateway" } : USE_GROUPS;
+  const out = run2("source-security-group", sgStep(a.securityGroups.value, "egress", tKeys, tCidr, t.address, p, ports, egressRefs));
   if (out) return out;
   if (!a.vpc.ok) return fail("source-route", a.address, a.vpc.reason);
   if (!t.vpc.ok) return fail("source-route", t.address, t.vpc.reason);
   const peered = a.vpc.value.address !== t.vpc.value.address;
-  const r1 = run2("source-route", peered ? peeringStep(a.routeTable, a.address, tCidr, t.address, a.vpc.value, t.vpc.value) : routeStep(a.routeTable, a.address, tCidr, t.address));
+  const cross = (from, to, cidr, own, other) => transitOf(from.routeTable, cidr) ? { ...transitStep(from.routeTable, from.subnet.ok ? from.subnet.value : from.address, cidr, to.address, own, other, from.az, from.transit), doc: TGW_DOC } : peeringStep(from.routeTable, from.address, cidr, to.address, own, other);
+  const r1 = run2("source-route", peered ? cross(a, t, tCidr, a.vpc.value, t.vpc.value) : routeStep(a.routeTable, a.address, tCidr, t.address));
   if (r1) return r1;
   const same = a.subnet.ok && t.subnet.ok && a.subnet.value === t.subnet.value;
   const at = (ep) => ep.subnet.ok ? ep.subnet.value : ep.address;
@@ -747,13 +875,14 @@ function evaluateInternal(a, t, p, ports) {
   if (n3) return n3;
   const n4 = run2("target-nacl-inbound", same ? skip(t) : naclStep(t.nacl, at(t), "ingress", aCidr, a.address, p, ports, false));
   if (n4) return n4;
-  const sg = run2("security-group", sgStep(t.securityGroups.value, "ingress", aKeys, aCidr, a.address, p, ports));
+  const ingressRefs = viaTgw ? transitGroupRefs(a.transit, viaTgw, a.vpc.value, t.vpc.value) : USE_GROUPS;
+  const sg = run2("security-group", sgStep(t.securityGroups.value, "ingress", aKeys, aCidr, a.address, p, ports, ingressRefs));
   if (sg) return sg;
   const n6 = run2("target-nacl-outbound", same ? skip(t) : naclStep(t.nacl, at(t), "egress", aCidr, a.address, p, ports, true));
   if (n6) return n6;
   const n7 = run2("source-nacl-inbound", same ? skip(a) : naclStep(a.nacl, at(a), "ingress", tCidr, t.address, p, ports, true));
   if (n7) return n7;
-  const r8 = run2("target-route", peered ? peeringStep(t.routeTable, t.address, aCidr, a.address, t.vpc.value, a.vpc.value) : routeStep(t.routeTable, t.address, aCidr, a.address));
+  const r8 = run2("target-route", peered ? cross(t, a, aCidr, t.vpc.value, a.vpc.value) : routeStep(t.routeTable, t.address, aCidr, a.address));
   if (r8) return r8;
   return { verdict: "allowed", sources: [a.address], hops, reason: doubts.join("; ") };
 }
@@ -936,6 +1065,8 @@ var unknown = (reason) => ({ ok: false, reason });
 var UNMODELED_ROUTES = ["aws_vpn_gateway_route_propagation"];
 var UNMODELED_INSTANCE = ["aws_network_interface_sg_attachment", "aws_network_interface_attachment"];
 var UNMODELED = /* @__PURE__ */ new Set([...UNMODELED_ROUTES, ...UNMODELED_INSTANCE]);
+var UNMODELED_TGW = ["aws_ec2_transit_gateway_default_route_table_association", "aws_ec2_transit_gateway_default_route_table_propagation", "aws_ec2_transit_gateway_prefix_list_reference", "aws_ec2_transit_gateway_vpc_attachment_accepter"];
+var TGW_DEFAULTS = ["association_default_route_table_id", "propagation_default_route_table_id"];
 var VPC_DEFAULTS = [
   ["default_route_table_id", "default-rt"],
   ["main_route_table_id", "main-rt"],
@@ -961,6 +1092,10 @@ function subnetCidrOf(s) {
   const cidr = typeof s.values.cidr_block === "string" ? s.values.cidr_block : void 0;
   const set = cidr && !isUnknown(s, ["cidr_block"]) ? cidrToSet(cidr) : void 0;
   return set ? known(set) : unknown(`${s.address}: cidr_block is unknown until apply`);
+}
+function azOf(s) {
+  const az = typeof s.values.availability_zone === "string" ? s.values.availability_zone : void 0;
+  return az && !isUnknown(s, ["availability_zone"]) ? known(az) : unknown(`${s.address}: availability_zone is unknown until apply`);
 }
 var typeOf = (address) => address.replace(/\[[^\]]*\]/g, "").split(".").at(-2) ?? "";
 var str = (v) => typeof v === "string" && v !== "" ? v : void 0;
@@ -1438,6 +1573,10 @@ var ModelBuilder = class {
         const id = r.values.vpc_peering_connection_id;
         target = { ...target, peering: !isUnknown(r, ["vpc_peering_connection_id"]) && typeof id === "string" ? this.peeringById(r, id) : this.refTo(r, "vpc_peering_connection_id", "aws_vpc_peering_connection") };
       }
+      if (other === "transit_gateway_id" && target.kind === "other") {
+        const id = r.values.transit_gateway_id;
+        target = { ...target, tgw: !isUnknown(r, ["transit_gateway_id"]) && typeof id === "string" ? this.tgwById(r, id) : this.refTo(r, "transit_gateway_id", "aws_ec2_transit_gateway") };
+      }
     }
     if (!isUnknown(r, ["state"]) && r.values.state === "blackhole") target = { kind: "drop", ...BLACKHOLE };
     if (listed) return known(this.listRoutes(this.listsOf(resolveRefs(this.snap, r, "destination_prefix_list_id", "aws_ec2_managed_prefix_list")), target, r.address));
@@ -1722,6 +1861,12 @@ var ModelBuilder = class {
       if (str(raw[key]) || isUnknown(r, [...path, key])) {
         const d = dropOf(key);
         if (d?.kind === "drop" && key === "vpc_peering_connection_id") return { ...d, peering: this.inlinePeering(r, raw, path) };
+        if (key === "transit_gateway_id") {
+          const id = raw.transit_gateway_id;
+          const refs = r.otherRefs.has("route") ? [] : fromConfig(this.snap, r, "route", "aws_ec2_transit_gateway");
+          const tgw = !isUnknown(r, [...path, "transit_gateway_id"]) && typeof id === "string" ? this.tgwById(r, id) : refs.length === 1 && refs[0]?.kind === "resource" ? known(refs[0].address) : unknown(`${r.address}: the transit gateway of a route is unknown until apply`);
+          return { kind: "other", text: "transit gateway", tgw };
+        }
         return d ?? { kind: "other", text: key.replace(/_id$|_arn$/, "").replaceAll("_", " ") };
       }
     }
@@ -1768,6 +1913,187 @@ var ModelBuilder = class {
       if (ref.ok && ref.value === p.address && !isUnknown(acc, ["auto_accept"]) && acc.values.auto_accept === true) return known(`${acc.address} accepts ${p.address}`);
     }
     return unknown(`${p.address} is not accepted in this plan, so it may not be active`);
+  }
+  /** The aws_ec2_transit_gateway with this ID. */
+  tgwById(r, id) {
+    const found = this.ofType("aws_ec2_transit_gateway").filter((g) => g.values.id === id && !isUnknown(g, ["id"]));
+    return found.length === 1 ? known(found[0].address) : unknown(`${r.address}: transit gateway ${id} is not in this plan`);
+  }
+  /**
+   * An `enable`/`disable` option. A value the provider computes (unknown and not in the
+   * configuration) is AWS's default.
+   */
+  option(r, attr, dflt) {
+    if (isUnknown(r, [attr])) return r.configured.has(attr) ? unknown(`${r.address}: ${attr} is unknown until apply`) : known(dflt);
+    const v = r.values[attr];
+    if (v === null || v === void 0 || v === "") return known(dflt);
+    if (v === "enable" || v === true) return known(true);
+    if (v === "disable" || v === false) return known(false);
+    return unknown(`${r.address}: ${attr} = ${String(v)} cannot be read`);
+  }
+  /** The key of a transit gateway route table: its address, or `tgw-default-rt:<gateway>`. */
+  tgwTableKey(r, attr) {
+    const v = r.values[attr];
+    const gateways = this.ofType("aws_ec2_transit_gateway");
+    if (!isUnknown(r, [attr]) && typeof v === "string" && v) {
+      const a = this.snap.byId.get(v);
+      if (a && typeOf(a) === "aws_ec2_transit_gateway_route_table") return known(a);
+      const g = gateways.find((x) => TGW_DEFAULTS.some((k) => !isUnknown(x, [k]) && x.values[k] === v));
+      return g ? known(`tgw-default-rt:${g.address}`) : unknown(`${r.address}: transit gateway route table ${v} is not in this plan`);
+    }
+    if (r.otherRefs.has(attr)) return unknown(`${r.address}: ${attr} uses values that are unknown until apply`);
+    const bases = /* @__PURE__ */ new Map();
+    for (const ref of r.fullRefs[attr] ?? []) {
+      const m = /^(.*?aws_\w+\.[\w-]+(?:\[[^\]]+\])?)(?:\.(\w+))?$/.exec(localize(r.address, ref));
+      if (!m) continue;
+      const base = m[1];
+      if (m[2] || !bases.has(base)) bases.set(base, m[2] ?? bases.get(base));
+    }
+    const [entry] = [...bases.entries()];
+    const address = bases.size === 1 && entry ? instanceOf(this.snap, entry[0]) : void 0;
+    if (address && typeOf(address) === "aws_ec2_transit_gateway_route_table") return known(address);
+    if (address && typeOf(address) === "aws_ec2_transit_gateway" && entry && TGW_DEFAULTS.includes(entry[1] ?? "")) return known(`tgw-default-rt:${address}`);
+    return unknown(`${r.address}: ${attr} is unknown until apply and cannot be matched to one transit gateway route table`);
+  }
+  transitCache;
+  /** Transit gateways in the plan, built once. */
+  transit() {
+    this.transitCache ??= this.buildTransit();
+    return this.transitCache;
+  }
+  /**
+   * Transit gateways, their VPC attachments, associations, and route tables.
+   * Rules and sources: docs/semantics/transit-gateway.md.
+   * https://docs.aws.amazon.com/vpc/latest/tgw/how-transit-gateways-work.html
+   */
+  buildTransit() {
+    for (const type of UNMODELED_TGW) {
+      const r = this.ofType(type)[0];
+      if (r) return unknown(`${r.address} (${type}) changes transit gateway routing, and ${type} is not modeled yet`);
+    }
+    const gateways = /* @__PURE__ */ new Map();
+    for (const g of this.ofType("aws_ec2_transit_gateway").toSorted((a, b) => cmp(a.address, b.address))) {
+      gateways.set(g.address, { sgRefs: this.option(g, "security_group_referencing_support", false), assoc: this.option(g, "default_route_table_association", true), prop: this.option(g, "default_route_table_propagation", true) });
+    }
+    const names = /* @__PURE__ */ new Map();
+    for (const g of gateways.keys()) names.set(`tgw-default-rt:${g}`, `default route table of ${g}`);
+    for (const t of this.ofType("aws_ec2_transit_gateway_route_table")) names.set(t.address, t.address);
+    const attachRef = (r) => {
+      const v = r.values.transit_gateway_attachment_id;
+      if (!isUnknown(r, ["transit_gateway_attachment_id"]) && typeof v === "string") {
+        const a = this.snap.byId.get(v);
+        return a && typeOf(a) === "aws_ec2_transit_gateway_vpc_attachment" ? known(a) : unknown(`${r.address}: attachment ${v} is not a VPC attachment in this plan`);
+      }
+      return this.refTo(r, "transit_gateway_attachment_id", "aws_ec2_transit_gateway_vpc_attachment");
+    };
+    const assocOf = /* @__PURE__ */ new Map();
+    const propsOf = /* @__PURE__ */ new Map();
+    for (const r of this.ofType("aws_ec2_transit_gateway_route_table_association")) {
+      const att = attachRef(r);
+      const table = this.tgwTableKey(r, "transit_gateway_route_table_id");
+      if (!att.ok) return unknown(att.reason);
+      if (!table.ok) return unknown(table.reason);
+      assocOf.set(att.value, [...assocOf.get(att.value) ?? [], { table: table.value, replace: r.values.replace_existing_association === true, address: r.address }]);
+    }
+    for (const r of this.ofType("aws_ec2_transit_gateway_route_table_propagation")) {
+      const att = attachRef(r);
+      const table = this.tgwTableKey(r, "transit_gateway_route_table_id");
+      if (!att.ok) return unknown(att.reason);
+      if (!table.ok) return unknown(table.reason);
+      propsOf.set(table.value, [...propsOf.get(table.value) ?? [], att.value]);
+    }
+    const attachments = [];
+    for (const a of this.ofType("aws_ec2_transit_gateway_vpc_attachment").toSorted((x, y) => cmp(x.address, y.address))) {
+      const tgw = this.refTo(a, "transit_gateway_id", "aws_ec2_transit_gateway");
+      if (!tgw.ok) return unknown(tgw.reason);
+      const vpcRef = this.refTo(a, "vpc_id", "aws_vpc");
+      if (!vpcRef.ok) return unknown(vpcRef.reason);
+      const gw = gateways.get(tgw.value);
+      const vpc = this.vpc(vpcRef.value);
+      let subnets;
+      if (!vpc.ok) subnets = unknown(vpc.reason);
+      else {
+        const list = [];
+        let why;
+        for (const ref of resolveRefs(this.snap, a, "subnet_ids", "aws_subnet")) {
+          const s = ref.kind === "resource" ? this.get(ref.address) : void 0;
+          if (!s) {
+            why = ref.kind === "unknown" ? ref.reason : `${a.address}: subnet ${ref.kind === "external" ? ref.id : ""} is not in this plan`;
+            break;
+          }
+          list.push({ address: s.address, az: azOf(s), table: this.subnetRouteTable(s.address, vpc.value) });
+        }
+        subnets = why ? unknown(why) : known(list.toSorted((x, y) => cmp(x.address, y.address)));
+      }
+      const explicit = assocOf.get(a.address) ?? [];
+      const byDefault = !gw.assoc.ok ? gw.assoc : !gw.assoc.value ? known(false) : this.option(a, "transit_gateway_default_route_table_association", true);
+      let association;
+      if (explicit.length > 1) association = unknown(`${a.address} has ${explicit.length} route table associations`);
+      else if (explicit[0] && (explicit[0].replace || byDefault.ok && !byDefault.value)) association = known(explicit[0].table);
+      else if (explicit[0]) association = unknown(byDefault.ok ? `${a.address} has the default association and ${explicit[0].address} without replace_existing_association` : byDefault.reason);
+      else association = byDefault.ok ? known(byDefault.value ? `tgw-default-rt:${tgw.value}` : null) : unknown(byDefault.reason);
+      attachments.push({ address: a.address, tgw: tgw.value, vpc: vpcRef.value, subnets, association, sgRefs: this.option(a, "security_group_referencing_support", true) });
+    }
+    for (const att of attachments) {
+      const gw = gateways.get(att.tgw);
+      const r = this.get(att.address);
+      const prop = !gw?.prop.ok ? gw?.prop : !gw.prop.value ? known(false) : this.option(r, "transit_gateway_default_route_table_propagation", true);
+      const key = `tgw-default-rt:${att.tgw}`;
+      if (prop && !prop.ok) propsOf.set(key, [...propsOf.get(key) ?? [], `unknown:${prop.reason}`]);
+      else if (prop?.value) propsOf.set(key, [...propsOf.get(key) ?? [], att.address]);
+    }
+    const routes = /* @__PURE__ */ new Map();
+    const add = (key, item) => {
+      const cur = routes.get(key) ?? known([]);
+      if (!cur.ok) return;
+      routes.set(key, item.ok ? known([...cur.value, item.value]) : unknown(item.reason));
+    };
+    for (const key of names.keys()) routes.set(key, known([]));
+    for (const r of this.ofType("aws_ec2_transit_gateway_route").toSorted((a, b) => cmp(a.address, b.address))) {
+      const key = this.tgwTableKey(r, "transit_gateway_route_table_id");
+      if (!key.ok) return unknown(key.reason);
+      const name = names.get(key.value) ?? key.value;
+      if (hasUnknown(r, ["destination_cidr_block"])) {
+        add(key.value, unknown(`${r.address}: destination is unknown until apply`));
+        continue;
+      }
+      const cidr = str(r.values.destination_cidr_block) ?? "";
+      const set = cidrToSet(cidr);
+      const prefix = cidrPrefixLength(cidr);
+      if (!set || prefix === void 0) continue;
+      if (!isUnknown(r, ["blackhole"]) && r.values.blackhole === true) {
+        add(key.value, known({ cidr: set, prefix, static: true, target: { kind: "blackhole" }, text: `${r.address} ${cidr} -> blackhole (in ${name})` }));
+        continue;
+      }
+      const att = attachRef(r);
+      add(key.value, known({ cidr: set, prefix, static: true, target: att.ok ? { kind: "attachment", address: att.value } : { kind: "unknown", reason: att.reason }, text: `${r.address} ${cidr} -> ${att.ok ? att.value : "an attachment outside the plan"} (in ${name})` }));
+    }
+    for (const [key, list] of [...propsOf.entries()].toSorted(([a], [b]) => cmp(a, b))) {
+      const name = names.get(key) ?? key;
+      for (const att of [...new Set(list)].toSorted(cmp)) {
+        if (att.startsWith("unknown:")) {
+          add(key, unknown(att.slice("unknown:".length)));
+          continue;
+        }
+        const a = attachments.find((x) => x.address === att);
+        if (!a) {
+          add(key, unknown(`${att} is not a VPC attachment in this plan, so the routes it propagates are not known`));
+          continue;
+        }
+        const vpc = this.vpc(a.vpc);
+        if (!vpc.ok || !vpc.value.cidrs.ok) {
+          add(key, unknown(!vpc.ok ? vpc.reason : vpc.value.cidrs.ok ? "" : vpc.value.cidrs.reason));
+          continue;
+        }
+        const blocks = vpc.value.blocks ?? [];
+        for (const b of blocks) {
+          const set = cidrToSet(b);
+          const prefix = cidrPrefixLength(b);
+          if (set && prefix !== void 0) add(key, known({ cidr: set, prefix, static: false, target: { kind: "attachment", address: att }, from: att, text: `${name} ${b} propagated from ${att}` }));
+        }
+      }
+    }
+    return known({ gateways: new Map([...gateways].map(([k, v]) => [k, { sgRefs: v.sgRefs }])), attachments, routes, names });
   }
   inlineRoutes(r) {
     const vgws = r.values.propagating_vgws;
@@ -1900,6 +2226,8 @@ var ModelBuilder = class {
       securityGroups: groups(vpcRef.value),
       nacl: this.subnetNacl(subnet, vpcRef.value),
       routeTable: this.subnetRouteTable(subnet, vpc.value),
+      az: azOf(s),
+      transit: this.transit(),
       ...placement ? { placement } : {},
       via
     };
@@ -2305,6 +2633,12 @@ var MODELED = /* @__PURE__ */ new Set([
   "aws_default_network_acl",
   "aws_eip",
   "aws_eip_association",
+  "aws_ec2_transit_gateway",
+  "aws_ec2_transit_gateway_vpc_attachment",
+  "aws_ec2_transit_gateway_route_table",
+  "aws_ec2_transit_gateway_route",
+  "aws_ec2_transit_gateway_route_table_association",
+  "aws_ec2_transit_gateway_route_table_propagation",
   "aws_instance",
   "aws_db_instance",
   "aws_db_subnet_group",
