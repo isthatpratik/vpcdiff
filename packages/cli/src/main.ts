@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { parseArgs } from "node:util";
-import { analyze, ENGINE_VERSION, PlanError, toJson } from "@vpcdiff/engine";
+import { analyze, ENGINE_VERSION, MAX_PLAN_CHARS, PlanError, toJson } from "@vpcdiff/engine";
 import { withoutControls } from "@vpcdiff/engine/explain";
 import { renderPretty, type Colors } from "./pretty.ts";
 import { renderMarkdown, renderText, shouldFail, type FailOn } from "./render.ts";
@@ -80,6 +80,7 @@ export function run(argv: string[], io: Io): number {
   let text: string;
   try {
     text = source === "-" ? io.stdin() : readFileSync(source, "utf8");
+    if (text.length > MAX_PLAN_CHARS) throw new Error(`the plan is larger than ${MAX_PLAN_CHARS / 1024 / 1024} MB`);
   } catch (e) {
     io.err(`vpcdiff: cannot read ${source}: ${(e as Error).message}\n`);
     return 2;

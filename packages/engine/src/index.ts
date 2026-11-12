@@ -7,10 +7,29 @@ import { azureCuts, azureExposed, evaluateAzure } from "./azure/evaluate.js";
 import { AzureModel, type AzVm } from "./azure/model.js";
 import { formatPorts, union, type IntervalSet, type Range } from "./intervals.js";
 import { ModelBuilder, type Endpoint } from "./model.js";
-import { cmp, parsePlan, type Snapshot } from "./plan.js";
+import { cmp, parsePlan, PlanError, type Snapshot } from "./plan.js";
 import { RESULT_FORMAT, type Change, type Note, type Outcome, type Path, type Protocol, type Result } from "./types.js";
 
 export { PlanError } from "./plan.js";
+
+/**
+ * Limits that keep a crafted plan from using all memory or time. A plan hits them only when
+ * it is far beyond real use (the paths inside a VPC grow with the square of the endpoints
+ * that share a security group: 1,000 of them make 1 million paths and 2 GB), and the result
+ * is a PlanError, never "safe". The CLI and the Action refuse a plan file over
+ * MAX_PLAN_CHARS before parsing it.
+ */
+export const MAX_PATHS = 500_000;
+export const MAX_SEGMENTS = 1_000_000;
+export const MAX_PLAN_CHARS = 256 * 1024 * 1024;
+
+/** Work done so far in one analysis, and the limits (tests lower them). */
+interface Budget {
+  paths: number;
+  segments: number;
+  maxPaths: number;
+  maxSegments: number;
+}
 export * from "./types.js";
 
 /** Version of the engine package. */
@@ -178,7 +197,23 @@ function notesFor(before: Snapshot, after: Snapshot): Note[] {
  * Internet-to-resource reachability before and after a Terraform plan.
  * `plan` is the parsed output of `terraform show -json <planfile>`.
  */
-export function analyze(plan: unknown): Result {
+export function analyze(plan: unknown, limits: { maxPaths?: number; maxSegments?: number } = {}): Result {
+  try {
+    return analyzePlan(plan, { paths: 0, segments: 0, maxPaths: limits.maxPaths ?? MAX_PATHS, maxSegments: limits.maxSegments ?? MAX_SEGMENTS });
+  } catch (e) {
+    // Deeply nested JSON overflows the stack in a recursive walk: still a plan we cannot read.
+    if (e instanceof RangeError) throw new PlanError("The plan is nested too deeply, or is too large, to analyze.");
+    throw e;
+  }
+}
+
+function analyzePlan(plan: unknown, budget: Budget): Result {
+  const pathsOf = (spec: PathSpec): Path[] => {
+    const out = pathsWithin(spec, budget);
+    budget.paths += out.length;
+    if (budget.paths > budget.maxPaths) throw new PlanError(`The plan has more than ${budget.maxPaths.toLocaleString("en-US")} paths to report. Split the plan, or narrow the security group rules that connect so many resources.`);
+    return out;
+  };
   const { before, after } = parsePlan(plan);
   const epBefore = endpointsOf(before);
   const epAfter = endpointsOf(after);
@@ -358,7 +393,7 @@ interface PathSpec {
 }
 
 /** Paths for one source and target: per protocol, port ranges with the same outcome merged. */
-function pathsOf(spec: PathSpec): Path[] {
+function pathsWithin(spec: PathSpec, budget: Budget): Path[] {
   const out: Path[] = [];
   for (const p of PROTOCOLS) {
     let run: { ports: Range; before: Outcome; after: Outcome } | undefined;
@@ -370,6 +405,7 @@ function pathsOf(spec: PathSpec): Path[] {
       run = undefined;
     };
     for (const seg of segment(spec.candidates(p), spec.cuts)) {
+      if (++budget.segments > budget.maxSegments) throw new PlanError(`The plan needs more than ${budget.maxSegments.toLocaleString("en-US")} port checks. A security group or network ACL has far more rules than AWS allows; reduce them.`);
       const ob = spec.before(p, seg);
       const oa = spec.after(p, seg);
       // Merge neighboring port ranges with the same outcome on both sides.

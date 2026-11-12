@@ -7,14 +7,14 @@ import { existsSync, lstatSync, readdirSync, readFileSync, statSync, writeFileSy
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import * as p from "@clack/prompts";
-import { analyze, PlanError, type Result } from "@vpcdiff/engine";
+import { analyze, MAX_PLAN_CHARS, PlanError, type Result } from "@vpcdiff/engine";
 import { portLabel, withoutControls } from "@vpcdiff/engine/explain";
 import pc from "picocolors";
 import { findPlans, type Candidate } from "./discover.ts";
 import { prettyPath, renderPretty } from "./pretty.ts";
 import { renderMarkdown, shouldFail, visiblePaths, type FailOn } from "./render.ts";
 
-const MAX_PLAN = 512 * 1024 * 1024;
+const MAX_PLAN = MAX_PLAN_CHARS * 2;
 
 function head(file: string): string | undefined {
   try {
@@ -139,6 +139,11 @@ export async function interactive(failOn: FailOn = "added"): Promise<number> {
     return 2;
   }
 
+  if (text.length > MAX_PLAN_CHARS) {
+    p.log.error(`That plan is larger than ${MAX_PLAN_CHARS / 1024 / 1024} MB.`);
+    p.outro(pc.red("Stopped."));
+    return 2;
+  }
   let result: Result;
   try {
     result = withoutControls(analyze(JSON.parse(text) as unknown));

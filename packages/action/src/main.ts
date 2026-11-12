@@ -1,4 +1,4 @@
-import { analyze, PlanError, type Result } from "@vpcdiff/engine";
+import { analyze, MAX_PLAN_CHARS, PlanError, type Result } from "@vpcdiff/engine";
 import { withoutControls } from "@vpcdiff/engine/explain";
 import { renderMarkdown, shouldFail, type FailOn } from "@vpcdiff/cli/render";
 
@@ -97,7 +97,9 @@ export async function run(env: Env): Promise<number> {
   }
   let result: Result;
   try {
-    result = withoutControls(analyze(JSON.parse(env.readFile(planPath))));
+    const text = env.readFile(planPath);
+    if (text.length > MAX_PLAN_CHARS) throw new PlanError(`the plan is larger than ${MAX_PLAN_CHARS / 1024 / 1024} MB`);
+    result = withoutControls(analyze(JSON.parse(text)));
   } catch (e) {
     const why = e instanceof SyntaxError ? "the file is not valid JSON" : e instanceof PlanError ? e.message : (e as Error).message;
     env.log(`::error::${escape(`vpcdiff: ${planPath}: ${why}`)}`);
