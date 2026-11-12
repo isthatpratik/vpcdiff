@@ -3553,6 +3553,13 @@ function sourcesText(sources, family) {
   const except = family === "ipv6" ? void 0 : exceptOf(sources);
   return except ? `internet except ${except.join(", ")}` : sources.join(", ");
 }
+var CONTROL = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g;
+function withoutControls(value) {
+  if (typeof value === "string") return value.replace(CONTROL, "\uFFFD");
+  if (Array.isArray(value)) return value.map((v) => withoutControls(v));
+  if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([k, v]) => [withoutControls(k), withoutControls(v)]));
+  return value;
+}
 
 // ../cli/src/render.ts
 var ORDER = ["added", "removed", "changed", "unknown", "unchanged"];
@@ -3674,7 +3681,7 @@ async function run(env) {
   }
   let result;
   try {
-    result = analyze(JSON.parse(env.readFile(planPath)));
+    result = withoutControls(analyze(JSON.parse(env.readFile(planPath))));
   } catch (e) {
     const why = e instanceof SyntaxError ? "the file is not valid JSON" : e instanceof PlanError ? e.message : e.message;
     env.log(`::error::${escape(`vpcdiff: ${planPath}: ${why}`)}`);

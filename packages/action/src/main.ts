@@ -1,4 +1,5 @@
 import { analyze, PlanError, type Result } from "@vpcdiff/engine";
+import { withoutControls } from "@vpcdiff/engine/explain";
 import { renderMarkdown, shouldFail, type FailOn } from "@vpcdiff/cli/render";
 
 /** Hidden marker that identifies the comment this action owns. */
@@ -79,7 +80,7 @@ export async function run(env: Env): Promise<number> {
   }
   let result: Result;
   try {
-    result = analyze(JSON.parse(env.readFile(planPath)));
+    result = withoutControls(analyze(JSON.parse(env.readFile(planPath))));
   } catch (e) {
     const why = e instanceof SyntaxError ? "the file is not valid JSON" : e instanceof PlanError ? e.message : (e as Error).message;
     env.log(`::error::${escape(`vpcdiff: ${planPath}: ${why}`)}`);

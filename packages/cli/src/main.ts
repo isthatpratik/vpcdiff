@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 import { analyze, ENGINE_VERSION, PlanError, toJson } from "@vpcdiff/engine";
+import { withoutControls } from "@vpcdiff/engine/explain";
 import { renderPretty, type Colors } from "./pretty.ts";
 import { renderMarkdown, renderText, shouldFail, type FailOn } from "./render.ts";
 
@@ -93,7 +94,9 @@ export function run(argv: string[], io: Io): number {
   }
   const opts = { all: values.all };
   const name = source === "-" ? undefined : source;
-  io.out(format === "json" ? toJson(result) : format === "markdown" ? renderMarkdown(result, opts) : io.pretty ? renderPretty(io.pretty, result, { ...opts, name }) : renderText(result, opts));
+  // Text and Markdown show plan strings; JSON escapes control characters by itself.
+  const shown = withoutControls(result);
+  io.out(format === "json" ? toJson(result) : format === "markdown" ? renderMarkdown(shown, opts) : io.pretty ? renderPretty(io.pretty, shown, { ...opts, name }) : renderText(shown, opts));
   return shouldFail(result, failOn) ? 1 : 0;
 }
 

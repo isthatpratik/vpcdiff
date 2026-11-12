@@ -4,7 +4,7 @@
 import type { Path, Result } from "./types.js";
 import { isInternet, lanesOf, type CellState, type ColumnKey } from "./lanes.js";
 import { exceptOf } from "./sources.js";
-export { sourcesText } from "./sources.js";
+export { sourcesText, withoutControls } from "./sources.js";
 
 /** Well-known ports, so "tcp/5432" can also say "PostgreSQL". */
 const SERVICES: Record<string, string> = {

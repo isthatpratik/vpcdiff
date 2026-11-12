@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import * as p from "@clack/prompts";
 import { analyze, PlanError, type Result } from "@vpcdiff/engine";
-import { portLabel } from "@vpcdiff/engine/explain";
+import { portLabel, withoutControls } from "@vpcdiff/engine/explain";
 import pc from "picocolors";
 import { findPlans, type Candidate } from "./discover.ts";
 import { prettyPath, renderPretty } from "./pretty.ts";
@@ -128,7 +128,7 @@ export async function interactive(failOn: FailOn = "added"): Promise<number> {
 
   let result: Result;
   try {
-    result = analyze(JSON.parse(text) as unknown);
+    result = withoutControls(analyze(JSON.parse(text) as unknown));
   } catch (e) {
     p.log.error(e instanceof SyntaxError ? "That file is not valid JSON. Open the output of terraform show -json." : e instanceof PlanError ? e.message : String(e));
     p.outro(pc.red("Stopped."));

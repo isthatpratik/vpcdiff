@@ -12,6 +12,18 @@ function cli(args: string[], stdin = "") {
 }
 
 describe("vpcdiff CLI", () => {
+  it("never prints a terminal escape sequence from the plan", async () => {
+    const { readFileSync } = await import("node:fs");
+    const evil = readFileSync(fixture("sg-5432-opened"), "utf8").replaceAll("aws_instance.db", "aws_instance.db\\u001b]8;;https://evil.example\\u0007x\\u001b[2J");
+    for (const f of ["text", "markdown"]) {
+      const r = cli(["--format", f, "-"], evil);
+      // eslint-disable-next-line no-control-regex
+      expect(r.out).not.toMatch(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/);
+      expect(r.out).toContain("aws_instance.db\uFFFD]8;;");
+    }
+  });
+
+
   it("prints the text report and exits 1 for a new exposure", () => {
     const r = cli([fixture("sg-5432-opened")]);
     expect(r.code).toBe(1);
