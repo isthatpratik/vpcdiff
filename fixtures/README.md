@@ -18,4 +18,13 @@ the fake provider credentials are removed, so regenerating gives the same file.
 OpenTofu and checks that the engine result equals `expected.json` byte for byte. The
 OpenTofu workflow runs it in CI.
 
+To avoid downloading the AWS provider (about 150 MB) on your own machine, the
+"Fixture plan" workflow runs `pnpm fixture:plan` on a GitHub runner and uploads
+`plan.json` as an artifact:
+
+```sh
+gh workflow run fixture-plan.yml --ref <branch> -f fixture=<name>
+gh run download <run-id> -n plan-<name> -D fixtures/<name>
+```
+
 See [CONTRIBUTING.md](../CONTRIBUTING.md#fixtures) and [ADR 0004](../docs/adr/0004-reachability-analyzer-as-oracle.md).

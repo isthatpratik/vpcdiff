@@ -1,0 +1,58 @@
+name: Fixture plan
+
+# Generates fixtures/<name>/plan.json with Terraform on a GitHub runner and uploads it
+# as an artifact, so a maintainer does not download the AWS provider on their own
+# machine. It runs scripts/make-fixture-plan.ts, which uses scripts/sandbox-env.ts:
+# fake credentials, no AWS account, and -refresh=false. Nothing is applied.
+#
+# Run it with: gh workflow run fixture-plan.yml --ref <branch> -f fixture=<name>
+
+on:
+  workflow_dispatch:
+    inputs:
+      fixture:
+        description: "Fixture directory name under fixtures/ (for example instance-eni)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check the fixture name
+        env:
+          FIXTURE: ${{ inputs.fixture }}
+        run: |
+          if ! [[ "$FIXTURE" =~ ^[a-z0-9][a-z0-9-]*$ ]]; then
+            echo "::error::Fixture name must match ^[a-z0-9][a-z0-9-]*$"
+            exit 1
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      # The committed plans were made with Terraform 1.13.3.
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: 1.13.3
+          terraform_wrapper: false
+      - run: pnpm install --frozen-lockfile
+      - name: Generate the plan
+        env:
+          FIXTURE: ${{ inputs.fixture }}
+          TMPDIR: ${{ runner.temp }}
+        run: node scripts/make-fixture-plan.ts "fixtures/$FIXTURE"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: plan-${{ inputs.fixture }}
+          path: fixtures/${{ inputs.fixture }}/plan.json
+          if-no-files-found: error
+          retention-days: 7
