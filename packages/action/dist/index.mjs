@@ -3562,6 +3562,22 @@ function withoutControls(value) {
   if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([k, v]) => [withoutControls(k), withoutControls(v)]));
   return value;
 }
+function sourceSet(sources) {
+  let out = [];
+  for (const s of sources) {
+    const set = s === "internet" ? PUBLIC_IPV4 : cidrToSet(s);
+    if (!set) return void 0;
+    out = union(out, set);
+  }
+  return out;
+}
+function sourcesWiden(before, after, family) {
+  if (family === "ipv6") return after.some((s) => !before.includes(s) && !(s !== "internet" && before.includes("internet")));
+  const a = sourceSet(after);
+  const b = sourceSet(before);
+  if (!a || !b) return true;
+  return !isEmpty(subtract(a, b));
+}
 
 // ../engine/src/explain.ts
 function mdCode(value) {
@@ -3633,9 +3649,10 @@ function shouldFail(result, failOn) {
   const count = (f) => result.paths.filter(f).length;
   const internet = (p) => p.from === "internet";
   if (failOn === "never") return false;
-  const added = count((p) => internet(p) && p.change === "added");
+  const widened = (p) => internet(p) && p.change === "changed" && p.before.verdict === "allowed" && p.after.verdict === "allowed" && sourcesWiden(p.before.sources, p.after.sources, p.family);
+  const added = count((p) => internet(p) && p.change === "added" || widened(p));
   if (failOn === "added") return added > 0;
-  const changed = count((p) => p.change === "changed" || !internet(p) && (p.change === "added" || p.change === "removed"));
+  const changed = count((p) => p.change === "changed" && !widened(p) || !internet(p) && (p.change === "added" || p.change === "removed"));
   if (failOn === "changed") return added + changed > 0;
   return added + changed + result.summary.unknown > 0;
 }
