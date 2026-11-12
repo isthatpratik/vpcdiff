@@ -15,7 +15,7 @@
 // 123456789012), and plans after/ against it with -refresh=false. Terraform then
 // produces a real update plan, and no AWS API is called.
 
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { createHash } from "node:crypto";
 import { cpSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -82,10 +82,49 @@ const GOOGLE_OVERRIDE = `provider "google" {
 }
 `;
 
+// Azure: the provider logs in even for a plan, so it talks to scripts/azure-standin.ts on
+// 127.0.0.1 instead (ADR 0011). The IDs are made up; none is a real tenant or subscription.
+const azureOverride = (port: string) => `provider "azurerm" {
+  features {}
+  metadata_host                   = "127.0.0.1:${port}"
+  subscription_id                 = "00000000-0000-0000-0000-00000000000c"
+  tenant_id                       = "00000000-0000-0000-0000-00000000000a"
+  client_id                       = "00000000-0000-0000-0000-00000000000b"
+  client_secret                   = "fake-secret-for-planning"
+  use_cli                         = false
+  resource_provider_registrations = "none"
+}
+`;
+
+const configText = (configDir: string) => readdirSync(configDir).filter((f) => f.endsWith(".tf")).map((f) => readFileSync(join(configDir, f), "utf8")).join("\n");
+
 /** The override file for the clouds a configuration uses (an override needs its base provider block). */
 function overrideFor(configDir: string): string {
-  const text = readdirSync(configDir).filter((f) => f.endsWith(".tf")).map((f) => readFileSync(join(configDir, f), "utf8")).join("\n");
-  return [/hashicorp\/aws\b/.test(text) ? PROVIDER_OVERRIDE : "", /hashicorp\/google\b/.test(text) ? GOOGLE_OVERRIDE : ""].join("\n");
+  const text = configText(configDir);
+  return [/hashicorp\/aws\b/.test(text) ? PROVIDER_OVERRIDE : "", /hashicorp\/google\b/.test(text) ? GOOGLE_OVERRIDE : "", /hashicorp\/azurerm\b/.test(text) ? azureOverride(standIn().port) : ""].join("\n");
+}
+
+let azure: { port: string; child: ChildProcess } | undefined;
+
+/**
+ * Starts the Azure stand-in once, with a certificate made for this run. Go reads
+ * SSL_CERT_FILE on Linux, so the bundle holds the system roots (for the registry) and the
+ * stand-in's certificate. Linux only: the Fixture plan workflow runs it on a GitHub runner.
+ */
+function standIn(): { port: string } {
+  if (azure) return azure;
+  if (process.platform !== "linux") throw new Error("Azure fixtures are planned on Linux only (the Fixture plan workflow); see fixtures/README.md");
+  const dir = mkdtempSync(join(tmpdir(), "vpcdiff-azure-"));
+  execFileSync("openssl", ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1", "-subj", "/CN=127.0.0.1", "-addext", "subjectAltName=IP:127.0.0.1", "-keyout", join(dir, "key.pem"), "-out", join(dir, "cert.pem")], { stdio: "ignore" });
+  writeFileSync(join(dir, "bundle.pem"), readFileSync("/etc/ssl/certs/ca-certificates.crt", "utf8") + readFileSync(join(dir, "cert.pem"), "utf8"));
+  const portFile = join(dir, "port");
+  const child = spawn(process.execPath, [resolve(import.meta.dirname, "azure-standin.ts"), join(dir, "key.pem"), join(dir, "cert.pem"), portFile], { stdio: ["ignore", "inherit", "inherit"] });
+  for (let i = 0; i < 100 && !existsSync(portFile); i++) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100);
+  if (!existsSync(portFile)) throw new Error("the Azure stand-in did not start");
+  env.SSL_CERT_FILE = join(dir, "bundle.pem");
+  azure = { port: readFileSync(portFile, "utf8").trim(), child };
+  process.on("exit", () => child.kill());
+  return azure;
 }
 
 /**
@@ -256,7 +295,7 @@ after.timestamp = "2026-01-01T00:00:00Z"; // Fixed, so regenerating gives the sa
 if (Array.isArray(after.relevant_attributes)) after.relevant_attributes = after.relevant_attributes.map((a) => JSON.stringify(a)).sort().map((a) => JSON.parse(a) as Json);
 
 // Remove the fake credentials and skip flags that fixture_override.tf added.
-for (const [name, keep] of [["aws", ["region"]], ["google", ["project", "region"]]] as const) {
+for (const [name, keep] of [["aws", ["region"]], ["google", ["project", "region"]], ["azurerm", ["features"]]] as const) {
   const providerConfig = ((after.configuration as Obj).provider_config as Obj | undefined)?.[name] as Obj | undefined;
   const providerExprs = providerConfig?.expressions as Obj | undefined;
   if (providerConfig && providerExprs) providerConfig.expressions = Object.fromEntries(keep.map((k) => [k, providerExprs[k] ?? null]));
@@ -307,3 +346,5 @@ const text = JSON.stringify(redacted, null, 2);
 const target = OUT ? resolve(OUT) : join(fixture, "plan.json");
 writeFileSync(target, text + "\n");
 console.log(`Wrote ${target}`);
+// Stop the Azure stand-in, if it ran, so the script ends.
+azure?.child.kill();
