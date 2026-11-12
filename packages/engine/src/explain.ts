@@ -295,7 +295,34 @@ export function mdText(value: string): string {
   return value
     .replace(/[\r\n]+/g, " ")
     .replace(/[\\`*_{}[\]()<>#+!|~]/g, (c) => `\\${c}`)
-    .replace(/@/g, "@\u200b");
+    .replace(/@/g, "@\u200b")
+    // A bare URL becomes a link on GitHub: a zero-width space stops it.
+    .replace(/\b(https?|ftp):\/\//gi, "$1:\u200b//")
+    .replace(/\bwww\./gi, "www\u200b.");
+}
+
+/**
+ * Text for a place where the Markdown renderer does not run: inside a raw HTML block such
+ * as the `<summary>` of a `<details>`. A line that starts with `<details>` is an HTML
+ * block, so backticks and backslashes mean nothing there and `<` would start a real tag.
+ * Escapes the four HTML characters, then breaks mentions and bare URLs like `mdText`.
+ */
+export function htmlText(value: string): string {
+  return value
+    .replace(/[\r\n]+/g, " ")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replace(/@/g, "@\u200b")
+    .replace(/\b(https?|ftp):\/\//gi, "$1:\u200b//")
+    .replace(/\bwww\./gi, "www\u200b.");
+}
+
+/** The one-line title of a path inside `<summary>`: HTML, with every plan string escaped. */
+export function pathSummaryHtml(path: Path): string {
+  const from = isInternet(path) ? (path.family === "ipv6" ? "internet (IPv6)" : "internet") : `<code>${htmlText(path.from)}</code>`;
+  return `<b>${htmlText(headline(path))}</b> · ${from} → <code>${htmlText(path.to)}</code> ${htmlText(portLabel(path))}`;
 }
 
 /** The answer for one side of a path, in words that read before → after. */
@@ -386,8 +413,8 @@ export function planMarkdown(name: string, result: Result, meta?: { version?: st
     .filter((p) => p.change !== "unchanged" || p.outageRisk?.length)
     .toSorted((a, b) => severityOf(a) - severityOf(b) || (a.id < b.id ? -1 : 1))
     .map((p) => {
-      const [head = "", ...rest] = pathMarkdown(p).split("\n");
-      return `<details><summary>${head}</summary>\n${rest.join("\n")}\n\n</details>`;
+      const [, ...rest] = pathMarkdown(p).split("\n");
+      return `<details><summary>${pathSummaryHtml(p)}</summary>\n${rest.join("\n")}\n\n</details>`;
     });
   out.push("", items.length ? items.join("\n\n") : "No path changes.");
   if (result.notes.length) {

@@ -111,7 +111,7 @@ describe("trust", () => {
   it("escapes resource names and text so a paste cannot add links or mentions", () => {
     expect(mdCode("a`b")).toBe("``a`b``");
     expect(mdCode("`x`")).toBe("`` `x` ``");
-    expect(mdText("see [click](http://x) @org/team")).toBe("see \\[click\\]\\(http://x\\) @\u200borg/team");
+    expect(mdText("see [click](http://x) @org/team")).toBe("see \\[click\\]\\(http:\u200b//x\\) @\u200borg/team");
     const p = pathOf("sg-5432-opened", "internet->aws_instance.db:tcp:5432");
     const evil: Path = { ...p, to: 'aws_instance.x["`@org [a](http://e)"]' };
     const line = pathMarkdown(evil).split("\n")[0] ?? "";
@@ -151,7 +151,35 @@ describe("plan verdict and change words", () => {
   it("folds each path's details in the plan summary", () => {
     const md = planMarkdown("plan.json", resultOf("sg-5432-opened"));
     expect(md).toContain("**Fix before merge:** 1 path opens to any public IPv4 address.");
-    expect(md).toContain("<details><summary>**New exposure**");
+    expect(md).toContain("<details><summary><b>New exposure</b>");
+  });
+});
+
+describe("untrusted plan strings in the plan summary", () => {
+  // A resource address (a for_each key) can hold any characters. A line that starts with
+  // <details> is a raw HTML block on GitHub, so the summary must be HTML-escaped.
+  const EVIL = 'aws_instance.db["x</summary></details><img src=https://evil.example/p.png><a href=https://evil.example>go</a> @someone https://evil.example/x"]';
+  const evil = () => {
+    const plan = readFileSync(join(import.meta.dirname, "../../../fixtures", "sg-5432-opened", "plan.json"), "utf8").replaceAll("aws_instance.db", EVIL.replaceAll('"', '\\"'));
+    return analyze(JSON.parse(plan) as unknown);
+  };
+
+  it("never lets an address start a real HTML tag in a summary line", () => {
+    const md = planMarkdown("plan.json", evil());
+    const summaries = md.split("\n").filter((l) => l.startsWith("<details><summary>"));
+    expect(summaries.length).toBeGreaterThan(0);
+    for (const line of summaries) {
+      expect(line).not.toMatch(/<img|<a\s/i);
+      expect(line.match(/<\/summary>/g)).toHaveLength(1);
+      expect(line.match(/<\/details>/g) ?? []).toHaveLength(0);
+      expect(line).toContain("&lt;img");
+      expect(line).not.toContain("@someone");
+      expect(line).not.toContain("https://evil");
+    }
+  });
+
+  it("breaks bare URLs and www links in plain text", () => {
+    expect(mdText("see https://evil.example/x and www.evil.example")).not.toMatch(/https?:\/\/|www\./);
   });
 });
 

@@ -3572,7 +3572,10 @@ function mdCode(value) {
   return `${fence}${pad}${text}${pad}${fence}`;
 }
 function mdText(value) {
-  return value.replace(/[\r\n]+/g, " ").replace(/[\\`*_{}[\]()<>#+!|~]/g, (c) => `\\${c}`).replace(/@/g, "@\u200B");
+  return value.replace(/[\r\n]+/g, " ").replace(/[\\`*_{}[\]()<>#+!|~]/g, (c) => `\\${c}`).replace(/@/g, "@\u200B").replace(/\b(https?|ftp):\/\//gi, "$1:\u200B//").replace(/\bwww\./gi, "www\u200B.");
+}
+function htmlText(value) {
+  return value.replace(/[\r\n]+/g, " ").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replace(/@/g, "@\u200B").replace(/\b(https?|ftp):\/\//gi, "$1:\u200B//").replace(/\bwww\./gi, "www\u200B.");
 }
 
 // ../cli/src/render.ts
@@ -3613,7 +3616,7 @@ function renderMarkdown(result, opts) {
     for (const p of paths) {
       const explain = p.after.verdict === "absent" ? p.before : p.after;
       if (!explain.hops.length) continue;
-      lines.push(`<details><summary>${p.from === "internet" ? "" : `${md(p.from)} \u2192 `}${md(p.to)} ${p.protocol}/${p.ports}: hops (${p.after.verdict === "absent" ? "before" : "after"})</summary>`, "", "| Hop | Decision | Rule |", "|---|---|---|");
+      lines.push(`<details><summary>${p.from === "internet" ? "" : `${htmlText(p.from)} \u2192 `}${htmlText(p.to)} ${p.protocol}/${p.ports}: hops (${p.after.verdict === "absent" ? "before" : "after"})</summary>`, "", "| Hop | Decision | Rule |", "|---|---|---|");
       for (const h of explain.hops) lines.push(`| [${h.hop}](${h.doc}) | ${h.decision} | ${md(h.rule)} |`);
       lines.push("", "</details>", "");
     }
@@ -3668,12 +3671,24 @@ async function comment(env, body) {
   const text = `${MARKER}
 ${body}`;
   let existing;
+  const byPeople = [];
   for (let page = 1; page <= 10 && existing === void 0; page++) {
     const res2 = await env.fetch(`${api}/repos/${repo}/issues/${number}/comments?per_page=100&page=${page}`, { headers });
     if (!res2.ok) throw new Error(`listing comments failed: HTTP ${res2.status}`);
     const list = await res2.json();
-    existing = list.find((c) => c.user?.type === "Bot" && c.body?.startsWith(MARKER))?.id;
+    for (const c of list) {
+      if (!c.body?.startsWith(MARKER)) continue;
+      if (c.user?.type === "Bot") existing ??= c.id;
+      else byPeople.push({ id: c.id, ...c.user?.login ? { login: c.user.login } : {} });
+    }
     if (list.length < 100) break;
+  }
+  if (existing === void 0 && byPeople.length) {
+    const me = await env.fetch(`${api}/user`, { headers });
+    if (me.ok) {
+      const login = (await me.json()).login;
+      existing = login ? byPeople.find((c) => c.login === login)?.id : void 0;
+    }
   }
   const res = existing === void 0 ? await env.fetch(`${api}/repos/${repo}/issues/${number}/comments`, { method: "POST", headers, body: JSON.stringify({ body: text }) }) : await env.fetch(`${api}/repos/${repo}/issues/comments/${existing}`, { method: "PATCH", headers, body: JSON.stringify({ body: text }) });
   if (res.status === 403 || res.status === 404) {
