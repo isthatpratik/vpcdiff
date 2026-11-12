@@ -26,8 +26,9 @@
 
 See what a Terraform plan opens to the internet, before you run `apply`.
 
-`vpcdiff` reads a Terraform plan (`terraform show -json`), works out which AWS resources
-the internet can reach before and after the plan, and shows what changes:
+`vpcdiff` reads a Terraform plan (`terraform show -json`), works out which AWS, Google
+Cloud, and Azure resources the internet can reach before and after the plan, and shows
+what changes:
 
 - paths the plan opens (for example, `0.0.0.0/0 → aws_instance.db` on tcp/5432)
 - paths the plan closes, and paths whose allowed sources change
@@ -36,8 +37,9 @@ the internet can reach before and after the plan, and shows what changes:
   deleting it first
 
 Every result names the hop and the rule that decided it (public IP, internet gateway,
-network ACL, security group, route), with a link to the AWS documentation. It needs no
-AWS account or credentials, and the viewer never sends your plan anywhere.
+network ACL, security group, firewall rule, route), with a link to the cloud's
+documentation. It needs no cloud account or credentials, and the viewer never sends your
+plan anywhere.
 
 <p align="center">
   <img alt="The vpcdiff viewer on a plan that opens PostgreSQL to the internet: the plan verdict, the path, the security group rule that decided it, what to do, and the hops before and after" src="docs/assets/viewer.png" width="100%">

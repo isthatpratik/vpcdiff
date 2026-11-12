@@ -20,6 +20,7 @@ import { PathField } from "./PathField.tsx";
 import { Footer } from "./Footer.tsx";
 import { HopStrip } from "./HopStrip.tsx";
 import { Plate } from "./Plate.tsx";
+import { FAQ } from "./seo.ts";
 import { Tagline } from "./Tagline.tsx";
 import { CliSection } from "./Terminal.tsx";
 import { StepTabs } from "./StepTabs.tsx";
@@ -188,17 +189,6 @@ const CLOUDS: { name: string; src: string; wordmark?: boolean; hops: string[]; r
 
 /** Not modeled yet (README support matrix); paths through them are reported as unknown. */
 const NOT_YET = ["VPN routes", "Gateway Load Balancers", "IPv6 inside the VPC", "ECS bridge mode"];
-
-const FAQ: { q: string; a: string }[] = [
-  { q: "Does vpcdiff need cloud credentials or a cloud account?", a: "No. It reads the JSON that terraform show produces. Terraform needs credentials to make the plan; vpcdiff does not." },
-  { q: "Does my plan leave my machine?", a: "No. The CLI and the GitHub Action run where you run them. The viewer analyzes the file in your browser tab, and its Content Security Policy blocks every data request. The Action writes a comment to your own pull request only when you turn that on." },
-  { q: "What does unknown mean?", a: "The engine could not decide that hop: a value Terraform learns only at apply time, a resource it does not model yet, or a load balancer whose subnets give different answers. The reason is always shown. Unknown is a result, never a guess." },
-  { q: "How is this different from Checkov, tfsec, or Trivy?", a: "Those tools judge each rule on its own. vpcdiff follows the whole path: an open security group behind a network ACL that denies the port is not an exposure, and a narrow rule can still open a path when a route changes." },
-  { q: "How is it different from AWS Reachability Analyzer?", a: "Reachability Analyzer checks a live account, one path at a time, after you deploy. vpcdiff works on the plan, before you apply, for every endpoint at once. Each test fixture includes the steps to check it against Reachability Analyzer; those paid checks have not been run yet." },
-  { q: "Does it check traffic between my own services?", a: "Yes, since v0.2. When a security group allows traffic from another group, such as a load balancer to its service or an app to its database, vpcdiff checks that path too: both groups, the routes, and the network ACLs both ways, also across a VPC peering connection or a transit gateway. A plan that cuts such a path gets a review." },
-  { q: "Can it block a pull request?", a: "Yes. The GitHub Action fails the check when the plan adds a path from the internet (you choose the level with fail-on; changed also counts paths inside the VPC that open or close), writes the report to the job summary, and keeps one comment on the pull request up to date." },
-  { q: "What does it cost?", a: "Nothing. vpcdiff is free and open source under the Apache 2.0 license." },
-];
 
 const NAV_LINKS: [string, string][] = [
   ["How it works", "#how"],

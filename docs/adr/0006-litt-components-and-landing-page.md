@@ -3,6 +3,9 @@
 - **Status:** Accepted
 - **Date:** 2026-11-06
 - **Amends:** [ADR 0005](0005-viewer-stack.md) (the viewer stack)
+- **Amended 2026-11-12:** the fonts are served from this origin (`apps/viewer/src/fonts`), not from
+  Google Fonts, so the policy allows no other origin and a visit sends nothing to a third party.
+  The "Fonts" and "Privacy" bullets below describe the original decision.
 
 ## Context
 

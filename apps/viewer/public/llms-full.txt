@@ -1,14 +1,14 @@
 # vpcdiff: full text
 
-> vpcdiff reads a Terraform plan (`terraform show -json`) and computes which AWS resources the internet, and other resources in the VPC, can reach before and after the plan, hop by hop. It reports paths that are opened, closed, changed, or unknown, and flags outage risk when a resource on an open path is replaced by deleting it first. It runs as a GitHub Action, a CLI, and an offline web viewer, all on one pure TypeScript engine. Free, open source (Apache 2.0), and offline: it needs no AWS account or credentials.
+> vpcdiff reads a Terraform plan (`terraform show -json`) and computes which AWS, Google Cloud, and Azure resources the internet can reach, and which resources inside an AWS VPC can reach each other, before and after the plan, hop by hop. It reports paths that are opened, closed, changed, or unknown, and flags outage risk when a resource on an open path is replaced by deleting it first. It runs as a GitHub Action, a CLI, and an offline web viewer, all on one pure TypeScript engine. Free, open source (Apache 2.0), and offline: it needs no AWS account or credentials.
 
 This file is the long version of [llms.txt](https://isthatpratik.github.io/vpcdiff/llms.txt), for language models and readers who want the whole picture in one place.
 
 ## The problem
 
-A pull request that changes a security group, a network ACL, or a route shows which lines changed. It does not show what the change opens. Whether `aws_instance.db` becomes reachable on tcp/5432 depends on its public IP, the internet gateway, the subnet's route table, both directions of the network ACL, and every security group on the resource, before and after the plan. Rule-by-rule linters (Checkov, tfsec, Trivy) judge each rule alone. AWS Reachability Analyzer checks a live account, one path at a time, after you deploy. vpcdiff follows the whole path, on the plan, before you apply, for every endpoint at once.
+A pull request that changes a security group, a network ACL, a firewall rule, or a route shows which lines changed. It does not show what the change opens. Whether `aws_instance.db` becomes reachable on tcp/5432 depends on its public IP, the internet gateway, the subnet's route table, both directions of the network ACL, and every security group on the resource, before and after the plan. Rule-by-rule linters (Checkov, tfsec, Trivy) judge each rule alone. AWS Reachability Analyzer checks a live account, one path at a time, after you deploy. vpcdiff follows the whole path, on the plan, before you apply, for every endpoint at once.
 
-## How it decides a path
+## How it decides a path on AWS
 
 For each endpoint (an `aws_instance`, an `aws_db_instance`, or an internet-facing `aws_lb`) and for every TCP or UDP port that one of its security groups opens to a public address, the engine checks these hops in the order traffic meets them, on both sides of the plan:
 
@@ -23,6 +23,28 @@ For each endpoint (an `aws_instance`, an `aws_db_instance`, or an internet-facin
 Sources are all public IPv4 addresses, minus IANA special ranges and the VPC CIDR. When a hop cannot be decided (a value known only after apply, a resource the engine does not model, a load balancer whose subnets disagree), the path is `unknown` with the reason. The engine never guesses. When a path is reachable but some sources could not be decided, the result says "Partly undecided" and lists them.
 
 The engine is pure: the same plan gives the same output, byte for byte. Every AWS rule in the code cites its AWS documentation. How the plan JSON is read: [terraform-plan-json](https://github.com/isthatpratik/vpcdiff/blob/main/docs/semantics/terraform-plan-json.md).
+
+## How it decides a path on Google Cloud
+
+For each Compute Engine VM (`google_compute_instance`) and for every TCP or UDP port that a firewall rule opens to a public address, on both sides of the plan ([rules and sources](https://github.com/isthatpratik/vpcdiff/blob/main/docs/semantics/gcp.md)):
+
+1. **External IP**: the VM's network interface needs an `access_config`.
+2. **Firewall rules**: the ingress rules of the VM's network that apply to it (all instances, target tags, or target service accounts). The lowest priority number that matches decides, a deny wins a tie, and no match is the implied deny. Only `source_ranges` can match an internet address.
+3. **Return route**: the network keeps its default route to the default internet gateway, or a custom `0.0.0.0/0` route does.
+
+Cloud SQL (`google_sql_database_instance`): a public IP (`ipv4_enabled`) and the authorized networks, which are the only allow rules, on the engine's port (5432, 3306, or 1433). The default network, firewall policies, and custom routes to other next hops are `unknown`.
+
+## How it decides a path on Azure
+
+For each Linux or Windows VM and for every TCP or UDP port that a network security group opens to a public address, on both sides of the plan ([rules and sources](https://github.com/isthatpratik/vpcdiff/blob/main/docs/semantics/azure.md)):
+
+1. **Public IP**: the VM's network interface needs a Standard SKU public IP. Without a network security group it is closed ("secure by default"). Basic SKU is `unknown`.
+2. **Network security groups**: the subnet's group first, then the interface's; both must allow. Rules run by priority, the first match decides, and the default rules (AllowVNetInBound, AllowAzureLoadBalancerInBound, DenyAllInBound) come last.
+3. **Return route**: the subnet's routes. `0.0.0.0/0` to a virtual appliance or a gateway blocks direct access from the internet.
+
+## Between VPCs on AWS
+
+When a security group allows traffic from another group, vpcdiff checks the path between the two resources: both groups, the routes, and the network ACLs in both directions, in one VPC, across a VPC peering connection, or through a transit gateway in the plan ([transit gateway](https://github.com/isthatpratik/vpcdiff/blob/main/docs/semantics/transit-gateway.md): attachments, Availability Zones, route table associations, static and propagated routes, blackhole routes, and security group referencing).
 
 ## How to read a result
 
@@ -77,7 +99,7 @@ node packages/cli/dist/vpcdiff.mjs            # guided mode, in a terminal
 
 - With no arguments in a terminal, the CLI lists plan JSON files and binary plans (`tfplan`, `*.tfplan`) in the folder, converts a binary plan with `terraform show -json`, or runs `terraform plan` after you confirm (it uses your cloud credentials; nothing is applied). Then it shows the report and offers next steps: every path, one path in full, or a Markdown summary for the pull request.
 - In a terminal, text output is a readable report in color, with the plan verdict first. In pipes and CI it is stable plain text. `NO_COLOR=1` turns color off.
-- Options: `--format text|json|markdown`, `--all`, `--fail-on added|changed|unknown|never` (default `added`).
+- Options: `--format text|json|markdown`, `--all`, `--fail-on added|changed|unknown|never` (default `added`; `added` also fails when a path from the internet gets wider, for example a rule that goes from one host to `0.0.0.0/0`).
 - Exit codes: 0 no failing paths, 1 failing paths, 2 usage or input error.
 - Terraform runs through `execFile` with an argument array, never a shell.
 
@@ -144,13 +166,15 @@ security review, and an updated support matrix.
    Azure VMs, from the internet (#95, #96).
 
 ## Questions
-- **Does vpcdiff need AWS credentials or an AWS account?** No. It reads the JSON that terraform show produces. Terraform needs credentials to make the plan; vpcdiff does not.
-- **Does my plan leave my machine?** No. The CLI and the GitHub Action run where you run them. The viewer analyzes the file in your browser tab, and its Content Security Policy blocks every data request. The Action writes a comment to your own pull request only when you turn that on.
+- **Which clouds and resources does vpcdiff support?** AWS, Google Cloud, and Azure. On AWS it checks instances, RDS and Aurora, ECS services, load balancers, and VPC endpoints from the internet, and paths between your own resources. On Google Cloud it checks Compute Engine VMs and Cloud SQL from the internet, and on Azure Linux and Windows VMs. The support matrix in the README lists every resource type.
+- **Does vpcdiff need cloud credentials or a cloud account?** No. It reads the JSON that terraform show produces. Terraform needs credentials to make the plan; vpcdiff does not.
+- **Does my plan leave my machine?** No. The CLI and the GitHub Action run where you run them. The viewer analyzes the file in your browser tab (kept in that tab's session storage until you close it), makes no request to any other site, and its Content Security Policy blocks every data request. The Action writes a comment to your own pull request only when you turn that on.
 - **What does unknown mean?** The engine could not decide that hop: a value Terraform learns only at apply time, a resource it does not model yet, or a load balancer whose subnets give different answers. The reason is always shown. Unknown is a result, never a guess.
 - **How is this different from Checkov, tfsec, or Trivy?** Those tools judge each rule on its own. vpcdiff follows the whole path: an open security group behind a network ACL that denies the port is not an exposure, and a narrow rule can still open a path when a route changes.
-- **How is it different from AWS Reachability Analyzer?** Reachability Analyzer checks a live account, one path at a time, after you deploy. vpcdiff works on the plan, before you apply, for every endpoint at once. Each test fixture includes the steps to check it against Reachability Analyzer; those paid checks have not been run yet.
-- **Does it check traffic between my own services?** Yes, inside one VPC, where a security group rule references another group (for example load balancer to service, or app to database). It checks both groups, the route, and the network ACLs both ways. Paths between VPCs are on the roadmap.
-- **Can it block a pull request?** Yes. The GitHub Action fails the check when the plan adds a path from the internet (you choose the level with fail-on), writes the report to the job summary, and keeps one comment on the pull request up to date.
+- **How is it different from AWS Reachability Analyzer, Google Connectivity Tests, or Azure Network Watcher?** Those tools check a live account, one path at a time, after you deploy. vpcdiff works on the plan, before you apply, for every endpoint at once. Each test fixture includes the steps to check it against the matching cloud tool; those paid checks have not been run yet.
+- **Does it check traffic between my own services?** Yes, on AWS. When a security group allows traffic from another group, such as a load balancer to its service or an app to its database, vpcdiff checks that path too: both groups, the routes, and the network ACLs both ways, also across a VPC peering connection or a transit gateway. A plan that cuts such a path gets a review. Google Cloud and Azure paths start at the internet.
+- **Does it work with OpenTofu?** Yes. OpenTofu writes the same plan JSON as Terraform (tofu show -json). CI plans every test fixture with OpenTofu and checks that the result is byte for byte the same.
+- **Can it block a pull request?** Yes. The GitHub Action fails the check when the plan adds a path from the internet or makes one wider, such as a rule that goes from one host to 0.0.0.0/0 (you choose the level with fail-on; changed also counts other changes, and paths inside the VPC that open or close), writes the report to the job summary, and keeps one comment on the pull request up to date.
 - **What does it cost?** Nothing. vpcdiff is free and open source under the Apache 2.0 license.
 
 ## Links
@@ -160,4 +184,4 @@ security review, and an updated support matrix.
 - [Source on GitHub](https://github.com/isthatpratik/vpcdiff)
 - [Design doc](https://github.com/isthatpratik/vpcdiff/blob/main/docs/design/0001-vpcdiff-design.md)
 - [Architecture decisions](https://github.com/isthatpratik/vpcdiff/tree/main/docs/adr)
-- [Semantics](https://github.com/isthatpratik/vpcdiff/tree/main/docs/semantics): the AWS rules each hop follows, with documentation links.
+- [Semantics](https://github.com/isthatpratik/vpcdiff/tree/main/docs/semantics): the AWS, Google Cloud, and Azure rules each hop follows, with documentation links.
