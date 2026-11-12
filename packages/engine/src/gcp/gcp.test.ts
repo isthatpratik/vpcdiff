@@ -155,3 +155,44 @@ describe("Google Cloud VMs from the internet", () => {
     expect(r.notes).toEqual([]);
   });
 });
+
+describe("Cloud SQL from the internet", () => {
+  const sql = (ip: Values = {}, over: Values = {}) =>
+    res("google_sql_database_instance", "db", { id: "db", name: "db", database_version: "POSTGRES_16", settings: [{ ip_configuration: [{ ipv4_enabled: true, authorized_networks: [{ name: "office", value: "203.0.113.0/24", expiration_time: "" }], ...ip }] }], ...over });
+
+  it("allows the engine's port from the authorized networks only", () => {
+    const p = one([sql()]);
+    expect(p).toMatchObject({ id: "internet->google_sql_database_instance.db:tcp:5432", provider: "gcp", ports: "5432" });
+    expect(p.after.verdict).toBe("allowed");
+    expect(p.after.sources).toEqual(["203.0.113.0/24"]);
+    expect(p.after.hops.map((h) => h.hop)).toEqual(["public-ip", "firewall"]);
+  });
+
+  it("uses the port of the database engine", () => {
+    expect(one([sql({}, { database_version: "MYSQL_8_0" })]).ports).toBe("3306");
+    expect(one([sql({}, { database_version: "SQLSERVER_2022_STANDARD" })]).ports).toBe("1433");
+  });
+
+  it("reports the whole internet for 0.0.0.0/0, and the diff when the plan adds it", () => {
+    const open = sql({ authorized_networks: [{ name: "all", value: "0.0.0.0/0", expiration_time: "" }] });
+    const p = one([{ ...open, before: sql().after as Values }]);
+    expect(p.after.sources).toEqual(["internet"]);
+    expect(p.change).toBe("changed");
+  });
+
+  it("blocks without a public IP, and refuses everything without authorized networks", () => {
+    const off = one([{ ...sql({ ipv4_enabled: false }), before: sql().after as Values }]);
+    expect(off.after.verdict).toBe("blocked");
+    expect(off.after.hops[0]).toMatchObject({ hop: "public-ip", decision: "deny" });
+    const none = one([{ ...sql({ authorized_networks: [] }), before: sql().after as Values }]);
+    expect(none.after.verdict).toBe("blocked");
+    expect(none.after.hops.at(-1)).toMatchObject({ hop: "firewall", decision: "deny" });
+  });
+
+  it("returns unknown for an authorized network or version unknown until apply", () => {
+    const u = sql({ authorized_networks: [{ name: "x", value: null, expiration_time: "" }] });
+    expect(gcp([{ ...u, unknown: { settings: [{ ip_configuration: [{ authorized_networks: [{ value: true }] }] }] } }]).map((x) => x.after.verdict)).toEqual(["unknown", "unknown"]);
+    const v = sql({}, { database_version: null });
+    expect(gcp([{ ...v, unknown: { database_version: true } }]).map((x) => x.after.verdict)).toEqual(["unknown", "unknown"]);
+  });
+});

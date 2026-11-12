@@ -6,6 +6,7 @@ import type { GcpVm } from "./model.js";
 
 const DOC = {
   "public-ip": "https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/compute_instance",
+  sql: "https://docs.cloud.google.com/sql/docs/postgres/authorize-networks",
   firewall: "https://docs.cloud.google.com/firewall/docs/firewalls",
   route: "https://docs.cloud.google.com/vpc/docs/routes",
 } as const;
@@ -16,9 +17,10 @@ const protoMatches = (rule: string, p: Protocol) => rule === "all" || rule === p
 export function evaluateGcp(vm: GcpVm | undefined, p: Protocol, ports: Range): Outcome {
   if (!vm) return absent;
   const hops: Hop[] = [];
-  const add = (hop: keyof typeof DOC, resource: string, decision: Hop["decision"], rule: string) => hops.push({ hop, resource, decision, rule, doc: DOC[hop] });
+  const sql = vm.type === "google_sql_database_instance";
+  const add = (hop: "public-ip" | "firewall" | "route", resource: string, decision: Hop["decision"], rule: string) => hops.push({ hop, resource, decision, rule, doc: sql && hop !== "route" ? DOC.sql : DOC[hop] });
   const stop = (verdict: "blocked" | "unknown", reason: string): Outcome => ({ verdict, sources: [], hops, reason });
-  const unknownAt = (hop: keyof typeof DOC, resource: string, reason: string) => {
+  const unknownAt = (hop: "public-ip" | "firewall" | "route", resource: string, reason: string) => {
     add(hop, resource, "unknown", reason);
     return stop("unknown", reason);
   };
@@ -27,7 +29,7 @@ export function evaluateGcp(vm: GcpVm | undefined, p: Protocol, ports: Range): O
   // 1. External IP address (rule 1).
   if (!vm.externalIp.ok) return unknownAt("public-ip", vm.address, vm.externalIp.reason);
   if (!vm.externalIp.value) {
-    add("public-ip", vm.address, "deny", `${vm.address} has no external IP address (no access_config)`);
+    add("public-ip", vm.address, "deny", vm.type === "google_sql_database_instance" ? `${vm.address} has no public IP address (ipv4_enabled = false)` : `${vm.address} has no external IP address (no access_config)`);
     return stop("blocked", `${vm.address} has no external IP address`);
   }
   add("public-ip", vm.address, "allow", vm.externalIp.value);
@@ -46,7 +48,7 @@ export function evaluateGcp(vm: GcpVm | undefined, p: Protocol, ports: Range): O
     texts.push(rule.text);
     remaining = subtract(remaining, m);
   }
-  if (!isEmpty(remaining)) texts.push("implied rule: deny all ingress");
+  if (!isEmpty(remaining)) texts.push(vm.implied);
   if (isEmpty(allowed)) {
     add("firewall", where, "deny", texts.join("; "));
     return stop("blocked", `no firewall rule of ${where} allows ${portText} from the internet to ${vm.address}`);
@@ -55,7 +57,7 @@ export function evaluateGcp(vm: GcpVm | undefined, p: Protocol, ports: Range): O
 
   // 3. The response leaves through the default internet gateway (rule 9). Firewalls are stateful (rule 8).
   if (!vm.route.ok) return unknownAt("route", where, vm.route.reason);
-  add("route", vm.route.value.resource, "allow", vm.route.value.text);
+  if (vm.route.value) add("route", vm.route.value.resource, "allow", vm.route.value.text);
 
   return { verdict: "allowed", sources: equals(allowed, PUBLIC_IPV4) ? ["internet"] : setToCidrs(allowed), hops, reason: "" };
 }

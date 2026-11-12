@@ -42,11 +42,20 @@ export const GCP_COLUMNS: Column[] = [
   { key: "route", label: "Return route" },
 ];
 
+/** Columns of a Cloud SQL path: Google manages the route, so there is no route column. */
+export const GCP_SQL_COLUMNS: Column[] = [
+  { key: "source", label: "Internet" },
+  { key: "public-ip", label: "Public IP" },
+  { key: "firewall", label: "Authorized networks" },
+  { key: "target", label: "Target" },
+];
+
 /** True for a path from the internet; false for a path inside the VPC. */
 export const isInternet = (path: Pick<Path, "from">): boolean => path.from === "internet";
 
 /** The columns for a path's kind. */
-export const columnsOf = (path: Pick<Path, "from" | "provider">): Column[] => (path.provider === "gcp" ? GCP_COLUMNS : isInternet(path) ? COLUMNS : INTERNAL_COLUMNS);
+export const columnsOf = (path: Pick<Path, "from" | "provider"> & Partial<Pick<Path, "toType">>): Column[] =>
+  path.provider === "gcp" ? (path.toType === "google_sql_database_instance" ? GCP_SQL_COLUMNS : GCP_COLUMNS) : isInternet(path) ? COLUMNS : INTERNAL_COLUMNS;
 
 export type CellState = Decision | "not-reached" | "absent";
 

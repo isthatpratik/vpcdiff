@@ -912,6 +912,7 @@ function internalCuts(ep) {
 // ../engine/src/gcp/evaluate.ts
 var DOC4 = {
   "public-ip": "https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/compute_instance",
+  sql: "https://docs.cloud.google.com/sql/docs/postgres/authorize-networks",
   firewall: "https://docs.cloud.google.com/firewall/docs/firewalls",
   route: "https://docs.cloud.google.com/vpc/docs/routes"
 };
@@ -920,7 +921,8 @@ var protoMatches4 = (rule, p) => rule === "all" || rule === p;
 function evaluateGcp(vm, p, ports) {
   if (!vm) return absent4;
   const hops = [];
-  const add = (hop, resource, decision, rule) => hops.push({ hop, resource, decision, rule, doc: DOC4[hop] });
+  const sql = vm.type === "google_sql_database_instance";
+  const add = (hop, resource, decision, rule) => hops.push({ hop, resource, decision, rule, doc: sql && hop !== "route" ? DOC4.sql : DOC4[hop] });
   const stop = (verdict, reason) => ({ verdict, sources: [], hops, reason });
   const unknownAt = (hop, resource, reason) => {
     add(hop, resource, "unknown", reason);
@@ -929,7 +931,7 @@ function evaluateGcp(vm, p, ports) {
   const portText = `${p}/${formatPorts([ports])}`;
   if (!vm.externalIp.ok) return unknownAt("public-ip", vm.address, vm.externalIp.reason);
   if (!vm.externalIp.value) {
-    add("public-ip", vm.address, "deny", `${vm.address} has no external IP address (no access_config)`);
+    add("public-ip", vm.address, "deny", vm.type === "google_sql_database_instance" ? `${vm.address} has no public IP address (ipv4_enabled = false)` : `${vm.address} has no external IP address (no access_config)`);
     return stop("blocked", `${vm.address} has no external IP address`);
   }
   add("public-ip", vm.address, "allow", vm.externalIp.value);
@@ -946,14 +948,14 @@ function evaluateGcp(vm, p, ports) {
     texts.push(rule.text);
     remaining = subtract(remaining, m);
   }
-  if (!isEmpty(remaining)) texts.push("implied rule: deny all ingress");
+  if (!isEmpty(remaining)) texts.push(vm.implied);
   if (isEmpty(allowed)) {
     add("firewall", where, "deny", texts.join("; "));
     return stop("blocked", `no firewall rule of ${where} allows ${portText} from the internet to ${vm.address}`);
   }
   add("firewall", where, equals(allowed, PUBLIC_IPV4) ? "allow" : "partial", texts.join("; "));
   if (!vm.route.ok) return unknownAt("route", where, vm.route.reason);
-  add("route", vm.route.value.resource, "allow", vm.route.value.text);
+  if (vm.route.value) add("route", vm.route.value.resource, "allow", vm.route.value.text);
   return { verdict: "allowed", sources: equals(allowed, PUBLIC_IPV4) ? ["internet"] : setToCidrs(allowed), hops, reason: "" };
 }
 function gcpExposed(vm, p) {
@@ -2729,10 +2731,37 @@ var GcpModel = class {
     return this.networkOf(r, "network_interface", value, true);
   }
   vms() {
-    return this.ofType("google_compute_instance").map((r) => this.vm(r));
+    return [...this.ofType("google_compute_instance").map((r) => this.vm(r)), ...this.ofType("google_sql_database_instance").map((r) => this.sql(r))];
+  }
+  /**
+   * A Cloud SQL instance: a public IP when ipv4_enabled, and the authorized networks as the
+   * only allow rules on the engine's port (docs/semantics/gcp.md, rules 10 to 12).
+   */
+  sql(r) {
+    const base = { address: r.address, type: r.type, network: known2(r.address), route: known2(null), implied: "no authorized network: Cloud SQL refuses the connection" };
+    const fail = (reason) => ({ ...base, externalIp: unknown2(reason), firewall: unknown2(reason) });
+    if (isUnknown(r, ["database_version"])) return fail(`${r.address}: database_version is unknown until apply`);
+    const version = typeof r.values.database_version === "string" ? r.values.database_version : "";
+    const port = version.startsWith("POSTGRES") ? 5432 : version.startsWith("MYSQL") ? 3306 : version.startsWith("SQLSERVER") ? 1433 : void 0;
+    if (!port) return fail(`${r.address}: database_version ${version || "(none)"} is not a known engine`);
+    const path = ["settings", 0, "ip_configuration", 0];
+    if (isUnknown(r, ["settings"]) || isUnknown(r, ["settings", 0, "ip_configuration"])) return fail(`${r.address}: ip_configuration is unknown until apply`);
+    const settings = Array.isArray(r.values.settings) && isObj(r.values.settings[0]) ? r.values.settings[0] : {};
+    const ipc = Array.isArray(settings.ip_configuration) && isObj(settings.ip_configuration[0]) ? settings.ip_configuration[0] : {};
+    if (isUnknown(r, [...path, "ipv4_enabled"])) return fail(`${r.address}: ipv4_enabled is unknown until apply`);
+    const publicIp = ipc.ipv4_enabled !== false;
+    if (hasUnknown(r, [...path, "authorized_networks"])) return { ...fail(`${r.address}: an authorized network is unknown until apply`), externalIp: known2(publicIp ? `${r.address} has a public IP address (ipv4_enabled)` : void 0) };
+    const rules = [];
+    for (const n of Array.isArray(ipc.authorized_networks) ? ipc.authorized_networks : []) {
+      if (!isObj(n) || typeof n.value !== "string") continue;
+      const set = cidrToSet(n.value.includes("/") ? n.value : `${n.value}/32`);
+      if (!set) return fail(`${r.address}: authorized network ${n.value} cannot be read`);
+      rules.push({ resource: r.address, priority: 0, allow: true, protocol: "tcp", ports: fromRanges([[port, port]]), sources: set, text: `${r.address} authorized network ${typeof n.name === "string" && n.name ? `${n.name} ` : ""}${n.value} on tcp ${port}` });
+    }
+    return { ...base, externalIp: known2(publicIp ? `${r.address} has a public IP address (ipv4_enabled)` : void 0), firewall: known2(rules.toSorted((a, b) => cmp(a.text, b.text))) };
   }
   vm(r) {
-    const fail = (reason) => ({ address: r.address, type: r.type, network: unknown2(reason), externalIp: unknown2(reason), firewall: unknown2(reason), route: unknown2(reason) });
+    const fail = (reason) => ({ address: r.address, type: r.type, network: unknown2(reason), externalIp: unknown2(reason), firewall: unknown2(reason), route: unknown2(reason), implied: IMPLIED_VM });
     if (isUnknown(r, ["network_interface"])) return fail(`${r.address}: network_interface is unknown until apply`);
     const nics = Array.isArray(r.values.network_interface) ? r.values.network_interface : [];
     if (nics.length !== 1) return fail(`${r.address} has ${nics.length} network interfaces; only VMs with one are modeled`);
@@ -2747,8 +2776,8 @@ var GcpModel = class {
       const ip = configs.length && isObj(configs[0]) && typeof configs[0].nat_ip === "string" && configs[0].nat_ip ? configs[0].nat_ip : void 0;
       externalIp = known2(configs.length ? ip ? `${r.address} has the external IP address ${ip}` : `${r.address} has an external IP address (access_config)` : void 0);
     }
-    if (!net.ok) return { address: r.address, type: r.type, network: net, externalIp, firewall: unknown2(net.reason), route: unknown2(net.reason) };
-    return { address: r.address, type: r.type, network: net, externalIp, firewall: this.firewall(r, net.value), route: this.route(r, net.value) };
+    if (!net.ok) return { address: r.address, type: r.type, network: net, externalIp, firewall: unknown2(net.reason), route: unknown2(net.reason), implied: IMPLIED_VM };
+    return { address: r.address, type: r.type, network: net, externalIp, firewall: this.firewall(r, net.value), route: this.route(r, net.value), implied: IMPLIED_VM };
   }
   /** Whether `target_tags` / `target_service_accounts` select the VM (rule 5). */
   targets(rule, vm) {
@@ -2854,6 +2883,7 @@ function valueOr(r, attr, dflt) {
   const v = r.values[attr];
   return known2(v === null || v === void 0 ? dflt : v);
 }
+var IMPLIED_VM = "implied rule: deny all ingress";
 var hasAnyUnknown = (r, attrs) => attrs.some((a) => hasUnknown(r, [a]));
 var PRIVATE = fromRanges(["10.0.0.0/8", "100.64.0.0/10", "172.16.0.0/12", "192.168.0.0/16"].flatMap((c) => cidrToSet(c) ?? []));
 var isPrivate = (set) => set.every(([lo, hi]) => PRIVATE.some(([plo, phi]) => lo >= plo && hi <= phi));

@@ -58,6 +58,30 @@ internet to a `google_compute_instance`. Each path has `provider: "gcp"`. Its ho
    Source: <https://docs.cloud.google.com/vpc/docs/routes>
    Source: <https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/compute_network>
 
+## Cloud SQL (`google_sql_database_instance`)
+
+10. **Public IP.** An instance has a public IPv4 address when
+    `settings.ip_configuration.ipv4_enabled` is true (the provider default).
+    Source: <https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/sql_database_instance>
+11. **Authorized networks.** Clients "connecting directly to a Cloud SQL instance on its
+    public IP address" must be in the authorized networks: "The authorized networks list
+    is implemented on the Cloud SQL instance VM by a local firewall." An empty list
+    refuses all public IP connections ("To configure an instance to refuse all public IP
+    connections": clear the authorized address list).
+    Source: <https://docs.cloud.google.com/sql/docs/postgres/authorize-networks>
+    Source: <https://docs.cloud.google.com/sql/docs/postgres/configure-ip>
+12. **Port.** The database engine's port: 5432 for `POSTGRES_*`, 3306 for `MYSQL_*`, 1433
+    for `SQLSERVER_*` (`database_version`).
+    Source: <https://docs.cloud.google.com/sql/docs/postgres/connect-overview>
+
+Hops: `public-ip` (rule 10), then `firewall` with the authorized networks as the only
+allow rules on the engine's port (rule 11). Google manages the network path to the
+instance, so there is no `route` hop. The Cloud SQL Auth Proxy and the connectors are
+gated by IAM, not by the network, and are not modeled.
+
+`unknown` with a reason: `database_version`, `ipv4_enabled`, or an authorized network is
+unknown until apply.
+
 ## Hops
 
 1. **`public-ip`**: the VM's interface has an `access_config` block. Without one,
@@ -100,7 +124,7 @@ When allowed, `sources` is `["internet"]` or the allowed CIDRs.
   assumes there is none.
 - Firewall rules for the network that live in another configuration are not seen, as for
   AWS.
-- IPv6, load balancers, Cloud SQL, and paths between VMs are not modeled yet.
+- IPv6, load balancers, Cloud SQL private IP, and paths between VMs are not modeled yet.
 - Google Cloud blocks some traffic before firewall rules: "External IPv4 and IPv6
   addresses only accept TCP, UDP, ICMP, IPIP, AH, ESP, SCTP, and GRE packets." The engine
   checks TCP and UDP only, so this does not change a result.
