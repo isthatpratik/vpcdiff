@@ -1,6 +1,8 @@
 import { evaluate, exposedPorts, portCuts, segment } from "./evaluate.js";
 import { evaluate6, exposedPorts6 } from "./evaluate6.js";
 import { evaluateInternal, internalCuts, referencedPorts } from "./internal.js";
+import { evaluateGcp, gcpCuts, gcpExposed } from "./gcp/evaluate.js";
+import { GcpModel, type GcpVm } from "./gcp/model.js";
 import { formatPorts, union, type IntervalSet, type Range } from "./intervals.js";
 import { ModelBuilder, type Endpoint } from "./model.js";
 import { cmp, parsePlan, type Snapshot } from "./plan.js";
@@ -249,6 +251,29 @@ export function analyze(plan: unknown): Result {
     }
   }
 
+  // Google Cloud: internet to each Compute Engine VM (docs/semantics/gcp.md).
+  const vmsOf = (snap: Snapshot) => new Map(new GcpModel(snap).vms().map((v) => [v.address, v]));
+  const vmBefore = vmsOf(before);
+  const vmAfter = vmsOf(after);
+  for (const address of [...new Set([...vmBefore.keys(), ...vmAfter.keys()])].toSorted(cmp)) {
+    const b: GcpVm | undefined = vmBefore.get(address);
+    const a: GcpVm | undefined = vmAfter.get(address);
+    paths.push(
+      ...pathsOf({
+        id: `internet->${address}`,
+        from: "internet",
+        provider: "gcp",
+        to: address,
+        toType: (a ?? b)?.type ?? "",
+        candidates: (p) => union(gcpExposed(b, p), gcpExposed(a, p)),
+        cuts: [...gcpCuts(b), ...gcpCuts(a)],
+        before: (p, seg) => evaluateGcp(b, p, seg),
+        after: (p, seg) => evaluateGcp(a, p, seg),
+        risk: () => [],
+      }),
+    );
+  }
+
   const summary: Record<Change, number> = { added: 0, removed: 0, changed: 0, unchanged: 0, unknown: 0 };
   for (const path of paths) summary[path.change]++;
   const notes = [...notesFor(before, after), ...unresolvedNotes([...epBefore.values(), ...epAfter.values()].flat())];
@@ -296,6 +321,7 @@ interface PathSpec {
   id: string;
   from: string;
   family?: "ipv6";
+  provider?: "gcp" | "azure";
   fromType?: string;
   to: string;
   toType: string;
@@ -315,7 +341,7 @@ function pathsOf(spec: PathSpec): Path[] {
       if (!run) return;
       const ports = formatPorts([run.ports]);
       const risk = run.before.verdict === "allowed" && run.after.verdict === "allowed" ? spec.risk() : [];
-      out.push({ id: `${spec.id}:${p}:${ports}`, from: spec.from, ...(spec.fromType !== undefined ? { fromType: spec.fromType } : {}), ...(spec.family ? { family: spec.family } : {}), to: spec.to, toType: spec.toType, protocol: p, ports, change: changeOf(run.before, run.after), before: run.before, after: run.after, ...(risk.length ? { outageRisk: risk } : {}) });
+      out.push({ id: `${spec.id}:${p}:${ports}`, from: spec.from, ...(spec.fromType !== undefined ? { fromType: spec.fromType } : {}), ...(spec.family ? { family: spec.family } : {}), ...(spec.provider ? { provider: spec.provider } : {}), to: spec.to, toType: spec.toType, protocol: p, ports, change: changeOf(run.before, run.after), before: run.before, after: run.after, ...(risk.length ? { outageRisk: risk } : {}) });
       run = undefined;
     };
     for (const seg of segment(spec.candidates(p), spec.cuts)) {

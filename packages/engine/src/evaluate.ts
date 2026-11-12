@@ -22,7 +22,7 @@ export const EPHEMERAL: IntervalSet = [[1024, 65535]];
 const NOT_INTERNET = ["0.0.0.0/8", "10.0.0.0/8", "100.64.0.0/10", "127.0.0.0/8", "169.254.0.0/16", "172.16.0.0/12", "192.168.0.0/16", "224.0.0.0/4", "240.0.0.0/4"];
 /** Private and shared address space (RFC 1918, RFC 6598), where no AWS service's public range can be. */
 export const PRIVATE_IPV4: IntervalSet = ["10.0.0.0/8", "100.64.0.0/10", "172.16.0.0/12", "192.168.0.0/16"].reduce<IntervalSet>((set, c) => union(set, cidrToSet(c) ?? EMPTY), EMPTY);
-const PUBLIC_IPV4: IntervalSet = NOT_INTERNET.reduce<IntervalSet>((set, c) => subtract(set, cidrToSet(c) ?? EMPTY), ALL_IPV4);
+export const PUBLIC_IPV4: IntervalSet = NOT_INTERNET.reduce<IntervalSet>((set, c) => subtract(set, cidrToSet(c) ?? EMPTY), ALL_IPV4);
 
 /** Internet source addresses for an endpoint: public IPv4 addresses outside its VPC. */
 export function internetOf(ep: Endpoint): IntervalSet {

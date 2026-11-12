@@ -71,6 +71,23 @@ function tf(cwd: string, args: string[]): string {
   return execFileSync(BIN, args, { cwd, env, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
 }
 
+// Provider settings for a plan that never reaches a real account. They live here, not in
+// the fixture's main.tf, so a fixture never holds a token, even a fake one (the guard test
+// in fixtures/sandbox.test.ts checks that). A Google Cloud plan of new resources needs no
+// API call; the token is never valid.
+const GOOGLE_OVERRIDE = `provider "google" {
+  project      = "demo-project"
+  region       = "us-central1"
+  access_token = "fake-token-for-planning"
+}
+`;
+
+/** The override file for the clouds a configuration uses (an override needs its base provider block). */
+function overrideFor(configDir: string): string {
+  const text = readdirSync(configDir).filter((f) => f.endsWith(".tf")).map((f) => readFileSync(join(configDir, f), "utf8")).join("\n");
+  return [/hashicorp\/aws\b/.test(text) ? PROVIDER_OVERRIDE : "", /hashicorp\/google\b/.test(text) ? GOOGLE_OVERRIDE : ""].join("\n");
+}
+
 /**
  * A lock file kept from the first verified install of a set of providers. With it,
  * `init` uses the plugin cache and still checks the provider's hash, instead of
@@ -84,7 +101,7 @@ function lockPath(configDir: string): string {
 function plan(configDir: string, state?: Obj): { plan: Obj; dir: string } {
   const dir = mkdtempSync(join(tmpdir(), "vpcdiff-fixture-"));
   for (const f of readdirSync(configDir)) if (f.endsWith(".tf")) cpSync(join(configDir, f), join(dir, f));
-  writeFileSync(join(dir, "fixture_override.tf"), PROVIDER_OVERRIDE);
+  writeFileSync(join(dir, "fixture_override.tf"), overrideFor(configDir));
   if (state) writeFileSync(join(dir, "terraform.tfstate"), JSON.stringify(state, null, 2));
   const lock = lockPath(configDir);
   if (existsSync(lock)) cpSync(lock, join(dir, ".terraform.lock.hcl"));
@@ -239,9 +256,11 @@ after.timestamp = "2026-01-01T00:00:00Z"; // Fixed, so regenerating gives the sa
 if (Array.isArray(after.relevant_attributes)) after.relevant_attributes = after.relevant_attributes.map((a) => JSON.stringify(a)).sort().map((a) => JSON.parse(a) as Json);
 
 // Remove the fake credentials and skip flags that fixture_override.tf added.
-const providerConfig = ((after.configuration as Obj).provider_config as Obj | undefined)?.aws as Obj | undefined;
-const providerExprs = providerConfig?.expressions as Obj | undefined;
-if (providerConfig && providerExprs) providerConfig.expressions = { region: providerExprs.region ?? null };
+for (const [name, keep] of [["aws", ["region"]], ["google", ["project", "region"]]] as const) {
+  const providerConfig = ((after.configuration as Obj).provider_config as Obj | undefined)?.[name] as Obj | undefined;
+  const providerExprs = providerConfig?.expressions as Obj | undefined;
+  if (providerConfig && providerExprs) providerConfig.expressions = Object.fromEntries(keep.map((k) => [k, providerExprs[k] ?? null]));
+}
 // Plan JSON keeps sensitive values in clear text and only marks them: `X` next to
 // `X_sensitive` (before, after, values/sensitive_values), outputs with `sensitive: true`,
 // and variables declared sensitive. Redact by path, so keys and other values stay intact.

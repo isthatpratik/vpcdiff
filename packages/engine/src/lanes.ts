@@ -33,11 +33,20 @@ export const INTERNAL_COLUMNS: Column[] = [
   { key: "target-route", label: "Return route" },
 ];
 
+/** Columns of a Google Cloud path from the internet (docs/semantics/gcp.md). */
+export const GCP_COLUMNS: Column[] = [
+  { key: "source", label: "Internet" },
+  { key: "public-ip", label: "External IP" },
+  { key: "firewall", label: "Firewall rules" },
+  { key: "target", label: "Target" },
+  { key: "route", label: "Return route" },
+];
+
 /** True for a path from the internet; false for a path inside the VPC. */
 export const isInternet = (path: Pick<Path, "from">): boolean => path.from === "internet";
 
 /** The columns for a path's kind. */
-export const columnsOf = (path: Pick<Path, "from">): Column[] => (isInternet(path) ? COLUMNS : INTERNAL_COLUMNS);
+export const columnsOf = (path: Pick<Path, "from" | "provider">): Column[] => (path.provider === "gcp" ? GCP_COLUMNS : isInternet(path) ? COLUMNS : INTERNAL_COLUMNS);
 
 export type CellState = Decision | "not-reached" | "absent";
 
@@ -98,7 +107,7 @@ export function lanesOf(path: Path): Lanes {
   });
   const firstChanged = changed.indexOf(true);
   const reached = (lane: Lane) => lane.cells.reduce((last, c, i) => (c.state !== "not-reached" && c.state !== "absent" ? i : last), 0);
-  const sg = COLUMNS.findIndex((c) => c.key === "security-group");
+  const sg = COLUMNS.findIndex((c) => c.key === "security-group" || c.key === "firewall");
   // A path with outage risk opens on the hop whose resource the plan replaces.
   const risky = path.outageRisk ? after.cells.findIndex((c) => (path.outageRisk ?? []).some((r) => c.resource.split(", ").includes(r) || c.rule.includes(r))) : -1;
   const focus = oneSideAbsent ? sg : firstChanged >= 0 ? firstChanged : risky >= 0 ? risky : Math.max(reached(before), reached(after));

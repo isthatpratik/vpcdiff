@@ -63,9 +63,16 @@ export function fromText(path: Pick<Path, "from">): string {
 }
 
 /** A hop's definition for this path's kind: the source column differs inside the VPC. */
-export function hopHelp(path: Pick<Path, "from">, key: ColumnKey): string {
+export function hopHelp(path: Pick<Path, "from" | "provider">, key: ColumnKey): string {
+  if (path.provider === "gcp" && GCP_HELP[key]) return GCP_HELP[key];
   return key === "source" && !isInternet(path) ? "Where the traffic starts: a resource in the VPC, from its private address." : HOP_HELP[key];
 }
+
+/** Google Cloud words for the hops that differ from AWS (docs/semantics/gcp.md). */
+const GCP_HELP: Partial<Record<ColumnKey, string>> = {
+  "public-ip": "Does the VM have an external IP address (an access_config on its interface)? Without one, the internet cannot address it.",
+  route: "Can the reply find its way back? The network needs its default route to the default internet gateway.",
+};
 
 /** Short definitions for each hop, for tooltips. Plain words first, the AWS term second. */
 export const HOP_HELP: Record<ColumnKey, string> = {
@@ -84,6 +91,7 @@ export const HOP_HELP: Record<ColumnKey, string> = {
   "target-nacl-outbound": "The target subnet's firewall for the reply, outgoing, on an ephemeral port (1024 to 65535).",
   "source-nacl-inbound": "The source subnet's firewall for the reply, incoming, on an ephemeral port (1024 to 65535).",
   "target-route": "Can the reply find its way back? The target's route table must use the local route to the source's subnet.",
+  firewall: "Google Cloud VPC firewall rules of the network. The lowest priority number that matches decides; a deny wins a tie; no match is denied.",
 };
 
 /** Short definitions for each decision, for tooltips and the legend. */
@@ -171,7 +179,7 @@ function baseVerdict(path: Path): Verdict {
     const cells = lanes[side].cells;
     const deny = cells.findIndex((c) => c.state === "deny");
     if (deny >= 0) return deny;
-    return lanes.columns.findIndex((c) => c.key === "security-group");
+    return lanes.columns.findIndex((c) => c.key === "security-group" || c.key === "firewall");
   };
 
   const from = fromText(path);

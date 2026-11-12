@@ -20,7 +20,9 @@ export type HopKind =
   | "target-nacl-inbound"
   | "target-nacl-outbound"
   | "source-nacl-inbound"
-  | "target-route";
+  | "target-route"
+  // Google Cloud (docs/semantics/gcp.md, ADR 0011).
+  | "firewall";
 
 export interface Hop {
   hop: HopKind;
@@ -56,6 +58,8 @@ export interface Path {
   fromType?: string;
   /** "ipv6" for an IPv6 path from the internet; absent for IPv4. */
   family?: "ipv6";
+  /** The cloud: "gcp" or "azure". Absent for AWS (ADR 0011). */
+  provider?: "gcp" | "azure";
   to: string;
   toType: string;
   protocol: Protocol;
