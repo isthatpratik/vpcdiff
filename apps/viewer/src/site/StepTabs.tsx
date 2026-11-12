@@ -31,7 +31,7 @@ const STEPS: Step[] = [
     tab: "Plan",
     title: "Make the plan",
     rest: "the one you would apply",
-    body: "Terraform writes the plan as JSON. vpcdiff needs nothing else: no AWS account, no credentials, no state.",
+    body: "Terraform writes the plan as JSON. vpcdiff needs nothing else: no cloud account, no credentials, no state.",
     panelTitle: "Terminal",
     panel: <Code lines={[{ t: "$ terraform plan -out=tfplan", tone: "strong" }, { t: "Plan: 0 to add, 1 to change, 0 to destroy.", tone: "muted" }, { t: "" }, { t: "$ terraform show -json tfplan > plan.json", tone: "strong" }, { t: "" }, { t: "  # aws_security_group.db will be updated in-place", tone: "muted" }, { t: '  ~ cidr_blocks = ["10.0.0.0/16"] -> ["0.0.0.0/0"]' }]} />,
   },

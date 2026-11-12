@@ -1,6 +1,6 @@
 # vpcdiff
 
-> vpcdiff reads a Terraform plan (`terraform show -json`) and computes which AWS resources the internet, and other resources in the VPC, can reach before and after the plan, hop by hop. It reports paths that are added, removed, changed, or unknown, and flags outage risk when a resource on an open path is replaced by deleting it first. Free, open source (Apache 2.0), and offline: it needs no AWS account or credentials.
+> vpcdiff reads a Terraform plan (`terraform show -json`) and computes which AWS, Google Cloud, and Azure resources the internet can reach, and which resources inside an AWS VPC can reach each other, before and after the plan, hop by hop. It reports paths that are added, removed, changed, or unknown, and flags outage risk when a resource on an open path is replaced by deleting it first. Free, open source (Apache 2.0), and offline: it needs no cloud account or credentials.
 
 ## What it checks
 - Endpoints: aws_instance, aws_db_instance, aws_lb (ALB and NLB).
@@ -20,7 +20,7 @@
 - "Partly undecided" on a reachable path lists the sources vpcdiff could not decide; they are neither allowed nor blocked.
 
 ## Questions
-- **Does vpcdiff need AWS credentials or an AWS account?** No. It reads the JSON that terraform show produces. Terraform needs credentials to make the plan; vpcdiff does not.
+- **Does vpcdiff need cloud credentials or a cloud account?** No. It reads the JSON that terraform show produces. Terraform needs credentials to make the plan; vpcdiff does not.
 - **Does my plan leave my machine?** No. The CLI and the GitHub Action run where you run them. The viewer analyzes the file in your browser tab, and its Content Security Policy blocks every data request. The Action writes a comment to your own pull request only when you turn that on.
 - **What does unknown mean?** The engine could not decide that hop: a value Terraform learns only at apply time, a resource it does not model yet, or a load balancer whose subnets give different answers. The reason is always shown. Unknown is a result, never a guess.
 - **How is this different from Checkov, tfsec, or Trivy?** Those tools judge each rule on its own. vpcdiff follows the whole path: an open security group behind a network ACL that denies the port is not an exposure, and a narrow rule can still open a path when a route changes.
@@ -35,4 +35,4 @@
 - [Viewer](https://isthatpratik.github.io/vpcdiff/app/): open a plan in the browser, offline.
 - [Source on GitHub](https://github.com/isthatpratik/vpcdiff): engine, CLI, GitHub Action, and fixtures.
 - [Design doc](https://github.com/isthatpratik/vpcdiff/blob/main/docs/design/0001-vpcdiff-design.md): how reachability is computed.
-- [Semantics](https://github.com/isthatpratik/vpcdiff/tree/main/docs/semantics): the AWS rules each hop follows, with documentation links.
+- [Semantics](https://github.com/isthatpratik/vpcdiff/tree/main/docs/semantics): the AWS, Google Cloud, and Azure rules each hop follows, with documentation links.

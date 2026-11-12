@@ -109,7 +109,7 @@ function Features() {
         <div className="grid gap-3">
           <span className={label}>01 · hop by hop</span>
           <h3 className={title}>Every hop, with the rule that decided it</h3>
-          <p className={body}>Each path is checked in the order traffic meets it. Every answer names the resource and links the AWS documentation for that hop.</p>
+          <p className={body}>Each path is checked in the order traffic meets it. Every answer names the resource and links the cloud's documentation for that hop.</p>
         </div>
         <HopChain on={seen} />
       </article>
@@ -133,7 +133,7 @@ function Features() {
         <div className="grid gap-3">
           <span className={label}>04 · private</span>
           <h3 className={title}>Nothing leaves your machine</h3>
-          <p className={body}>No AWS account and no credentials. The viewer runs in your browser tab, behind a policy that blocks every data request it could make.</p>
+          <p className={body}>No cloud account and no credentials. The viewer runs in your browser tab, behind a policy that blocks every data request it could make.</p>
         </div>
         <div className="grid gap-2">
           <span className="font-litt-mono text-2xl text-litt-fg sm:text-3xl">
@@ -170,22 +170,22 @@ function Logos() {
 }
 
 const COVERAGE: { group: string; items: string[] }[] = [
-  { group: "Endpoints", items: ["aws_instance", "aws_db_instance", "aws_rds_cluster_instance", "aws_ecs_service", "aws_lb", "aws_elb", "aws_vpc_endpoint"] },
-  { group: "Routing", items: ["aws_vpc", "aws_subnet", "aws_internet_gateway", "aws_nat_gateway", "aws_vpc_peering_connection", "aws_route_table", "aws_route", "aws_main_route_table_association", "aws_default_route_table"] },
-  { group: "Filters", items: ["aws_security_group", "aws_security_group_rule", "aws_vpc_security_group_ingress_rule", "aws_vpc_security_group_egress_rule", "aws_default_security_group", "aws_network_acl", "aws_network_acl_rule", "aws_default_network_acl", "aws_ec2_managed_prefix_list"] },
-  { group: "Addresses and listeners", items: ["aws_eip", "aws_eip_association", "aws_lb_listener", "aws_db_subnet_group", "IPv6 addresses"] },
+  { group: "Endpoints", items: ["aws_instance", "aws_db_instance", "aws_rds_cluster_instance", "aws_ecs_service", "aws_lb", "aws_elb", "aws_vpc_endpoint", "google_compute_instance", "google_sql_database_instance", "azurerm_linux_virtual_machine", "azurerm_windows_virtual_machine"] },
+  { group: "Routing", items: ["aws_vpc", "aws_subnet", "aws_internet_gateway", "aws_nat_gateway", "aws_vpc_peering_connection", "aws_route_table", "aws_route", "aws_main_route_table_association", "aws_default_route_table", "aws_ec2_transit_gateway", "google_compute_network", "google_compute_route", "azurerm_route_table", "azurerm_route"] },
+  { group: "Filters", items: ["aws_security_group", "aws_security_group_rule", "aws_vpc_security_group_ingress_rule", "aws_vpc_security_group_egress_rule", "aws_default_security_group", "aws_network_acl", "aws_network_acl_rule", "aws_default_network_acl", "aws_ec2_managed_prefix_list", "google_compute_firewall", "azurerm_network_security_group", "azurerm_network_security_rule"] },
+  { group: "Addresses and listeners", items: ["aws_eip", "aws_eip_association", "aws_lb_listener", "aws_db_subnet_group", "azurerm_public_ip", "IPv6 addresses"] },
 ];
 
 /** Not modeled yet (README support matrix); paths through them are reported as unknown. */
-const NOT_YET = ["Transit Gateway", "VPN routes", "Gateway Load Balancers", "IPv6 inside the VPC", "ECS bridge mode"];
+const NOT_YET = ["VPN routes", "Gateway Load Balancers", "IPv6 inside the VPC", "ECS bridge mode"];
 
 const FAQ: { q: string; a: string }[] = [
-  { q: "Does vpcdiff need AWS credentials or an AWS account?", a: "No. It reads the JSON that terraform show produces. Terraform needs credentials to make the plan; vpcdiff does not." },
+  { q: "Does vpcdiff need cloud credentials or a cloud account?", a: "No. It reads the JSON that terraform show produces. Terraform needs credentials to make the plan; vpcdiff does not." },
   { q: "Does my plan leave my machine?", a: "No. The CLI and the GitHub Action run where you run them. The viewer analyzes the file in your browser tab, and its Content Security Policy blocks every data request. The Action writes a comment to your own pull request only when you turn that on." },
   { q: "What does unknown mean?", a: "The engine could not decide that hop: a value Terraform learns only at apply time, a resource it does not model yet, or a load balancer whose subnets give different answers. The reason is always shown. Unknown is a result, never a guess." },
   { q: "How is this different from Checkov, tfsec, or Trivy?", a: "Those tools judge each rule on its own. vpcdiff follows the whole path: an open security group behind a network ACL that denies the port is not an exposure, and a narrow rule can still open a path when a route changes." },
   { q: "How is it different from AWS Reachability Analyzer?", a: "Reachability Analyzer checks a live account, one path at a time, after you deploy. vpcdiff works on the plan, before you apply, for every endpoint at once. Each test fixture includes the steps to check it against Reachability Analyzer; those paid checks have not been run yet." },
-  { q: "Does it check traffic between my own services?", a: "Yes, since v0.2. When a security group allows traffic from another group, such as a load balancer to its service or an app to its database, vpcdiff checks that path too: both groups, the routes, and the network ACLs both ways, also across a VPC peering connection. A plan that cuts such a path gets a review." },
+  { q: "Does it check traffic between my own services?", a: "Yes, since v0.2. When a security group allows traffic from another group, such as a load balancer to its service or an app to its database, vpcdiff checks that path too: both groups, the routes, and the network ACLs both ways, also across a VPC peering connection or a transit gateway. A plan that cuts such a path gets a review." },
   { q: "Can it block a pull request?", a: "Yes. The GitHub Action fails the check when the plan adds a path from the internet (you choose the level with fail-on; changed also counts paths inside the VPC that open or close), writes the report to the job summary, and keeps one comment on the pull request up to date." },
   { q: "What does it cost?", a: "Nothing. vpcdiff is free and open source under the Apache 2.0 license." },
 ];
@@ -326,7 +326,7 @@ function Hero() {
                 View on GitHub
               </Cta>
             </div>
-            <p className="text-litt-small text-litt-fg-subtle">Free and open source. No AWS credentials.</p>
+            <p className="text-litt-small text-litt-fg-subtle">Free and open source. No cloud credentials.</p>
           </div>
         </div>
       </div>
@@ -415,7 +415,7 @@ export function Landing() {
         <Rail label="How it is checked">
           <div className={`${PAD} pt-24 pb-16 md:pt-28 md:pb-20`}>
             <SectionHead eyebrow="Engine" title="Pure and deterministic." rest="The same plan gives the same answer, byte for byte." bar>
-              Every AWS networking rule in the code cites its documentation. When the engine cannot decide a hop, it says unknown and why.
+              Every networking rule in the code cites its AWS, Google Cloud, or Azure documentation. When the engine cannot decide a hop, it says unknown and why.
             </SectionHead>
           </div>
           <HopStrip />
