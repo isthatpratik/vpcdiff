@@ -3,7 +3,7 @@
 // docs/semantics/internal-paths.md.
 import { EPHEMERAL, naclEval, PRIVATE_IPV4, segment } from "./evaluate.js";
 import { contains, equals, formatPorts, intersect, isEmpty, subtract, union, EMPTY, type IntervalSet, type Range } from "./intervals.js";
-import type { Endpoint, Known, Nacl, NaclRule, RouteTable, SecurityGroup, Vpc } from "./model.js";
+import type { Endpoint, Known, Nacl, NaclRule, RouteTable, SecurityGroup, TgwAttachment, Transit, Vpc } from "./model.js";
 import type { Hop, HopKind, Outcome, Protocol } from "./types.js";
 
 const SG_DOC = "https://docs.aws.amazon.com/vpc/latest/userguide/security-group-rules.html";
@@ -24,9 +24,16 @@ const DOC: Partial<Record<HopKind, string>> = {
 const SAME_SUBNET = "same subnet: no network ACL applies";
 
 /** `doubt`: on an allowing step, what it could not decide (reported in the path's reason). */
-type Step = { decision: Hop["decision"]; resource: string; rule: string; reason?: string; doubt?: string };
+type Step = { decision: Hop["decision"]; resource: string; rule: string; reason?: string; doubt?: string; doc?: string };
 
 const protoMatches = (rule: string, p: Protocol) => rule === "all" || rule === p;
+
+/**
+ * Whether a rule that names a group of the peer can match: always in one VPC or across a
+ * peering connection; across a transit gateway only as docs/semantics/transit-gateway.md says.
+ */
+type GroupRefs = { use: true } | { use: false; why: string } | { use: "unknown"; why: string };
+const USE_GROUPS: GroupRefs = { use: true };
 
 /** Keys of an endpoint's security groups, or why they are unknown. */
 export function groupKeys(ep: Endpoint): Known<string[]> {
@@ -37,16 +44,23 @@ export function groupKeys(ep: Endpoint): Known<string[]> {
  * One direction of security group rules: does a rule of `groups` allow `p`/`ports` to
  * (egress) or from (ingress) the peer, known by its group keys and its subnet?
  */
-function sgStep(groups: SecurityGroup[], dir: "ingress" | "egress", peerKeys: string[], peerCidr: IntervalSet, peer: string, p: Protocol, ports: Range): Step {
+function sgStep(groups: SecurityGroup[], dir: "ingress" | "egress", peerKeys: string[], peerCidr: IntervalSet, peer: string, p: Protocol, ports: Range, refs: GroupRefs = USE_GROUPS): Step {
   const names = groups.map((g) => g.address).join(", ") || "no security groups";
   const allowing: string[] = [];
   const doubt: string[] = [];
+  const ignored: string[] = [];
   for (const g of groups) {
     const rules = g[dir];
     if (!rules.ok) return { decision: "unknown", resource: g.address, rule: rules.reason, reason: rules.reason };
     for (const rule of rules.value) {
       if (!protoMatches(rule.protocol, p) || !contains(rule.ports, [ports])) continue;
-      if (rule.groups.some((k) => peerKeys.includes(k)) || contains(rule.sources, peerCidr)) allowing.push(rule.text);
+      const byGroup = rule.groups.some((k) => peerKeys.includes(k));
+      if (contains(rule.sources, peerCidr) || (byGroup && refs.use === true)) allowing.push(rule.text);
+      else if (byGroup && refs.use === "unknown") doubt.push(`${rule.text} names a group of ${peer}: ${refs.why}`);
+      else if (byGroup && refs.use === false) {
+        ignored.push(`${rule.text} names a group of ${peer}, but ${refs.why}`);
+        if (!isEmpty(intersect(rule.sources, peerCidr))) doubt.push(`${rule.text} covers only part of the subnet of ${peer}, and its address is not known before apply`);
+      }
       else if (!isEmpty(intersect(rule.sources, peerCidr))) doubt.push(`${rule.text} covers only part of the subnet of ${peer}, and its address is not known before apply`);
       else if (rule.unresolved) doubt.push(`${rule.text}: ${rule.unresolved}`);
       else if (rule.listUnresolved) doubt.push(`${rule.text}: ${rule.listUnresolved}`);
@@ -55,7 +69,7 @@ function sgStep(groups: SecurityGroup[], dir: "ingress" | "egress", peerKeys: st
   const portText = `${p}/${formatPorts([ports])}`;
   if (allowing.length) return { decision: "allow", resource: names, rule: allowing.join("; ") };
   if (doubt.length) return { decision: "unknown", resource: names, rule: doubt.join("; "), reason: doubt.join("; ") };
-  const what = dir === "egress" ? `no egress rule of ${names} allows ${portText} to ${peer}` : `no ingress rule of ${names} allows ${portText} from ${peer}`;
+  const what = (dir === "egress" ? `no egress rule of ${names} allows ${portText} to ${peer}` : `no ingress rule of ${names} allows ${portText} from ${peer}`) + (ignored.length ? ` (${ignored.join("; ")})` : "");
   return { decision: "deny", resource: names, rule: what, reason: what };
 }
 
@@ -145,6 +159,152 @@ function peeringStep(table: Known<RouteTable>, at: string, peerCidr: IntervalSet
   return { decision: "allow", resource: t.resource, rule: `${texts.join("; ")} (${p.active.value})` };
 }
 
+const TGW_DOC = "https://docs.aws.amazon.com/vpc/latest/tgw/how-transit-gateways-work.html";
+
+/** The transit gateway that a route table sends a subnet to, when every matching route names the same one. */
+function transitOf(table: Known<RouteTable>, peerCidr: IntervalSet): Known<string> | undefined {
+  if (!table.ok || !table.value.routes.ok) return undefined;
+  const routes = table.value.routes.value.filter((r) => !isEmpty(intersect(r.cidr, peerCidr))).toSorted((a, b) => b.prefix - a.prefix);
+  let remaining = peerCidr;
+  const via: Known<string>[] = [];
+  for (const r of routes) {
+    const m = intersect(remaining, r.cidr);
+    if (isEmpty(m)) continue;
+    if (r.target.kind !== "other" || !r.target.tgw) return undefined;
+    via.push(r.target.tgw);
+    remaining = subtract(remaining, m);
+  }
+  const first = via[0];
+  if (!first) return undefined;
+  if (!first.ok) return first;
+  return via.every((v) => v.ok && v.value === first.value) ? first : undefined;
+}
+
+/** The one VPC attachment of `vpc` to `tgw`. */
+function attachmentOf(transit: Transit, tgw: string, vpc: string): Known<TgwAttachment> {
+  const list = transit.attachments.filter((a) => a.tgw === tgw && a.vpc === vpc);
+  if (list.length === 1) return { ok: true, value: list[0] as TgwAttachment };
+  return { ok: false, reason: list.length ? `${vpc} has ${list.length} attachments to ${tgw}` : `${vpc} has no attachment to ${tgw} in this plan` };
+}
+
+/** Whether a group reference of the target can name a group of the source across `tgw` (inbound rules only). */
+function transitGroupRefs(transit: Known<Transit> | undefined, tgw: Known<string>, a: Vpc, t: Vpc): GroupRefs {
+  if (!transit?.ok || !tgw.ok) return { use: "unknown", why: "the transit gateway is not known" };
+  const gw = transit.value.gateways.get(tgw.value);
+  const atA = attachmentOf(transit.value, tgw.value, a.address);
+  const atT = attachmentOf(transit.value, tgw.value, t.address);
+  if (!gw || !atA.ok || !atT.ok) return { use: "unknown", why: "the transit gateway attachments are not known" };
+  const flags: [string, Known<boolean>][] = [[tgw.value, gw.sgRefs], [atA.value.address, atA.value.sgRefs], [atT.value.address, atT.value.sgRefs]];
+  const unsure = flags.find(([, f]) => !f.ok);
+  if (unsure && !unsure[1].ok) return { use: "unknown", why: unsure[1].reason };
+  const off = flags.filter(([, f]) => f.ok && !f.value).map(([n]) => n);
+  // "will only work if it has been enabled for both a transit gateway and its VPC attachments"
+  return off.length ? { use: false, why: `security group referencing is not enabled on ${off.join(", ")}` } : USE_GROUPS;
+}
+
+/**
+ * The route from a subnet to a subnet in another VPC through a transit gateway, in six
+ * steps (docs/semantics/transit-gateway.md, "Hops"). `ownAz`: the sender's zone.
+ * https://docs.aws.amazon.com/vpc/latest/tgw/how-transit-gateways-work.html
+ * https://docs.aws.amazon.com/vpc/latest/tgw/tgw-vpc-attachments.html
+ */
+function transitStep(table: Known<RouteTable>, at: string, peerCidr: IntervalSet, peer: string, own: Vpc, peerVpc: Vpc, ownAz: Known<string> | undefined, transit: Known<Transit> | undefined): Step {
+  const fail = (decision: "deny" | "unknown", resource: string, why: string): Step => ({ decision, resource, rule: why, reason: why });
+  if (!table.ok) return fail("unknown", at, table.reason);
+  const t = table.value;
+  if (!t.routes.ok) return fail("unknown", t.resource, t.routes.reason);
+  // "A transit gateway doesn't support routing between VPCs with identical CIDRs"
+  if (own.cidrs.ok && peerVpc.cidrs.ok && !isEmpty(intersect(own.cidrs.value, peerVpc.cidrs.value))) return fail("unknown", own.address, `${own.address} and ${peerVpc.address} have overlapping CIDR blocks; a transit gateway does not route between them`);
+
+  // 1. The sender's route table sends the whole other subnet to one transit gateway.
+  const routes = t.routes.value.toSorted((a, b) => b.prefix - a.prefix);
+  let remaining = peerCidr;
+  const texts: string[] = [];
+  let tgw: string | undefined;
+  for (const [i, route] of routes.entries()) {
+    const m = intersect(remaining, route.cidr);
+    if (isEmpty(m)) continue;
+    if (routes.some((o, j) => j !== i && equals(o.cidr, route.cidr))) return fail("unknown", t.resource, `${t.resource} has more than one route for the same destination`);
+    texts.push(route.text);
+    const target = route.target;
+    if (target.kind === "other" && target.tgw) {
+      if (!target.tgw.ok) return fail("unknown", t.resource, target.tgw.reason);
+      if (tgw && tgw !== target.tgw.value) return fail("unknown", t.resource, `${t.resource} sends the subnet of ${peer} to more than one transit gateway`);
+      tgw = target.tgw.value;
+    } else if (target.kind === "drop") return fail(equals(m, peerCidr) ? "deny" : "unknown", t.resource, `${route.text}: ${target.why}${equals(m, peerCidr) ? "" : `, for part of the subnet of ${peer}`}`);
+    else if (target.kind === "unknown") return fail("unknown", t.resource, target.reason);
+    else return fail("unknown", t.resource, `${route.text} sends part of the subnet of ${peer} to a ${target.kind === "other" ? target.text : target.kind}, so the path through the transit gateway is not the only one`);
+    remaining = subtract(remaining, m);
+  }
+  if (!isEmpty(remaining) || !tgw) return fail("deny", t.resource, `${t.resource} has no route to the subnet of ${peer} in ${peerVpc.address}`);
+
+  // 2. The transit gateway and the sender's attachment.
+  if (!transit) return fail("unknown", tgw, "transit gateways are not known");
+  if (!transit.ok) return fail("unknown", tgw, transit.reason);
+  const tr = transit.value;
+  if (!tr.gateways.has(tgw)) return fail("unknown", tgw, `${tgw} is not a transit gateway in this plan`);
+  const mine = attachmentOf(tr, tgw, own.address);
+  if (!mine.ok) return fail("unknown", tgw, mine.reason);
+  const att = mine.value;
+
+  // 3. "Only resources that reside in Availability Zones where there is a transit gateway attachment can reach the transit gateway."
+  if (!ownAz) return fail("unknown", at, `the Availability Zone of ${at} is not known`);
+  if (!ownAz.ok) return fail("unknown", at, ownAz.reason);
+  if (!att.subnets.ok) return fail("unknown", att.address, att.subnets.reason);
+  const zones = att.subnets.value.map((s) => s.az);
+  if (!zones.some((z) => z.ok && z.value === ownAz.value)) {
+    const unsure = zones.find((z) => !z.ok);
+    if (unsure && !unsure.ok) return fail("unknown", att.address, unsure.reason);
+    return fail("deny", att.address, `${at} is in ${ownAz.value}, where ${att.address} has no subnet; only resources in Availability Zones with a transit gateway attachment can reach the transit gateway`);
+  }
+
+  // 4. The associated transit gateway route table.
+  if (!att.association.ok) return fail("unknown", att.address, att.association.reason);
+  const key = att.association.value;
+  if (key === null) return fail("deny", att.address, `${att.address} is not associated with a transit gateway route table, so ${tgw} has no route for its traffic`);
+  const name = tr.names.get(key) ?? key;
+  const tgwRoutes = tr.routes.get(key);
+  if (!tgwRoutes) return fail("unknown", name, `${name} is not in this plan`);
+  if (!tgwRoutes.ok) return fail("unknown", name, tgwRoutes.reason);
+
+  // 5. Longest prefix match; a static route wins over a propagated one with the same destination.
+  const live = tgwRoutes.value.filter((r) => r.static || !tgwRoutes.value.some((o) => o.static && equals(o.cidr, r.cidr)));
+  const ordered = live.toSorted((a, b) => b.prefix - a.prefix);
+  let rest = peerCidr;
+  const tgwTexts: string[] = [];
+  let peerAtt: string | undefined;
+  for (const [i, route] of ordered.entries()) {
+    const m = intersect(rest, route.cidr);
+    if (isEmpty(m)) continue;
+    if (ordered.some((o, j) => j !== i && equals(o.cidr, route.cidr))) return fail("unknown", name, `${name} has more than one route for the same destination`);
+    // "the routes for the newly attached VPC aren't propagated": which one wins depends on the order of attachment.
+    const clash = route.from ? ordered.find((o) => o.from && o.from !== route.from && !isEmpty(intersect(intersect(o.cidr, route.cidr), peerCidr))) : undefined;
+    if (clash) return fail("unknown", name, `${route.text} overlaps ${clash.text}; a transit gateway propagates only the route of the VPC attached first`);
+    tgwTexts.push(route.text);
+    const target = route.target;
+    const whole = equals(m, peerCidr);
+    if (target.kind === "blackhole") return fail(whole ? "deny" : "unknown", name, `${route.text}: the transit gateway drops traffic that matches a blackhole route${whole ? "" : `, for part of the subnet of ${peer}`}`);
+    if (target.kind === "unknown") return fail("unknown", name, target.reason);
+    const dest = tr.attachments.find((a) => a.address === target.address);
+    if (!dest) return fail("unknown", name, `${target.address} is not a VPC attachment in this plan`);
+    if (dest.vpc !== peerVpc.address) return fail(whole ? "deny" : "unknown", name, `${route.text} sends the subnet of ${peer} to ${dest.address} of ${dest.vpc}, not to ${peerVpc.address}`);
+    if (peerAtt && peerAtt !== dest.address) return fail("unknown", name, `${name} sends the subnet of ${peer} to more than one attachment`);
+    peerAtt = dest.address;
+    rest = subtract(rest, m);
+  }
+  if (!isEmpty(rest) || !peerAtt) return fail("deny", name, `${name} has no route to the subnet of ${peer}`);
+
+  // 6. The traffic enters the other VPC at an attachment subnet; there the local route must reach the subnet.
+  const entry = tr.attachments.find((a) => a.address === peerAtt) as TgwAttachment;
+  if (!entry.subnets.ok) return fail("unknown", entry.address, entry.subnets.reason);
+  for (const s of entry.subnets.value) {
+    const step = routeStep(s.table, s.address, peerCidr, peer);
+    if (step.decision !== "allow") return fail("unknown", entry.address, `traffic from ${tgw} can enter ${peerVpc.address} at ${s.address}, and there: ${step.reason ?? step.rule}`);
+  }
+  const zone = `${att.address} has a subnet in ${ownAz.value}`;
+  return { decision: "allow", resource: t.resource, rule: `${texts.join("; ")}; ${zone}; ${att.address} uses ${name}: ${tgwTexts.join("; ")}` };
+}
+
 /** One direction of a NACL for the whole peer subnet. `ephemeral`: the response to the client's port. */
 function naclStep(nacl: Known<Nacl>, at: string, dir: "ingress" | "egress", peerCidr: IntervalSet, peer: string, p: Protocol, ports: Range, ephemeral: boolean): Step {
   if (!nacl.ok) return { decision: "unknown", resource: at, rule: nacl.reason, reason: nacl.reason };
@@ -178,7 +338,7 @@ export function evaluateInternal(a: Endpoint | undefined, t: Endpoint | undefine
   const doubts: string[] = [];
   const run = (hop: HopKind, s: Step): Outcome | undefined => {
     if (s.doubt) doubts.push(s.doubt);
-    hops.push({ hop, resource: s.resource, decision: s.decision, rule: s.rule, doc: DOC[hop] ?? SG_DOC });
+    hops.push({ hop, resource: s.resource, decision: s.decision, rule: s.rule, doc: s.doc ?? DOC[hop] ?? SG_DOC });
     if (s.decision === "deny") return { verdict: "blocked", sources: [], hops, reason: s.reason ?? s.rule };
     if (s.decision === "unknown") return { verdict: "unknown", sources: [], hops, reason: s.reason ?? s.rule };
     return undefined;
@@ -194,15 +354,23 @@ export function evaluateInternal(a: Endpoint | undefined, t: Endpoint | undefine
   const aCidr = a.subnetCidr.value;
   const tCidr = t.subnetCidr.value;
 
+  // Between VPCs through a transit gateway: group references follow other rules (rule 8 of transit-gateway.md).
+  const crossVpc = a.vpc.ok && t.vpc.ok && a.vpc.value.address !== t.vpc.value.address;
+  const viaTgw = crossVpc ? transitOf(a.routeTable, tCidr) : undefined;
+
   // 1. Outbound rules of the source's groups (the request starts at the source).
-  const out = run("source-security-group", sgStep(a.securityGroups.value, "egress", tKeys, tCidr, t.address, p, ports));
+  // "Outbound security rules do not support security group referencing." https://docs.aws.amazon.com/vpc/latest/tgw/tgw-vpc-attachments.html#vpc-attachment-security
+  const egressRefs: GroupRefs = viaTgw ? { use: false, why: "outbound rules cannot reference security groups across a transit gateway" } : USE_GROUPS;
+  const out = run("source-security-group", sgStep(a.securityGroups.value, "egress", tKeys, tCidr, t.address, p, ports, egressRefs));
   if (out) return out;
 
   // 2. Same VPC, and the local route to the target's subnet.
   if (!a.vpc.ok) return fail("source-route", a.address, a.vpc.reason);
   if (!t.vpc.ok) return fail("source-route", t.address, t.vpc.reason);
   const peered = a.vpc.value.address !== t.vpc.value.address;
-  const r1 = run("source-route", peered ? peeringStep(a.routeTable, a.address, tCidr, t.address, a.vpc.value, t.vpc.value) : routeStep(a.routeTable, a.address, tCidr, t.address));
+  const cross = (from: Endpoint, to: Endpoint, cidr: IntervalSet, own: Vpc, other: Vpc): Step =>
+    transitOf(from.routeTable, cidr) ? { ...transitStep(from.routeTable, from.address, cidr, to.address, own, other, from.az, from.transit), doc: TGW_DOC } : peeringStep(from.routeTable, from.address, cidr, to.address, own, other);
+  const r1 = run("source-route", peered ? cross(a, t, tCidr, a.vpc.value, t.vpc.value) : routeStep(a.routeTable, a.address, tCidr, t.address));
   if (r1) return r1;
 
   // 3, 4. The request leaves the source subnet and enters the target subnet.
@@ -215,7 +383,8 @@ export function evaluateInternal(a: Endpoint | undefined, t: Endpoint | undefine
   if (n4) return n4;
 
   // 5. Inbound rules of the target's groups.
-  const sg = run("security-group", sgStep(t.securityGroups.value, "ingress", aKeys, aCidr, a.address, p, ports));
+  const ingressRefs = viaTgw ? transitGroupRefs(a.transit, viaTgw, a.vpc.value, t.vpc.value) : USE_GROUPS;
+  const sg = run("security-group", sgStep(t.securityGroups.value, "ingress", aKeys, aCidr, a.address, p, ports, ingressRefs));
   if (sg) return sg;
 
   // 6, 7. The response leaves the target subnet and enters the source subnet (NACLs are stateless).
@@ -225,7 +394,7 @@ export function evaluateInternal(a: Endpoint | undefined, t: Endpoint | undefine
   if (n7) return n7;
 
   // 8. The local route back to the source's subnet.
-  const r8 = run("target-route", peered ? peeringStep(t.routeTable, t.address, aCidr, a.address, t.vpc.value, a.vpc.value) : routeStep(t.routeTable, t.address, aCidr, a.address));
+  const r8 = run("target-route", peered ? cross(t, a, aCidr, t.vpc.value, a.vpc.value) : routeStep(t.routeTable, t.address, aCidr, a.address));
   if (r8) return r8;
 
   return { verdict: "allowed", sources: [a.address], hops, reason: doubts.join("; ") };

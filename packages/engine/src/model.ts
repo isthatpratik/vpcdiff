@@ -63,7 +63,8 @@ export interface Nacl {
 export type RouteTarget =
   | { kind: "local" }
   | { kind: "igw"; address: string }
-  | { kind: "other"; text: string }
+  /** `tgw`: for a route to a transit gateway, the aws_ec2_transit_gateway it names. */
+  | { kind: "other"; text: string; tgw?: Known<string> }
   /** A target that never carries traffic back to the internet: NAT gateway, peering, blackhole. */
   | { kind: "drop"; text: string; why: string; peering?: Known<string> }
   | { kind: "unknown"; reason: string };
@@ -95,6 +96,42 @@ export interface Peering {
   active: Known<string>;
 }
 
+/** A route in a transit gateway route table. `from`: the attachment that propagated it. */
+export interface TgwRoute {
+  cidr: IntervalSet;
+  prefix: number;
+  static: boolean;
+  target: { kind: "attachment"; address: string } | { kind: "blackhole" } | { kind: "unknown"; reason: string };
+  from?: string;
+  text: string;
+}
+
+/** A subnet of a transit gateway VPC attachment: where traffic enters and leaves the VPC. */
+export interface TgwSubnet {
+  address: string;
+  az: Known<string>;
+  table: Known<RouteTable>;
+}
+
+export interface TgwAttachment {
+  address: string;
+  tgw: string;
+  vpc: string;
+  subnets: Known<TgwSubnet[]>;
+  /** The key of the associated transit gateway route table, or null when there is none. */
+  association: Known<string | null>;
+  sgRefs: Known<boolean>;
+}
+
+/** Transit gateways in the plan, their VPC attachments, and their route tables (docs/semantics/transit-gateway.md). */
+export interface Transit {
+  gateways: Map<string, { sgRefs: Known<boolean> }>;
+  attachments: TgwAttachment[];
+  /** Route table key to its routes; `tables` names each key for the result. */
+  routes: Map<string, Known<TgwRoute[]>>;
+  names: Map<string, string>;
+}
+
 export interface Vpc {
   address: string;
   cidrs: Known<IntervalSet>;
@@ -120,6 +157,10 @@ export interface Endpoint {
   securityGroups: Known<SecurityGroup[]>;
   nacl: Known<Nacl>;
   routeTable: Known<RouteTable>;
+  /** The subnet's Availability Zone (for transit gateway attachments). */
+  az?: Known<string>;
+  /** Transit gateways in the plan, for paths between VPCs. */
+  transit?: Known<Transit>;
   /** For endpoints with several possible subnets: why placements can differ. */
   placement?: string;
   via?: string[];
@@ -130,6 +171,9 @@ export interface Endpoint {
 const UNMODELED_ROUTES = ["aws_vpn_gateway_route_propagation"];
 const UNMODELED_INSTANCE = ["aws_network_interface_sg_attachment", "aws_network_interface_attachment"];
 const UNMODELED = new Set([...UNMODELED_ROUTES, ...UNMODELED_INSTANCE]);
+// They change transit gateway routing; while one is in the plan, every transit gateway path is unknown.
+const UNMODELED_TGW = ["aws_ec2_transit_gateway_default_route_table_association", "aws_ec2_transit_gateway_default_route_table_propagation", "aws_ec2_transit_gateway_prefix_list_reference", "aws_ec2_transit_gateway_vpc_attachment_accepter"];
+const TGW_DEFAULTS = ["association_default_route_table_id", "propagation_default_route_table_id"];
 
 /**
  * A target of a rule resource: a resource address, or a VPC's default object such as
@@ -184,6 +228,12 @@ function subnetCidrOf(s: Resource): Known<IntervalSet> {
   const cidr = typeof s.values.cidr_block === "string" ? s.values.cidr_block : undefined;
   const set = cidr && !isUnknown(s, ["cidr_block"]) ? cidrToSet(cidr) : undefined;
   return set ? known(set) : unknown(`${s.address}: cidr_block is unknown until apply`);
+}
+
+/** A subnet's Availability Zone name. */
+function azOf(s: Resource): Known<string> {
+  const az = typeof s.values.availability_zone === "string" ? s.values.availability_zone : undefined;
+  return az && !isUnknown(s, ["availability_zone"]) ? known(az) : unknown(`${s.address}: availability_zone is unknown until apply`);
 }
 
 /** Resource type from an address such as `module.a.aws_vpc.main[0]`. */
@@ -735,6 +785,10 @@ export class ModelBuilder {
         const id = r.values.vpc_peering_connection_id;
         target = { ...target, peering: !isUnknown(r, ["vpc_peering_connection_id"]) && typeof id === "string" ? this.peeringById(r, id) : this.refTo(r, "vpc_peering_connection_id", "aws_vpc_peering_connection") };
       }
+      if (other === "transit_gateway_id" && target.kind === "other") {
+        const id = r.values.transit_gateway_id;
+        target = { ...target, tgw: !isUnknown(r, ["transit_gateway_id"]) && typeof id === "string" ? this.tgwById(r, id) : this.refTo(r, "transit_gateway_id", "aws_ec2_transit_gateway") };
+      }
     }
     // A route whose target was deleted keeps its entry with state "blackhole".
     // https://docs.aws.amazon.com/vpc/latest/userguide/RouteTables.html
@@ -1057,6 +1111,12 @@ export class ModelBuilder {
       if (str(raw[key]) || isUnknown(r, [...path, key])) {
         const d = dropOf(key);
         if (d?.kind === "drop" && key === "vpc_peering_connection_id") return { ...d, peering: this.inlinePeering(r, raw, path) };
+        if (key === "transit_gateway_id") {
+          const id = raw.transit_gateway_id;
+          const refs = r.otherRefs.has("route") ? [] : fromConfig(this.snap, r, "route", "aws_ec2_transit_gateway");
+          const tgw = !isUnknown(r, [...path, "transit_gateway_id"]) && typeof id === "string" ? this.tgwById(r, id) : refs.length === 1 && refs[0]?.kind === "resource" ? known(refs[0].address) : unknown<string>(`${r.address}: the transit gateway of a route is unknown until apply`);
+          return { kind: "other", text: "transit gateway", tgw };
+        }
         return d ?? { kind: "other", text: key.replace(/_id$|_arn$/, "").replaceAll("_", " ") };
       }
     }
@@ -1109,6 +1169,205 @@ export class ModelBuilder {
       if (ref.ok && ref.value === p.address && !isUnknown(acc, ["auto_accept"]) && acc.values.auto_accept === true) return known(`${acc.address} accepts ${p.address}`);
     }
     return unknown(`${p.address} is not accepted in this plan, so it may not be active`);
+  }
+
+  /** The aws_ec2_transit_gateway with this ID. */
+  private tgwById(r: Resource, id: string): Known<string> {
+    const found = this.ofType("aws_ec2_transit_gateway").filter((g) => g.values.id === id && !isUnknown(g, ["id"]));
+    return found.length === 1 ? known((found[0] as Resource).address) : unknown(`${r.address}: transit gateway ${id} is not in this plan`);
+  }
+
+  /**
+   * An `enable`/`disable` option. A value the provider computes (unknown and not in the
+   * configuration) is AWS's default.
+   */
+  private option(r: Resource, attr: string, dflt: boolean): Known<boolean> {
+    if (isUnknown(r, [attr])) return r.configured.has(attr) ? unknown(`${r.address}: ${attr} is unknown until apply`) : known(dflt);
+    const v = r.values[attr];
+    if (v === null || v === undefined || v === "") return known(dflt);
+    if (v === "enable" || v === true) return known(true);
+    if (v === "disable" || v === false) return known(false);
+    return unknown(`${r.address}: ${attr} = ${String(v)} cannot be read`);
+  }
+
+  /** The key of a transit gateway route table: its address, or `tgw-default-rt:<gateway>`. */
+  private tgwTableKey(r: Resource, attr: string): Known<string> {
+    const v = r.values[attr];
+    const gateways = this.ofType("aws_ec2_transit_gateway");
+    if (!isUnknown(r, [attr]) && typeof v === "string" && v) {
+      const a = this.snap.byId.get(v);
+      if (a && typeOf(a) === "aws_ec2_transit_gateway_route_table") return known(a);
+      const g = gateways.find((x) => TGW_DEFAULTS.some((k) => !isUnknown(x, [k]) && x.values[k] === v));
+      return g ? known(`tgw-default-rt:${g.address}`) : unknown(`${r.address}: transit gateway route table ${v} is not in this plan`);
+    }
+    if (r.otherRefs.has(attr)) return unknown(`${r.address}: ${attr} uses values that are unknown until apply`);
+    const bases = new Map<string, string | undefined>();
+    for (const ref of r.fullRefs[attr] ?? []) {
+      const m = /^(.*?aws_\w+\.[\w-]+(?:\[[^\]]+\])?)(?:\.(\w+))?$/.exec(localize(r.address, ref));
+      if (!m) continue;
+      const base = m[1] as string;
+      if (m[2] || !bases.has(base)) bases.set(base, m[2] ?? bases.get(base));
+    }
+    const [entry] = [...bases.entries()];
+    const address = bases.size === 1 && entry ? instanceOf(this.snap, entry[0]) : undefined;
+    if (address && typeOf(address) === "aws_ec2_transit_gateway_route_table") return known(address);
+    if (address && typeOf(address) === "aws_ec2_transit_gateway" && entry && TGW_DEFAULTS.includes(entry[1] ?? "")) return known(`tgw-default-rt:${address}`);
+    return unknown(`${r.address}: ${attr} is unknown until apply and cannot be matched to one transit gateway route table`);
+  }
+
+  private transitCache: Known<Transit> | undefined;
+
+  /** Transit gateways in the plan, built once. */
+  private transit(): Known<Transit> {
+    this.transitCache ??= this.buildTransit();
+    return this.transitCache;
+  }
+
+  /**
+   * Transit gateways, their VPC attachments, associations, and route tables.
+   * Rules and sources: docs/semantics/transit-gateway.md.
+   * https://docs.aws.amazon.com/vpc/latest/tgw/how-transit-gateways-work.html
+   */
+  private buildTransit(): Known<Transit> {
+    for (const type of UNMODELED_TGW) {
+      const r = this.ofType(type)[0];
+      if (r) return unknown(`${r.address} (${type}) changes transit gateway routing, and ${type} is not modeled yet`);
+    }
+    const gateways = new Map<string, { sgRefs: Known<boolean>; assoc: Known<boolean>; prop: Known<boolean> }>();
+    for (const g of this.ofType("aws_ec2_transit_gateway").toSorted((a, b) => cmp(a.address, b.address))) {
+      // Defaults: association and propagation `enable`, security group referencing `disable`.
+      // https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/ec2_transit_gateway
+      gateways.set(g.address, { sgRefs: this.option(g, "security_group_referencing_support", false), assoc: this.option(g, "default_route_table_association", true), prop: this.option(g, "default_route_table_propagation", true) });
+    }
+    const names = new Map<string, string>();
+    for (const g of gateways.keys()) names.set(`tgw-default-rt:${g}`, `default route table of ${g}`);
+    for (const t of this.ofType("aws_ec2_transit_gateway_route_table")) names.set(t.address, t.address);
+
+    const attachRef = (r: Resource): Known<string> => {
+      const v = r.values.transit_gateway_attachment_id;
+      if (!isUnknown(r, ["transit_gateway_attachment_id"]) && typeof v === "string") {
+        const a = this.snap.byId.get(v);
+        return a && typeOf(a) === "aws_ec2_transit_gateway_vpc_attachment" ? known(a) : unknown(`${r.address}: attachment ${v} is not a VPC attachment in this plan`);
+      }
+      return this.refTo(r, "transit_gateway_attachment_id", "aws_ec2_transit_gateway_vpc_attachment");
+    };
+
+    // Explicit associations and propagations.
+    const assocOf = new Map<string, { table: string; replace: boolean; address: string }[]>();
+    const propsOf = new Map<string, string[]>();
+    for (const r of this.ofType("aws_ec2_transit_gateway_route_table_association")) {
+      const att = attachRef(r);
+      const table = this.tgwTableKey(r, "transit_gateway_route_table_id");
+      if (!att.ok) return unknown(att.reason);
+      if (!table.ok) return unknown(table.reason);
+      assocOf.set(att.value, [...(assocOf.get(att.value) ?? []), { table: table.value, replace: r.values.replace_existing_association === true, address: r.address }]);
+    }
+    for (const r of this.ofType("aws_ec2_transit_gateway_route_table_propagation")) {
+      const att = attachRef(r);
+      const table = this.tgwTableKey(r, "transit_gateway_route_table_id");
+      if (!att.ok) return unknown(att.reason);
+      if (!table.ok) return unknown(table.reason);
+      propsOf.set(table.value, [...(propsOf.get(table.value) ?? []), att.value]);
+    }
+
+    const attachments: TgwAttachment[] = [];
+    for (const a of this.ofType("aws_ec2_transit_gateway_vpc_attachment").toSorted((x, y) => cmp(x.address, y.address))) {
+      const tgw = this.refTo(a, "transit_gateway_id", "aws_ec2_transit_gateway");
+      if (!tgw.ok) return unknown(tgw.reason);
+      const vpcRef = this.refTo(a, "vpc_id", "aws_vpc");
+      if (!vpcRef.ok) return unknown(vpcRef.reason);
+      const gw = gateways.get(tgw.value) as { sgRefs: Known<boolean>; assoc: Known<boolean>; prop: Known<boolean> };
+      const vpc = this.vpc(vpcRef.value);
+      let subnets: Known<TgwSubnet[]>;
+      if (!vpc.ok) subnets = unknown(vpc.reason);
+      else {
+        const list: TgwSubnet[] = [];
+        let why: string | undefined;
+        for (const ref of resolveRefs(this.snap, a, "subnet_ids", "aws_subnet")) {
+          const s = ref.kind === "resource" ? this.get(ref.address) : undefined;
+          if (!s) {
+            why = ref.kind === "unknown" ? ref.reason : `${a.address}: subnet ${ref.kind === "external" ? ref.id : ""} is not in this plan`;
+            break;
+          }
+          list.push({ address: s.address, az: azOf(s), table: this.subnetRouteTable(s.address, vpc.value) });
+        }
+        subnets = why ? unknown(why) : known(list.toSorted((x, y) => cmp(x.address, y.address)));
+      }
+      // One associated route table: an explicit association, else the default one.
+      const explicit = assocOf.get(a.address) ?? [];
+      const byDefault = !gw.assoc.ok ? gw.assoc : !gw.assoc.value ? known(false) : this.option(a, "transit_gateway_default_route_table_association", true);
+      let association: Known<string | null>;
+      if (explicit.length > 1) association = unknown(`${a.address} has ${explicit.length} route table associations`);
+      else if (explicit[0] && (explicit[0].replace || (byDefault.ok && !byDefault.value))) association = known(explicit[0].table);
+      else if (explicit[0]) association = unknown(byDefault.ok ? `${a.address} has the default association and ${explicit[0].address} without replace_existing_association` : byDefault.reason);
+      else association = byDefault.ok ? known(byDefault.value ? `tgw-default-rt:${tgw.value}` : null) : unknown(byDefault.reason);
+      attachments.push({ address: a.address, tgw: tgw.value, vpc: vpcRef.value, subnets, association, sgRefs: this.option(a, "security_group_referencing_support", true) });
+    }
+
+    // Default propagation into the default route table.
+    for (const att of attachments) {
+      const gw = gateways.get(att.tgw);
+      const r = this.get(att.address) as Resource;
+      const prop = !gw?.prop.ok ? gw?.prop : !gw.prop.value ? known(false) : this.option(r, "transit_gateway_default_route_table_propagation", true);
+      const key = `tgw-default-rt:${att.tgw}`;
+      if (prop && !prop.ok) propsOf.set(key, [...(propsOf.get(key) ?? []), `unknown:${prop.reason}`]);
+      else if (prop?.value) propsOf.set(key, [...(propsOf.get(key) ?? []), att.address]);
+    }
+
+    const routes = new Map<string, Known<TgwRoute[]>>();
+    const add = (key: string, item: Known<TgwRoute>) => {
+      const cur = routes.get(key) ?? known<TgwRoute[]>([]);
+      if (!cur.ok) return;
+      routes.set(key, item.ok ? known([...cur.value, item.value]) : unknown(item.reason));
+    };
+    for (const key of names.keys()) routes.set(key, known([]));
+    // Static routes. https://docs.aws.amazon.com/vpc/latest/tgw/tgw-route-tables.html
+    for (const r of this.ofType("aws_ec2_transit_gateway_route").toSorted((a, b) => cmp(a.address, b.address))) {
+      const key = this.tgwTableKey(r, "transit_gateway_route_table_id");
+      if (!key.ok) return unknown(key.reason);
+      const name = names.get(key.value) ?? key.value;
+      if (hasUnknown(r, ["destination_cidr_block"])) {
+        add(key.value, unknown(`${r.address}: destination is unknown until apply`));
+        continue;
+      }
+      const cidr = str(r.values.destination_cidr_block) ?? "";
+      const set = cidrToSet(cidr);
+      const prefix = cidrPrefixLength(cidr);
+      if (!set || prefix === undefined) continue; // An IPv6 destination never matches an IPv4 subnet.
+      if (!isUnknown(r, ["blackhole"]) && r.values.blackhole === true) {
+        add(key.value, known({ cidr: set, prefix, static: true, target: { kind: "blackhole" }, text: `${r.address} ${cidr} -> blackhole (in ${name})` }));
+        continue;
+      }
+      const att = attachRef(r);
+      add(key.value, known({ cidr: set, prefix, static: true, target: att.ok ? { kind: "attachment", address: att.value } : { kind: "unknown", reason: att.reason }, text: `${r.address} ${cidr} -> ${att.ok ? att.value : "an attachment outside the plan"} (in ${name})` }));
+    }
+    // Propagated routes: the VPC's CIDR blocks.
+    for (const [key, list] of [...propsOf.entries()].toSorted(([a], [b]) => cmp(a, b))) {
+      const name = names.get(key) ?? key;
+      for (const att of [...new Set(list)].toSorted(cmp)) {
+        if (att.startsWith("unknown:")) {
+          add(key, unknown(att.slice("unknown:".length)));
+          continue;
+        }
+        const a = attachments.find((x) => x.address === att);
+        if (!a) {
+          add(key, unknown(`${att} is not a VPC attachment in this plan, so the routes it propagates are not known`));
+          continue;
+        }
+        const vpc = this.vpc(a.vpc);
+        if (!vpc.ok || !vpc.value.cidrs.ok) {
+          add(key, unknown(!vpc.ok ? vpc.reason : vpc.value.cidrs.ok ? "" : vpc.value.cidrs.reason));
+          continue;
+        }
+        const blocks = vpc.value.blocks ?? [];
+        for (const b of blocks) {
+          const set = cidrToSet(b);
+          const prefix = cidrPrefixLength(b);
+          if (set && prefix !== undefined) add(key, known({ cidr: set, prefix, static: false, target: { kind: "attachment", address: att }, from: att, text: `${name} ${b} propagated from ${att}` }));
+        }
+      }
+    }
+    return known({ gateways: new Map([...gateways].map(([k, v]) => [k, { sgRefs: v.sgRefs }])), attachments, routes, names });
   }
 
   private inlineRoutes(r: Resource): Known<Route[]> {
@@ -1254,6 +1513,8 @@ export class ModelBuilder {
       securityGroups: groups(vpcRef.value),
       nacl: this.subnetNacl(subnet, vpcRef.value),
       routeTable: this.subnetRouteTable(subnet, vpc.value),
+      az: azOf(s),
+      transit: this.transit(),
       ...(placement ? { placement } : {}),
       via,
     };
