@@ -9,7 +9,7 @@
     "build": "esbuild src/index.ts --bundle --platform=node --target=node24 --format=esm --outfile=dist/index.mjs --legal-comments=none"
   },
   "dependencies": {
-    "@vpcdiff/cli": "workspace:*",
+    "vpcdiff": "workspace:*",
     "@vpcdiff/engine": "workspace:*"
   }
 }

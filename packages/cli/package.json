@@ -1,28 +1,62 @@
 {
-  "name": "@vpcdiff/cli",
+  "name": "vpcdiff",
   "version": "0.3.1",
+  "description": "See what a Terraform or OpenTofu plan opens to the internet before you apply, on AWS, Google Cloud, and Azure.",
+  "keywords": [
+    "terraform",
+    "opentofu",
+    "aws",
+    "google-cloud",
+    "azure",
+    "network-security",
+    "security-groups",
+    "infrastructure-as-code",
+    "iac-security",
+    "network-reachability",
+    "devsecops",
+    "terraform-plan",
+    "cli"
+  ],
+  "homepage": "https://isthatpratik.github.io/vpcdiff/",
+  "bugs": {
+    "url": "https://github.com/isthatpratik/vpcdiff/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/isthatpratik/vpcdiff.git",
+    "directory": "packages/cli"
+  },
+  "author": "Pratik Desai",
   "license": "Apache-2.0",
-  "private": true,
   "type": "module",
-  "scripts": {
-    "typecheck": "tsc -p tsconfig.json",
-    "build": "esbuild src/bin.ts --bundle --platform=node --target=node24 --format=esm --outfile=dist/vpcdiff.mjs --legal-comments=none"
-  },
-  "dependencies": {
-    "@clack/prompts": "^1.8.1",
-    "@vpcdiff/engine": "workspace:*",
-    "picocolors": "^1.1.1"
-  },
-  "devDependencies": {
-    "@types/node": "^24.19.2"
+  "engines": {
+    "node": ">=24"
   },
   "bin": {
-    "vpcdiff": "./dist/vpcdiff.mjs"
+    "vpcdiff": "./bin/vpcdiff.mjs"
   },
   "files": [
+    "bin",
     "dist"
   ],
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "build": "esbuild src/bin.ts --bundle --platform=node --target=node24 --format=esm --outfile=dist/vpcdiff.mjs --legal-comments=none",
+    "prepublishOnly": "pnpm build"
+  },
   "exports": {
     "./render": "./src/render.ts"
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      "./package.json": "./package.json"
+    }
+  },
+  "devDependencies": {
+    "@clack/prompts": "^1.8.1",
+    "@types/node": "^24.19.2",
+    "@vpcdiff/engine": "workspace:*",
+    "picocolors": "^1.1.1"
   }
 }

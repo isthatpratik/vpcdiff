@@ -29,8 +29,19 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
       - run: pnpm typecheck
-      - run: pnpm test
+      # Build first: the launcher test runs the built CLI.
       - run: pnpm build
+      - run: pnpm test
+      - name: Check that the CLI package installs and runs on its own
+        run: |
+          cd packages/cli
+          pnpm pack --pack-destination "$RUNNER_TEMP"
+          mkdir "$RUNNER_TEMP/clean"
+          cd "$RUNNER_TEMP/clean"
+          npm init -y >/dev/null
+          npm install "$RUNNER_TEMP"/vpcdiff-*.tgz
+          test "$(ls node_modules)" = "vpcdiff"
+          npx --no-install vpcdiff --version
       - name: Check that the viewer build blocks network requests
         run: grep -q "connect-src 'none'" apps/viewer/dist/app/index.html
       - name: Check that the committed action bundle is up to date

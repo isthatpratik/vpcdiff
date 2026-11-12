@@ -1,6 +1,6 @@
 import { analyze, MAX_PLAN_CHARS, PlanError, type Result } from "@vpcdiff/engine";
 import { withoutControls } from "@vpcdiff/engine/explain";
-import { renderMarkdown, shouldFail, type FailOn } from "@vpcdiff/cli/render";
+import { renderMarkdown, shouldFail, type FailOn } from "vpcdiff/render";
 
 /** Hidden marker that identifies the comment this action owns. */
 export const MARKER = "<!-- vpcdiff-action -->";
