@@ -190,7 +190,8 @@ export function resolveRefs(snap: Snapshot, r: Resource, attr: string, targetTyp
 }
 
 // The resource part may end with an attribute (`aws_vpc.main.default_route_table_id`).
-const ADDRESS = /^(.*?)((?:aws|google|azurerm)_\w+\.[\w-]+(?:\[[^\]]+\])?(?:\.\w+)?)$/;
+// The prefix is whole module segments, so a module named like a resource type (`module.google_net.`) stays in it.
+const ADDRESS = /^((?:module\.[\w-]+(?:\[[^\]]+\])?\.)*)((?:aws|google|azurerm)_\w+\.[\w-]+(?:\[[^\]]+\])?(?:\.\w+)?)$/;
 
 /**
  * Configuration references have the module path without instance keys. A reference

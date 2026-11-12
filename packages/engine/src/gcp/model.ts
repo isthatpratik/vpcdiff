@@ -3,7 +3,7 @@
 import { ALL_PORTS, cidrToSet, fromRanges, type IntervalSet, type Range } from "../intervals.js";
 import type { Known, RuleProtocol } from "../model.js";
 import { normalizeProtocol } from "../model.js";
-import { cmp, fromConfig, isObj, isUnknown, type Resource, type Snapshot } from "../plan.js";
+import { cmp, fromConfig, hasUnknown, isObj, isUnknown, type Resource, type Snapshot } from "../plan.js";
 
 const known = <T>(value: T): Known<T> => ({ ok: true, value });
 const unknown = <T>(reason: string): Known<T> => ({ ok: false, reason });
@@ -86,6 +86,18 @@ export class GcpModel {
     return unknown(`${r.address}: its network is unknown until apply and cannot be matched to one google_compute_network`);
   }
 
+  /** The network of the subnetwork a VM interface names: a known value by its name, else a configuration reference. */
+  private subnetNetwork(r: Resource, value: unknown, unknownValue: boolean): Known<string> {
+    if (!unknownValue && typeof value === "string" && value) {
+      const name = lastSegment(value);
+      const found = this.ofType("google_compute_subnetwork").filter((n) => !isUnknown(n, ["name"]) && n.values.name === name);
+      if (found.length !== 1) return unknown(`${r.address}: subnetwork ${value} is not one google_compute_subnetwork in this plan`);
+      const sub = found[0] as Resource;
+      return this.networkOf(sub, "network", sub.values.network, isUnknown(sub, ["network"]));
+    }
+    return this.networkOf(r, "network_interface", value, true);
+  }
+
   vms(): GcpVm[] {
     return this.ofType("google_compute_instance").map((r) => this.vm(r));
   }
@@ -98,7 +110,7 @@ export class GcpModel {
     const nic = nics[0];
     if (!isObj(nic)) return fail(`${r.address}: network_interface cannot be read`);
     const netUnknown = isUnknown(r, ["network_interface", 0, "network"]);
-    const net = netUnknown || (typeof nic.network === "string" && nic.network) ? this.networkOf(r, "network_interface", nic.network, netUnknown) : this.networkOf(r, "network_interface", nic.subnetwork, isUnknown(r, ["network_interface", 0, "subnetwork"]));
+    const net = netUnknown || (typeof nic.network === "string" && nic.network) ? this.networkOf(r, "network_interface", nic.network, netUnknown) : this.subnetNetwork(r, nic.subnetwork, isUnknown(r, ["network_interface", 0, "subnetwork"]));
 
     // Rule 1: an access_config block gives the interface an external IPv4 address.
     let externalIp: Known<string | undefined>;
@@ -114,15 +126,15 @@ export class GcpModel {
 
   /** Whether `target_tags` / `target_service_accounts` select the VM (rule 5). */
   private targets(rule: Resource, vm: Resource): Known<boolean> {
-    for (const attr of ["target_tags", "target_service_accounts"]) if (isUnknown(rule, [attr])) return unknown(`${rule.address}: ${attr} is unknown until apply`);
+    for (const attr of ["target_tags", "target_service_accounts"]) if (hasUnknown(rule, [attr])) return unknown(`${rule.address}: ${attr} is unknown until apply`);
     const tags = strList(rule.values.target_tags);
     const accounts = strList(rule.values.target_service_accounts);
     if (!tags.length && !accounts.length) return known(true);
     if (tags.length) {
-      if (isUnknown(vm, ["tags"])) return unknown(`${vm.address}: tags are unknown until apply, and ${rule.address} applies to tags ${tags.join(", ")}`);
+      if (hasUnknown(vm, ["tags"])) return unknown(`${vm.address}: tags are unknown until apply, and ${rule.address} applies to tags ${tags.join(", ")}`);
       return known(strList(vm.values.tags).some((t) => tags.includes(t)));
     }
-    if (isUnknown(vm, ["service_account"])) return unknown(`${vm.address}: service_account is unknown until apply, and ${rule.address} applies to service accounts`);
+    if (hasUnknown(vm, ["service_account"])) return unknown(`${vm.address}: service_account is unknown until apply, and ${rule.address} applies to service accounts`);
     const sa = Array.isArray(vm.values.service_account) ? vm.values.service_account : [];
     const emails: string[] = [];
     for (const [i, s] of sa.entries()) {
@@ -145,11 +157,11 @@ export class GcpModel {
     for (const r of this.ofType("google_compute_firewall")) {
       const net = this.networkOf(r, "network", r.values.network, isUnknown(r, ["network"]));
       if (!net.ok) {
-        // A rule that may belong to this network: undecided unless it names another network by a known value.
+        // A rule whose network cannot be resolved may belong to this network.
         return unknown(net.reason);
       }
       if (net.value !== network) continue;
-      for (const attr of ["allow", "deny", "source_ranges", "source_tags", "source_service_accounts"]) if (isUnknown(r, [attr])) return unknown(`${r.address}: ${attr} is unknown until apply`);
+      for (const attr of ["allow", "deny", "source_ranges", "source_tags", "source_service_accounts"]) if (hasUnknown(r, [attr])) return unknown(`${r.address}: ${attr} is unknown until apply`);
       // Unset, the provider leaves these to the API: direction INGRESS, enabled, priority 1000.
       const direction = valueOr(r, "direction", "INGRESS");
       const disabled = valueOr(r, "disabled", false);
@@ -200,7 +212,7 @@ export class GcpModel {
       if (hasAnyUnknown(r, ["dest_range", "tags", "next_hop_gateway"])) return unknown(`${r.address}: its destination, tags, or next hop are unknown until apply`);
       const tags = strList(r.values.tags);
       if (tags.length) {
-        if (isUnknown(vm, ["tags"])) return unknown(`${vm.address}: tags are unknown until apply, and ${r.address} applies to tags ${tags.join(", ")}`);
+        if (hasUnknown(vm, ["tags"])) return unknown(`${vm.address}: tags are unknown until apply, and ${r.address} applies to tags ${tags.join(", ")}`);
         if (!strList(vm.values.tags).some((t) => tags.includes(t))) continue;
       }
       const dest = typeof r.values.dest_range === "string" ? r.values.dest_range : "";
@@ -225,7 +237,8 @@ function valueOr(r: Resource, attr: string, dflt: unknown): Known<unknown> {
   return known(v === null || v === undefined ? dflt : v);
 }
 
-const hasAnyUnknown = (r: Resource, attrs: string[]) => attrs.some((a) => isUnknown(r, [a]));
+// Any element of a list or block (`tags = [unknown]` is `[true]` in after_unknown).
+const hasAnyUnknown = (r: Resource, attrs: string[]) => attrs.some((a) => hasUnknown(r, [a]));
 
 // Private-use and shared address space (RFC 1918, RFC 6598) is never an internet client.
 const PRIVATE: IntervalSet = fromRanges(["10.0.0.0/8", "100.64.0.0/10", "172.16.0.0/12", "192.168.0.0/16"].flatMap((c) => cidrToSet(c) ?? []));

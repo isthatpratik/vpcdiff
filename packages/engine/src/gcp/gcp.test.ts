@@ -60,6 +60,27 @@ describe("Google Cloud VMs from the internet", () => {
     expect(new Set(gcp([network(), set, vm()]).map((x) => x.after.verdict))).toEqual(new Set(["unknown"]));
   });
 
+  it("keeps unknown elements inside lists and blocks unknown, never empty", () => {
+    const verdicts = (r: Res[]) => [...new Set(gcp(r).map((x) => x.after.verdict))];
+    const ranges = fw("ssh", { source_ranges: [null] });
+    expect(verdicts([network(), { ...ranges, unknown: { source_ranges: [true] } }, vm()])).toEqual(["unknown"]);
+    const ports = fw("ssh", { allow: [{ protocol: "tcp", ports: [null] }] });
+    expect(verdicts([network(), { ...ports, unknown: { allow: [{ ports: [true] }] } }, vm()])).toEqual(["unknown"]);
+    const proto = fw("ssh", { allow: [{ protocol: null, ports: ["22"] }] });
+    expect(verdicts([network(), { ...proto, unknown: { allow: [{ protocol: true }] } }, vm()])).toEqual(["unknown"]);
+    const targets = fw("ssh", { target_tags: [null] });
+    expect(verdicts([network(), { ...targets, unknown: { target_tags: [true] } }, vm()])).toEqual(["unknown"]);
+    const tagged = vm({ tags: [null] });
+    expect(verdicts([network(), fw("ssh", { target_tags: ["web"] }), { ...tagged, unknown: { tags: [true] } }])).toEqual(["unknown"]);
+  });
+
+  it("resolves a subnetwork named by a literal value through google_compute_subnetwork", () => {
+    const other = res("google_compute_network", "other", { id: "projects/demo-project/global/networks/other", name: "other", delete_default_routes_on_create: false });
+    const sub = res("google_compute_subnetwork", "main", { id: "projects/demo-project/regions/us-central1/subnetworks/main", name: "main", network: "other" });
+    // The subnetwork "main" is in network "other", which has no rule: no path, not the rules of network "main".
+    expect(gcp([network(), other, sub, fw("ssh"), vm({}, { network: null, subnetwork: "main" })])).toHaveLength(0);
+  });
+
   it("gives partial sources for a narrow range", () => {
     const p = one([network(), fw("ssh", { source_ranges: ["203.0.113.0/24"] }), vm()]);
     expect(p.after.verdict).toBe("allowed");

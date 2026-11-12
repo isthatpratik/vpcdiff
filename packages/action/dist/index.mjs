@@ -1089,7 +1089,7 @@ function resolveRefs(snap, r, attr, targetType) {
   if (r.otherRefs.has(attr)) return fail(`${r.address}: ${attr} uses values that are unknown until apply`);
   return fromConfig(snap, r, attr, targetType).toSorted((a, b) => cmp(refOrder(a), refOrder(b)));
 }
-var ADDRESS = /^(.*?)((?:aws|google|azurerm)_\w+\.[\w-]+(?:\[[^\]]+\])?(?:\.\w+)?)$/;
+var ADDRESS = /^((?:module\.[\w-]+(?:\[[^\]]+\])?\.)*)((?:aws|google|azurerm)_\w+\.[\w-]+(?:\[[^\]]+\])?(?:\.\w+)?)$/;
 function localize(from, ref) {
   const prefix = ADDRESS.exec(from)?.[1] ?? "";
   return prefix + (ADDRESS.exec(ref)?.[2] ?? ref);
@@ -2717,6 +2717,17 @@ var GcpModel = class {
     if (sub) return this.networkOf(sub, "network", sub.values.network, isUnknown(sub, ["network"]));
     return unknown2(`${r.address}: its network is unknown until apply and cannot be matched to one google_compute_network`);
   }
+  /** The network of the subnetwork a VM interface names: a known value by its name, else a configuration reference. */
+  subnetNetwork(r, value, unknownValue) {
+    if (!unknownValue && typeof value === "string" && value) {
+      const name = lastSegment(value);
+      const found = this.ofType("google_compute_subnetwork").filter((n) => !isUnknown(n, ["name"]) && n.values.name === name);
+      if (found.length !== 1) return unknown2(`${r.address}: subnetwork ${value} is not one google_compute_subnetwork in this plan`);
+      const sub = found[0];
+      return this.networkOf(sub, "network", sub.values.network, isUnknown(sub, ["network"]));
+    }
+    return this.networkOf(r, "network_interface", value, true);
+  }
   vms() {
     return this.ofType("google_compute_instance").map((r) => this.vm(r));
   }
@@ -2728,7 +2739,7 @@ var GcpModel = class {
     const nic = nics[0];
     if (!isObj(nic)) return fail(`${r.address}: network_interface cannot be read`);
     const netUnknown = isUnknown(r, ["network_interface", 0, "network"]);
-    const net = netUnknown || typeof nic.network === "string" && nic.network ? this.networkOf(r, "network_interface", nic.network, netUnknown) : this.networkOf(r, "network_interface", nic.subnetwork, isUnknown(r, ["network_interface", 0, "subnetwork"]));
+    const net = netUnknown || typeof nic.network === "string" && nic.network ? this.networkOf(r, "network_interface", nic.network, netUnknown) : this.subnetNetwork(r, nic.subnetwork, isUnknown(r, ["network_interface", 0, "subnetwork"]));
     let externalIp;
     if (isUnknown(r, ["network_interface", 0, "access_config"])) externalIp = unknown2(`${r.address}: access_config is unknown until apply`);
     else {
@@ -2741,15 +2752,15 @@ var GcpModel = class {
   }
   /** Whether `target_tags` / `target_service_accounts` select the VM (rule 5). */
   targets(rule, vm) {
-    for (const attr of ["target_tags", "target_service_accounts"]) if (isUnknown(rule, [attr])) return unknown2(`${rule.address}: ${attr} is unknown until apply`);
+    for (const attr of ["target_tags", "target_service_accounts"]) if (hasUnknown(rule, [attr])) return unknown2(`${rule.address}: ${attr} is unknown until apply`);
     const tags = strList(rule.values.target_tags);
     const accounts = strList(rule.values.target_service_accounts);
     if (!tags.length && !accounts.length) return known2(true);
     if (tags.length) {
-      if (isUnknown(vm, ["tags"])) return unknown2(`${vm.address}: tags are unknown until apply, and ${rule.address} applies to tags ${tags.join(", ")}`);
+      if (hasUnknown(vm, ["tags"])) return unknown2(`${vm.address}: tags are unknown until apply, and ${rule.address} applies to tags ${tags.join(", ")}`);
       return known2(strList(vm.values.tags).some((t) => tags.includes(t)));
     }
-    if (isUnknown(vm, ["service_account"])) return unknown2(`${vm.address}: service_account is unknown until apply, and ${rule.address} applies to service accounts`);
+    if (hasUnknown(vm, ["service_account"])) return unknown2(`${vm.address}: service_account is unknown until apply, and ${rule.address} applies to service accounts`);
     const sa = Array.isArray(vm.values.service_account) ? vm.values.service_account : [];
     const emails = [];
     for (const [i, s] of sa.entries()) {
@@ -2774,7 +2785,7 @@ var GcpModel = class {
         return unknown2(net.reason);
       }
       if (net.value !== network) continue;
-      for (const attr of ["allow", "deny", "source_ranges", "source_tags", "source_service_accounts"]) if (isUnknown(r, [attr])) return unknown2(`${r.address}: ${attr} is unknown until apply`);
+      for (const attr of ["allow", "deny", "source_ranges", "source_tags", "source_service_accounts"]) if (hasUnknown(r, [attr])) return unknown2(`${r.address}: ${attr} is unknown until apply`);
       const direction = valueOr(r, "direction", "INGRESS");
       const disabled = valueOr(r, "disabled", false);
       const prio = valueOr(r, "priority", 1e3);
@@ -2822,7 +2833,7 @@ var GcpModel = class {
       if (hasAnyUnknown(r, ["dest_range", "tags", "next_hop_gateway"])) return unknown2(`${r.address}: its destination, tags, or next hop are unknown until apply`);
       const tags = strList(r.values.tags);
       if (tags.length) {
-        if (isUnknown(vm, ["tags"])) return unknown2(`${vm.address}: tags are unknown until apply, and ${r.address} applies to tags ${tags.join(", ")}`);
+        if (hasUnknown(vm, ["tags"])) return unknown2(`${vm.address}: tags are unknown until apply, and ${r.address} applies to tags ${tags.join(", ")}`);
         if (!strList(vm.values.tags).some((t) => tags.includes(t))) continue;
       }
       const dest = typeof r.values.dest_range === "string" ? r.values.dest_range : "";
@@ -2843,7 +2854,7 @@ function valueOr(r, attr, dflt) {
   const v = r.values[attr];
   return known2(v === null || v === void 0 ? dflt : v);
 }
-var hasAnyUnknown = (r, attrs) => attrs.some((a) => isUnknown(r, [a]));
+var hasAnyUnknown = (r, attrs) => attrs.some((a) => hasUnknown(r, [a]));
 var PRIVATE = fromRanges(["10.0.0.0/8", "100.64.0.0/10", "172.16.0.0/12", "192.168.0.0/16"].flatMap((c) => cidrToSet(c) ?? []));
 var isPrivate = (set) => set.every(([lo, hi]) => PRIVATE.some(([plo, phi]) => lo >= plo && hi <= phi));
 
