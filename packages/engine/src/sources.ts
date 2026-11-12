@@ -1,6 +1,6 @@
 // Short text for a list of allowed source CIDRs.
 import { PUBLIC_IPV4 } from "./evaluate.js";
-import { cidrToSet, setToCidrs, subtract, union, type IntervalSet } from "./intervals.js";
+import { cidrToSet, isEmpty, setToCidrs, subtract, union, type IntervalSet } from "./intervals.js";
 
 /**
  * The public IPv4 addresses that a list of allowed CIDRs leaves out, when that list is
@@ -41,4 +41,28 @@ export function withoutControls<T>(value: T): T {
   if (Array.isArray(value)) return value.map((v) => withoutControls(v)) as T;
   if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([k, v]) => [withoutControls(k), withoutControls(v)])) as T;
   return value;
+}
+
+/** The addresses a list of sources stands for; undefined when a source cannot be read. */
+function sourceSet(sources: string[]): IntervalSet | undefined {
+  let out: IntervalSet = [];
+  for (const s of sources) {
+    const set = s === "internet" ? PUBLIC_IPV4 : cidrToSet(s);
+    if (!set) return undefined;
+    out = union(out, set);
+  }
+  return out;
+}
+
+/**
+ * True when `after` allows addresses that `before` did not, for example a rule that goes
+ * from one host to 0.0.0.0/0. A source it cannot read counts as wider: the gate fails closed.
+ * IPv6 paths compare the source strings, because the engine lists them as written.
+ */
+export function sourcesWiden(before: string[], after: string[], family?: "ipv6"): boolean {
+  if (family === "ipv6") return after.some((s) => !before.includes(s) && !(s !== "internet" && before.includes("internet")));
+  const a = sourceSet(after);
+  const b = sourceSet(before);
+  if (!a || !b) return true;
+  return !isEmpty(subtract(a, b));
 }

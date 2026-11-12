@@ -1,0 +1,12 @@
+# Who must review what. AGENTS.md says changes to engine semantics, fixtures, and ADRs
+# need human review; the rest are the files that decide what runs in CI and what ships.
+/packages/engine/ @isthatpratik
+/fixtures/ @isthatpratik
+/docs/adr/ @isthatpratik
+/docs/semantics/ @isthatpratik
+/.github/ @isthatpratik
+/action.yml @isthatpratik
+/packages/action/ @isthatpratik
+/scripts/ @isthatpratik
+/AGENTS.md @isthatpratik
+/SECURITY.md @isthatpratik

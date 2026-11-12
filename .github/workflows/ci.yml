@@ -43,4 +43,6 @@ jobs:
           comment: "false"
           fail-on: never
       - name: Check the action outputs
-        run: test "${{ steps.smoke.outputs.added }}" = "1"
+        env:
+          ADDED: ${{ steps.smoke.outputs.added }}
+        run: test "$ADDED" = "1"

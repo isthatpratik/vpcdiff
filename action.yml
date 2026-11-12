@@ -9,7 +9,7 @@ inputs:
     description: "Path to the plan as JSON (`terraform show -json tfplan > plan.json`)."
     required: true
   fail-on:
-    description: "Fail the step when the plan has paths of this kind or worse: added (new exposure to the internet), changed (also sources changed, and paths inside the VPC opened or cut), unknown, or never."
+    description: "Fail the step when the plan has paths of this kind or worse: added (new exposure to the internet, or an exposure that the plan widens), changed (also other source changes, and paths inside the VPC opened or cut), unknown, or never."
     required: false
     default: added
   comment:

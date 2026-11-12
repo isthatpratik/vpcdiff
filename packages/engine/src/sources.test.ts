@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 import { analyze } from "./index.js";
 import { whoText } from "./explain.js";
-import { sourcesText } from "./sources.js";
+import { sourcesText, sourcesWiden } from "./sources.js";
 import { PUBLIC_IPV4 } from "./evaluate.js";
 import { cidrToSet, setToCidrs, subtract } from "./intervals.js";
 import { plan, type Res, type Values } from "./testkit.js";
@@ -17,6 +17,26 @@ const carved = () =>
       { type: "google_compute_instance", name: "web", after: { id: "i", tags: [], service_account: [], network_interface: [{ network: "main", access_config: [{}] }] } },
     ]),
   ).paths[0];
+
+describe("sourcesWiden", () => {
+  it("is true only when after allows addresses that before did not", () => {
+    expect(sourcesWiden(["203.0.113.5/32"], ["internet"])).toBe(true);
+    expect(sourcesWiden(["203.0.113.5/32"], ["198.51.100.0/24"])).toBe(true);
+    expect(sourcesWiden(["203.0.113.0/24"], ["203.0.113.5/32"])).toBe(false);
+    expect(sourcesWiden(["internet"], ["203.0.113.5/32"])).toBe(false);
+    expect(sourcesWiden(["internet"], ["internet"])).toBe(false);
+  });
+
+  it("fails closed on a source it cannot read", () => {
+    expect(sourcesWiden(["203.0.113.5/32"], ["not-a-cidr"])).toBe(true);
+  });
+
+  it("compares IPv6 sources as written", () => {
+    expect(sourcesWiden(["2001:db8::/32"], ["internet"], "ipv6")).toBe(true);
+    expect(sourcesWiden(["internet"], ["2001:db8::/32"], "ipv6")).toBe(false);
+    expect(sourcesWiden(["2001:db8::/32"], ["2001:db8::/32"], "ipv6")).toBe(false);
+  });
+});
 
 describe("sourcesText", () => {
   it("names the left-out range when that is shorter than the allowed CIDRs", () => {

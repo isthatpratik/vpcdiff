@@ -1,5 +1,5 @@
 import type { Change, Hop, Outcome, Path, Result } from "@vpcdiff/engine";
-import { htmlText, mdCode, mdText, sourcesText } from "@vpcdiff/engine/explain";
+import { htmlText, mdCode, mdText, sourcesText, sourcesWiden } from "@vpcdiff/engine/explain";
 
 const ORDER: Change[] = ["added", "removed", "changed", "unknown", "unchanged"];
 const LABEL: Record<Change, string> = { added: "ADDED", removed: "REMOVED", changed: "CHANGED", unknown: "UNKNOWN", unchanged: "UNCHANGED" };
@@ -93,16 +93,23 @@ export function renderMarkdown(result: Result, opts: RenderOptions): string {
 
 export type FailOn = "added" | "changed" | "unknown" | "never";
 
-/** Exit code policy: 1 when the plan adds exposure at or above the `failOn` level. */
+/** Exit code policy: 1 when the plan adds or widens exposure at or above the `failOn` level. */
 export function shouldFail(result: Result, failOn: FailOn): boolean {
-  // "added" means a new exposure to the internet. A path inside the VPC that the plan
-  // opens or cuts counts as "changed": it needs a review, but is often intended.
+  // "added" means a new exposure to the internet, or an exposure the plan widens: a rule
+  // that goes from one host to 0.0.0.0/0 keeps the path "allowed" on both sides, but it
+  // opens the port to more of the internet. A path inside the VPC that the plan opens or
+  // cuts counts as "changed": it needs a review, but is often intended.
   const count = (f: (p: Path) => boolean) => result.paths.filter(f).length;
   const internet = (p: Path) => p.from === "internet";
   if (failOn === "never") return false;
-  const added = count((p) => internet(p) && p.change === "added");
+  // `reason` on an allowed path lists sources that some hop could not decide (they are not in
+  // `sources`). A new or different one may be a widening that the sources do not show yet, so
+  // it counts as one: the gate fails closed.
+  const widened = (p: Path) =>
+    internet(p) && p.change === "changed" && p.before.verdict === "allowed" && p.after.verdict === "allowed" && (sourcesWiden(p.before.sources, p.after.sources, p.family) || (p.after.reason !== "" && p.after.reason !== p.before.reason));
+  const added = count((p) => (internet(p) && p.change === "added") || widened(p));
   if (failOn === "added") return added > 0;
-  const changed = count((p) => p.change === "changed" || (!internet(p) && (p.change === "added" || p.change === "removed")));
+  const changed = count((p) => (p.change === "changed" && !widened(p)) || (!internet(p) && (p.change === "added" || p.change === "removed")));
   if (failOn === "changed") return added + changed > 0;
   return added + changed + result.summary.unknown > 0;
 }
