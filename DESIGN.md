@@ -109,7 +109,7 @@ Every text pair passes AA. Status always has a label too, never color alone. Lin
 
 ## 4. Type
 
-Fonts load from Google Fonts (see section 10 for what that means for privacy).
+Fonts are served from this origin (`src/fonts`, latin and latin-ext subsets, SIL Open Font License 1.1), so a page makes no third party request (see section 10).
 
 - **Google Sans:** all text on both pages: interface, headings, and the wordmark.
   Weights 400 to 600. One typeface keeps the landing page and the viewer one product.
@@ -401,11 +401,17 @@ live in the URL hash. A plan you opened yourself is kept in this tab's
 `sessionStorage`, on the device only, up to about 5 MB; the browser deletes it when the
 tab closes, and "Open plan" deletes it at once. It is never sent anywhere.
 
-Fonts come from Google Fonts, so a visitor's browser fetches the font stylesheet and font
-files from Google (`fonts.googleapis.com`, `fonts.gstatic.com`). Those requests carry no
-plan content. The policy allows exactly those two origins for styles and fonts and
-nothing else. There are no analytics, no cookies, and no other third party requests; the
-footer says so.
+Fonts are bundled and served from this origin, so a visitor's browser makes no request to
+a font host and no third party learns that the page was opened. (Until v0.3.0 the fonts
+came from Google Fonts; the visitor's IP address went to Google, never plan content.) The
+policy allows only this origin for scripts, styles, fonts, and images, and nothing for
+data in the viewer. There are no analytics, no cookies, and no third party requests; the
+footer says so. `src/privacy.test.ts` fails if a page or the policy names another origin.
+
+A `<meta>` Content Security Policy cannot set `frame-ancestors`, and GitHub Pages cannot
+send response headers, so another site can put the viewer in a frame. The viewer has no
+login and no action that changes anything, and the plan is analyzed in the frame's own
+tab, so the impact is nil.
 
 ## 11. Search and AI search
 

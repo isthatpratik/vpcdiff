@@ -6,14 +6,15 @@ import { defineConfig, type Plugin } from "vite";
 // The viewer never sends plan data off the device (AGENTS.md). In the build, the
 // viewer's Content Security Policy blocks every data request from the page and its
 // worker: connect-src 'none'. The landing page holds no plan data, so it may fetch its
-// own origin (crawlers and audit tools read robots.txt and llms.txt that way). The only
-// other origins allowed are Google Fonts, for the font stylesheet and font files. The
-// dev server needs a websocket, so the policy is build only.
+// own origin (crawlers and audit tools read robots.txt and llms.txt that way). Nothing
+// else is allowed: scripts, styles, fonts, and images all come from this origin (the fonts
+// are bundled from src/fonts), so a page makes no third party request at all. The dev
+// server needs a websocket, so the policy is build only.
 const policy = (connect: string) => [
   "default-src 'none'",
   "script-src 'self'",
-  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-  "font-src https://fonts.gstatic.com",
+  "style-src 'self' 'unsafe-inline'",
+  "font-src 'self'",
   "img-src 'self' data:",
   "worker-src 'self'",
   `connect-src ${connect}`,

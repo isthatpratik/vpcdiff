@@ -18,9 +18,9 @@ The plan never leaves the device:
 - The file is read with the File API and analyzed by the engine in a Web Worker.
 - The built viewer page (`/app/`) has a Content Security Policy with `connect-src 'none'`, so the page
   and its worker cannot send any request. CI checks that the policy is in the build.
-- No analytics, no cookies, no third party scripts. Fonts load from Google Fonts, the
-  only other origin the policy allows (for styles and fonts, never for data). Example
-  plans are synthetic fixtures bundled with the page.
+- No analytics, no cookies, no third party requests: scripts, styles, fonts, and images
+  all come from this origin (the fonts are bundled), and `src/privacy.test.ts` checks it.
+  Example plans are synthetic fixtures bundled with the page.
 
 ## Stack
 

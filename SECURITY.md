@@ -37,8 +37,11 @@ addresses can hold any characters (`for_each` keys). What the project does about
   only a comment that a bot wrote. It needs `pull-requests: write` for the comment and
   nothing else; on pull requests from forks the token is read-only, and the report goes
   to the job summary.
-- **Viewer.** Runs in the browser with `connect-src 'none'`, so plan data cannot leave the
-  device. React renders plan strings as text.
+- **Viewer.** Runs in the browser with `connect-src 'none'`, and every script, style, font,
+  and image comes from its own origin, so plan data cannot leave the device and no third
+  party sees a visit. A plan you open is kept in the tab's `sessionStorage` (up to about
+  5 MB) until the tab closes or you open another plan; it is never sent anywhere. React
+  renders plan strings as text.
 - **Fixtures.** Terraform and OpenTofu run in a sandbox with fake credentials
   (`scripts/sandbox-env.ts`); Azure plans use a local stand-in on `127.0.0.1`
   (`scripts/azure-standin.ts`). No real cloud account is used.
