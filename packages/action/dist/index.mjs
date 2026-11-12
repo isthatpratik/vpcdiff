@@ -3029,7 +3029,7 @@ var AzureModel = class {
       const owner = this.byName(r, "network_security_group_name", "azurerm_network_security_group");
       if (!owner.ok) return unknown3(owner.reason);
       if (owner.value.address !== nsg.address) continue;
-      if (hasUnknown(r, ["priority", "direction", "access", "protocol", "source_address_prefix", "source_address_prefixes", "destination_address_prefix", "destination_address_prefixes", "destination_port_range", "destination_port_ranges", "source_port_range", "source_port_ranges"])) return unknown3(`${r.address}: a field is unknown until apply`);
+      if (anyUnknown(r, ["priority", "direction", "access", "protocol", "source_address_prefix", "source_address_prefixes", "destination_address_prefix", "destination_address_prefixes", "destination_port_range", "destination_port_ranges", "source_port_range", "source_port_ranges", "destination_application_security_group_ids", "source_application_security_group_ids"])) return unknown3(`${r.address}: a field is unknown until apply`);
       raw.push({ values: r.values, label: r.address });
     }
     const vnet = this.vnetSpace.ok ? this.vnetSpace.value : EMPTY;
@@ -3049,7 +3049,7 @@ var AzureModel = class {
         let covers = false;
         for (const d of strs(v.destination_address_prefix, v.destination_address_prefixes)) {
           if (["*", "Any", "VirtualNetwork", "0.0.0.0/0"].includes(d)) covers = true;
-          else if (d === "Internet" || /^[A-Za-z]/.test(d)) continue;
+          else if (d === "Internet" || d.includes(":") || /^[A-Za-z]/.test(d)) continue;
           else {
             const set = setOf([d]);
             if (!set) return unknown3(`${label}: destination ${d} cannot be read`);
@@ -3067,7 +3067,8 @@ var AzureModel = class {
         else if (src === "VirtualNetwork") {
           if (!isEmpty(intersect(vnet, PUBLIC_IPV4))) doubts.push("VirtualNetwork includes a public address space");
           sources = union(sources, vnet);
-        } else if (/^[A-Za-z]/.test(src)) doubts.push(`its source is the service tag ${src}, whose addresses are not in the plan`);
+        } else if (src.includes(":")) continue;
+        else if (/^[A-Za-z]/.test(src)) doubts.push(`its source is the service tag ${src}, whose addresses are not in the plan`);
         else {
           const set = setOf([src]);
           if (!set) return unknown3(`${label}: source ${src} cannot be read`);
@@ -3107,12 +3108,13 @@ var AzureModel = class {
       const owner = this.byName(r, "route_table_name", "azurerm_route_table");
       if (!owner.ok) return unknown3(owner.reason);
       if (owner.value.address !== table.address) continue;
-      if (hasUnknown(r, ["address_prefix", "next_hop_type"])) return unknown3(`${r.address}: address_prefix or next_hop_type is unknown until apply`);
+      if (anyUnknown(r, ["address_prefix", "next_hop_type"])) return unknown3(`${r.address}: address_prefix or next_hop_type is unknown until apply`);
       user.push({ v: r.values, label: r.address });
     }
     const out = [];
     for (const { v, label } of user) {
       const c = typeof v.address_prefix === "string" ? v.address_prefix : "";
+      if (c.includes(":")) continue;
       if (/^[A-Za-z]/.test(c)) return unknown3(`${label}: a service tag prefix (${c}) is not modeled yet`);
       const set = cidrToSet(c);
       if (!set) continue;
@@ -3121,6 +3123,7 @@ var AzureModel = class {
     return known3([...out, ...system.filter((x) => !out.some((u) => u.prefix === x.prefix && contains(u.cidr, x.cidr) && contains(x.cidr, u.cidr)))]);
   }
 };
+var anyUnknown = (r, attrs) => attrs.some((a) => hasUnknown(r, [a]));
 var ALL_IPV4_SET = cidrToSet("0.0.0.0/0") ?? EMPTY;
 var DROPPED_SET = DROPPED.reduce((acc, c) => union(acc, cidrToSet(c) ?? EMPTY), EMPTY);
 var DROPPED_TEXT = `system routes drop ${DROPPED.join(", ")}`;
@@ -3196,6 +3199,7 @@ function evaluateAzure(vm, p, ports) {
   let out = EMPTY;
   const routeTexts = [];
   const undecided = [];
+  let defaultAway;
   for (const route of routes) {
     const m = intersect(remaining, route.cidr);
     if (isEmpty(m)) continue;
@@ -3203,14 +3207,15 @@ function evaluateAzure(vm, p, ports) {
     remaining = subtract(remaining, m);
     if (route.hop === "Internet") out = union(out, m);
     else if (route.hop === "None") continue;
-    else if (route.prefix === 0) {
-      const why = `${route.text}: with 0.0.0.0/0 sent to a ${route.hop}, resources in the subnet can no longer be reached directly from the internet`;
-      add("route", route.text, "deny", why);
-      return stop("blocked", why);
-    } else undecided.push(`responses to ${setToCidrs(m).join(", ")} use ${route.text}, which is not modeled yet`);
+    else if (route.prefix === 0) defaultAway = `${route.text}: with 0.0.0.0/0 sent to a ${route.hop}, resources in the subnet can no longer be reached directly from the internet`;
+    else undecided.push(`responses to ${setToCidrs(m).join(", ")} use ${route.text}, which is not modeled yet`);
   }
   if (isEmpty(out)) {
     if (undecided.length) return unknownAt("route", vm.address, undecided.join("; "));
+    if (defaultAway) {
+      add("route", vm.address, "deny", defaultAway);
+      return stop("blocked", defaultAway);
+    }
     add("route", vm.address, "deny", routeTexts.join("; "));
     return stop("blocked", `the response cannot return to the internet: ${routeTexts.join("; ")}`);
   }

@@ -113,6 +113,19 @@ describe("Azure VMs from the internet", () => {
     expect(azure([...configured, extra]).every((p) => p.after.verdict === "unknown")).toBe(true);
   });
 
+  it("keeps a more specific Internet route next to 0.0.0.0/0 to an appliance", () => {
+    const p = one(base({ routes: [{ name: "all", address_prefix: "0.0.0.0/0", next_hop_type: "VirtualAppliance", next_hop_in_ip_address: "10.60.9.4" }, { name: "office", address_prefix: "198.51.100.0/24", next_hop_type: "Internet", next_hop_in_ip_address: null }] }));
+    expect(p.after.verdict).toBe("allowed");
+    expect(p.after.sources).toEqual(["198.51.100.0/24"]);
+  });
+
+  it("returns unknown for a separate rule whose destination ASG is unknown until apply", () => {
+    const asg = res("azurerm_network_security_rule", "asg", { ...rule("asg", 100, { destination_address_prefix: null, destination_application_security_group_ids: [null] }), id: "r3", network_security_group_name: "subnet", resource_group_name: "rg" }, { unknown: { destination_application_security_group_ids: [true] } });
+    const paths = azure([...base({ nsgRules: [] }), asg]);
+    expect(paths.length).toBeGreaterThan(0);
+    expect(paths.every((p) => p.after.verdict === "unknown")).toBe(true);
+  });
+
   it("returns unknown for more than one network interface", () => {
     const r = base().map((x) => (x.type === "azurerm_linux_virtual_machine" ? { ...x, after: { ...x.after, network_interface_ids: [`${ID}/networkInterfaces/web`, `${ID}/networkInterfaces/other`] } } : x));
     expect(azure(r).every((p) => p.after.verdict === "unknown")).toBe(true);

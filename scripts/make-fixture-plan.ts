@@ -333,15 +333,17 @@ const walk = (node: Json): Json => {
 const redacted = walk(after) as Obj;
 const sensitiveVars = new Set(Object.entries((((redacted.configuration as Obj | undefined)?.root_module as Obj | undefined)?.variables as Obj | undefined) ?? {}).filter(([, v]) => (v as Obj).sensitive === true).map(([k]) => k));
 for (const [name, v] of Object.entries((redacted.variables as Obj | undefined) ?? {})) if (sensitiveVars.has(name)) (v as Obj).value = mask((v as Obj).value ?? null, true);
-// Defaults of sensitive variables in the configuration section.
-const configVars = (((redacted.configuration as Obj | undefined)?.root_module as Obj | undefined)?.variables as Obj | undefined) ?? {};
-for (const name of sensitiveVars) {
-  const v = configVars[name] as Obj | undefined;
-  if (v && "default" in v) {
-    if (typeof v.default === "string") secrets.add(v.default);
-    v.default = REDACTED;
+// Defaults of sensitive variables in the configuration section, in every module.
+const scrubDefaults = (mod: Obj | undefined): void => {
+  for (const v of Object.values((mod?.variables as Obj | undefined) ?? {}) as Obj[]) {
+    if (v.sensitive === true && "default" in v) {
+      if (typeof v.default === "string") secrets.add(v.default);
+      v.default = REDACTED;
+    }
   }
-}
+  for (const call of Object.values((mod?.module_calls as Obj | undefined) ?? {}) as Obj[]) scrubDefaults(call.module as Obj | undefined);
+};
+scrubDefaults((redacted.configuration as Obj | undefined)?.root_module as Obj | undefined);
 // Constants in the configuration that equal a redacted value (for example a literal password).
 const scrubConstants = (node: Json): Json => {
   if (Array.isArray(node)) return node.map(scrubConstants);

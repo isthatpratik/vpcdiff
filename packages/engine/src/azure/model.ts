@@ -200,7 +200,7 @@ export class AzureModel {
       const owner = this.byName(r, "network_security_group_name", "azurerm_network_security_group");
       if (!owner.ok) return unknown(owner.reason);
       if (owner.value.address !== nsg.address) continue;
-      if (hasUnknown(r, ["priority", "direction", "access", "protocol", "source_address_prefix", "source_address_prefixes", "destination_address_prefix", "destination_address_prefixes", "destination_port_range", "destination_port_ranges", "source_port_range", "source_port_ranges"])) return unknown(`${r.address}: a field is unknown until apply`);
+      if (anyUnknown(r, ["priority", "direction", "access", "protocol", "source_address_prefix", "source_address_prefixes", "destination_address_prefix", "destination_address_prefixes", "destination_port_range", "destination_port_ranges", "source_port_range", "source_port_ranges", "destination_application_security_group_ids", "source_application_security_group_ids"])) return unknown(`${r.address}: a field is unknown until apply`);
       raw.push({ values: r.values, label: r.address });
     }
     const vnet = this.vnetSpace.ok ? this.vnetSpace.value : EMPTY;
@@ -222,7 +222,7 @@ export class AzureModel {
         let covers = false;
         for (const d of strs(v.destination_address_prefix, v.destination_address_prefixes)) {
           if (["*", "Any", "VirtualNetwork", "0.0.0.0/0"].includes(d)) covers = true;
-          else if (d === "Internet" || /^[A-Za-z]/.test(d)) continue;
+          else if (d === "Internet" || d.includes(":") || /^[A-Za-z]/.test(d)) continue;
           else {
             const set = setOf([d]);
             if (!set) return unknown(`${label}: destination ${d} cannot be read`);
@@ -241,7 +241,8 @@ export class AzureModel {
         else if (src === "VirtualNetwork") {
           if (!isEmpty(intersect(vnet, PUBLIC_IPV4))) doubts.push("VirtualNetwork includes a public address space");
           sources = union(sources, vnet);
-        } else if (/^[A-Za-z]/.test(src)) doubts.push(`its source is the service tag ${src}, whose addresses are not in the plan`);
+        } else if (src.includes(":")) continue; // An IPv6 source never matches an IPv4 client.
+        else if (/^[A-Za-z]/.test(src)) doubts.push(`its source is the service tag ${src}, whose addresses are not in the plan`);
         else {
           const set = setOf([src]);
           if (!set) return unknown(`${label}: source ${src} cannot be read`);
@@ -282,12 +283,13 @@ export class AzureModel {
       const owner = this.byName(r, "route_table_name", "azurerm_route_table");
       if (!owner.ok) return unknown(owner.reason);
       if (owner.value.address !== table.address) continue;
-      if (hasUnknown(r, ["address_prefix", "next_hop_type"])) return unknown(`${r.address}: address_prefix or next_hop_type is unknown until apply`);
+      if (anyUnknown(r, ["address_prefix", "next_hop_type"])) return unknown(`${r.address}: address_prefix or next_hop_type is unknown until apply`);
       user.push({ v: r.values, label: r.address });
     }
     const out: AzRoute[] = [];
     for (const { v, label } of user) {
       const c = typeof v.address_prefix === "string" ? v.address_prefix : "";
+      if (c.includes(":")) continue; // An IPv6 prefix never matches an IPv4 client.
       if (/^[A-Za-z]/.test(c)) return unknown(`${label}: a service tag prefix (${c}) is not modeled yet`);
       const set = cidrToSet(c);
       if (!set) continue; // An IPv6 prefix never matches an IPv4 client.
@@ -297,6 +299,9 @@ export class AzureModel {
     return known([...out, ...system.filter((x) => !out.some((u) => u.prefix === x.prefix && contains(u.cidr, x.cidr) && contains(x.cidr, u.cidr)))]);
   }
 }
+
+/** Any of the attributes, or any element inside them, is unknown until apply. */
+const anyUnknown = (r: Resource, attrs: string[]) => attrs.some((a) => hasUnknown(r, [a]));
 
 const ALL_IPV4_SET: IntervalSet = cidrToSet("0.0.0.0/0") ?? EMPTY;
 const DROPPED_SET: IntervalSet = DROPPED.reduce<IntervalSet>((acc, c) => union(acc, cidrToSet(c) ?? EMPTY), EMPTY);

@@ -83,6 +83,7 @@ export function evaluateAzure(vm: AzVm | undefined, p: Protocol, ports: Range): 
   let out: IntervalSet = EMPTY;
   const routeTexts: string[] = [];
   const undecided: string[] = [];
+  let defaultAway: string | undefined;
   for (const route of routes) {
     const m = intersect(remaining, route.cidr);
     if (isEmpty(m)) continue;
@@ -90,14 +91,16 @@ export function evaluateAzure(vm: AzVm | undefined, p: Protocol, ports: Range): 
     remaining = subtract(remaining, m);
     if (route.hop === "Internet") out = union(out, m);
     else if (route.hop === "None") continue;
-    else if (route.prefix === 0) {
-      const why = `${route.text}: with 0.0.0.0/0 sent to a ${route.hop}, resources in the subnet can no longer be reached directly from the internet`;
-      add("route", route.text, "deny", why);
-      return stop("blocked", why);
-    } else undecided.push(`responses to ${setToCidrs(m).join(", ")} use ${route.text}, which is not modeled yet`);
+    // A more specific Internet route still carries its clients' responses; only the rest is cut off.
+    else if (route.prefix === 0) defaultAway = `${route.text}: with 0.0.0.0/0 sent to a ${route.hop}, resources in the subnet can no longer be reached directly from the internet`;
+    else undecided.push(`responses to ${setToCidrs(m).join(", ")} use ${route.text}, which is not modeled yet`);
   }
   if (isEmpty(out)) {
     if (undecided.length) return unknownAt("route", vm.address, undecided.join("; "));
+    if (defaultAway) {
+      add("route", vm.address, "deny", defaultAway);
+      return stop("blocked", defaultAway);
+    }
     add("route", vm.address, "deny", routeTexts.join("; "));
     return stop("blocked", `the response cannot return to the internet: ${routeTexts.join("; ")}`);
   }

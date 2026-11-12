@@ -43,7 +43,7 @@
           },
           {
             "hop": "route",
-            "resource": "azurerm_route_table.behind route all-through-appliance 0.0.0.0/0 -> VirtualAppliance",
+            "resource": "azurerm_linux_virtual_machine.behind",
             "decision": "deny",
             "rule": "azurerm_route_table.behind route all-through-appliance 0.0.0.0/0 -> VirtualAppliance: with 0.0.0.0/0 sent to a VirtualAppliance, resources in the subnet can no longer be reached directly from the internet",
             "doc": "https://learn.microsoft.com/en-us/azure/virtual-network/virtual-networks-udr-overview"
