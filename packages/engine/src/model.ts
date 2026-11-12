@@ -1289,7 +1289,8 @@ export class ModelBuilder {
       if (!tgw.ok) return unknown(tgw.reason);
       const vpcRef = this.refTo(a, "vpc_id", "aws_vpc");
       if (!vpcRef.ok) return unknown(vpcRef.reason);
-      const gw = gateways.get(tgw.value) as { sgRefs: Known<boolean>; assoc: Known<boolean>; prop: Known<boolean> };
+      const gw = gateways.get(tgw.value);
+      if (!gw) return unknown(`${a.address}: ${tgw.value} is not an aws_ec2_transit_gateway in this plan`);
       const vpc = this.vpc(vpcRef.value);
       let subnets: Known<TgwSubnet[]>;
       if (!vpc.ok) subnets = unknown(vpc.reason);

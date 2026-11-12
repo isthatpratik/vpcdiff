@@ -159,6 +159,12 @@ describe("paths between VPCs through a transit gateway", () => {
     expect(p.after.verdict).toBe("unknown");
   });
 
+  it("returns unknown when an attachment's gateway ID names a resource of another type", () => {
+    // tgw-1 belongs to a VPC here, not to a transit gateway (seen in fuzzing).
+    const r = transit().map((x) => (x.type === "aws_ec2_transit_gateway_vpc_attachment" && x.name === "a" ? { ...x, after: { ...x.after, transit_gateway_id: "vpc-b" } } : x));
+    expect(inside(r).after.verdict).toBe("unknown");
+  });
+
   it("returns unknown for a transit gateway outside the plan", () => {
     const p = inside(transit({ routeA: [{ cidr_block: "10.1.0.0/16", transit_gateway_id: "tgw-elsewhere" }] }));
     expect(p.after.verdict).toBe("unknown");
