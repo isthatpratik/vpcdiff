@@ -3,7 +3,7 @@
 // offers next steps. Terraform runs through execFile with argument arrays, never a
 // shell, and `terraform plan` runs only after the user confirms it.
 import { execFile } from "node:child_process";
-import { existsSync, readdirSync, readFileSync, statSync, writeFileSync, mkdtempSync, rmSync, openSync, readSync, closeSync } from "node:fs";
+import { existsSync, lstatSync, readdirSync, readFileSync, statSync, writeFileSync, mkdtempSync, rmSync, openSync, readSync, closeSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import * as p from "@clack/prompts";
@@ -28,9 +28,21 @@ function head(file: string): string | undefined {
   }
 }
 
+/** True when `path` is a symbolic link, even a dangling one (`existsSync` follows links). */
+export function isSymlink(path: string): boolean {
+  try {
+    return lstatSync(path).isSymbolicLink();
+  } catch {
+    return false;
+  }
+}
+
+// Terraform runs in the folder the user is in, with the user's environment: that is how
+// `terraform plan` reaches the user's own cloud account. CHECKPOINT_DISABLE stops
+// Terraform's own version check from calling out.
 function terraform(args: string[], opts: { cwd: string }): Promise<string> {
   return new Promise((ok, fail) => {
-    execFile("terraform", args, { cwd: opts.cwd, maxBuffer: MAX_PLAN, env: { ...process.env, TF_IN_AUTOMATION: "1" } }, (err, stdout, stderr) => {
+    execFile("terraform", args, { cwd: opts.cwd, maxBuffer: MAX_PLAN, env: { ...process.env, TF_IN_AUTOMATION: "1", CHECKPOINT_DISABLE: "1" } }, (err, stdout, stderr) => {
       if (err) fail(new Error(stderr.trim().split("\n").slice(-6).join("\n") || err.message));
       else ok(stdout);
     });
@@ -95,11 +107,12 @@ export async function interactive(failOn: FailOn = "added"): Promise<number> {
     } else if (choice.kind === "binary") {
       if (!tf) throw new Error("terraform is not on PATH, so the binary plan cannot be converted. Run terraform show -json on it, then open the JSON.");
       name = choice.file;
-      spin.start(`Converting ${choice.file} with terraform show -json`);
-      text = await terraform(["show", "-json", choice.file], { cwd });
+      spin.start(`Converting ${choice.file} with terraform show -json (this runs terraform in this folder)`);
+      // "./" so that a file name that starts with "-" is never read as an option.
+      text = await terraform(["show", "-json", `./${choice.file}`], { cwd });
       spin.stop(`Converted ${choice.file}`);
     } else if (choice.kind === "plan") {
-      const ok = await p.confirm({ message: `Run ${pc.cyan("terraform plan")} in ${pc.dim(cwd)}? It reads your state and calls your cloud provider with your credentials. Nothing is applied.` });
+      const ok = await p.confirm({ message: `Run ${pc.cyan("terraform plan")} in ${pc.dim(cwd)}? This folder's configuration runs with your environment: it reads your state, calls your cloud provider with your credentials, and can run code from providers, modules, and data sources. Only do this in a folder you trust. Nothing is applied.` });
       if (cancelled(ok) || !ok) return ok === false ? (p.outro("No plan was made."), 0) : 130;
       const dir = mkdtempSync(join(tmpdir(), "vpcdiff-"));
       const out = join(dir, "tfplan");
@@ -162,6 +175,11 @@ export async function interactive(failOn: FailOn = "added"): Promise<number> {
       const file = await p.text({ message: "Save as", initialValue: "vpcdiff-summary.md", validate: (v) => (!v ? "Enter a file name." : undefined) });
       if (cancelled(file)) break;
       const target = resolve(cwd, file);
+      // A link could send the write to a file elsewhere (and a dangling one would skip the prompt below).
+      if (isSymlink(target)) {
+        p.log.error(`${file} is a symbolic link. vpcdiff will not write through it; choose another name.`);
+        continue;
+      }
       if (existsSync(target)) {
         const over = await p.confirm({ message: `${file} exists. Replace it?`, initialValue: false });
         if (cancelled(over) || !over) continue;
