@@ -1,5 +1,5 @@
 import type { Change, Hop, Outcome, Path, Result } from "@vpcdiff/engine";
-import { sourcesText } from "@vpcdiff/engine/explain";
+import { mdCode, mdText, sourcesText } from "@vpcdiff/engine/explain";
 
 const ORDER: Change[] = ["added", "removed", "changed", "unknown", "unchanged"];
 const LABEL: Record<Change, string> = { added: "ADDED", removed: "REMOVED", changed: "CHANGED", unknown: "UNKNOWN", unchanged: "UNCHANGED" };
@@ -60,7 +60,10 @@ export function renderText(result: Result, opts: RenderOptions): string {
   return `${lines.join("\n")}\n`;
 }
 
-const md = (text: string) => text.replace(/[|\\`*_<>]/g, (c) => `\\${c}`);
+// Plan strings are untrusted (for_each keys can hold any characters): escape Markdown and
+// HTML, stop @-mentions, and keep table cells intact.
+const md = (text: string) => mdText(text);
+const code = (text: string) => mdCode(text).replaceAll("|", "\\|");
 
 /** GitHub-flavored Markdown for a pull request comment or job summary. */
 export function renderMarkdown(result: Result, opts: RenderOptions): string {
@@ -69,9 +72,9 @@ export function renderMarkdown(result: Result, opts: RenderOptions): string {
   if (!paths.length) lines.push("No reachability changes.", "");
   else {
     lines.push("| | Path | Port | Before | After |", "|---|---|---|---|---|");
-    for (const p of paths) lines.push(`| ${ICON[p.change]} ${p.change}${p.outageRisk ? " ⚠️" : ""} | ${p.from === "internet" ? (p.family === "ipv6" ? "internet (IPv6)" : "internet") : `\`${p.from}\``} → \`${p.to}\` | ${p.protocol}/${p.ports} | ${md(outcomeLine(p.before))} | ${md(outcomeLine(p.after))} |`);
+    for (const p of paths) lines.push(`| ${ICON[p.change]} ${p.change}${p.outageRisk ? " ⚠️" : ""} | ${p.from === "internet" ? (p.family === "ipv6" ? "internet (IPv6)" : "internet") : code(p.from)} → ${code(p.to)} | ${p.protocol}/${p.ports} | ${md(outcomeLine(p.before))} | ${md(outcomeLine(p.after))} |`);
     lines.push("");
-    for (const p of paths.filter((x) => x.outageRisk)) lines.push(`> ⚠️ ${p.from === "internet" ? "" : `\`${p.from}\` → `}\`${p.to}\` ${p.protocol}/${p.ports}: ${md(riskLine(p))}`, "");
+    for (const p of paths.filter((x) => x.outageRisk)) lines.push(`> ⚠️ ${p.from === "internet" ? "" : `${code(p.from)} → `}${code(p.to)} ${p.protocol}/${p.ports}: ${md(riskLine(p))}`, "");
     for (const p of paths) {
       const explain = p.after.verdict === "absent" ? p.before : p.after;
       if (!explain.hops.length) continue;
@@ -82,7 +85,7 @@ export function renderMarkdown(result: Result, opts: RenderOptions): string {
   }
   if (result.notes.length) {
     lines.push("<details><summary>Notes</summary>", "");
-    for (const n of result.notes) lines.push(`- \`${n.resource}\`: ${md(n.message)}`);
+    for (const n of result.notes) lines.push(`- ${code(n.resource)}: ${md(n.message)}`);
     lines.push("", "</details>", "");
   }
   return `${lines.join("\n")}\n`;

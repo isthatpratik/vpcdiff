@@ -51,8 +51,10 @@ async function comment(env: Env, body: string): Promise<void> {
   for (let page = 1; page <= 10 && existing === undefined; page++) {
     const res = await env.fetch(`${api}/repos/${repo}/issues/${number}/comments?per_page=100&page=${page}`, { headers });
     if (!res.ok) throw new Error(`listing comments failed: HTTP ${res.status}`);
-    const list = (await res.json()) as { id: number; body?: string }[];
-    existing = list.find((c) => c.body?.startsWith(MARKER))?.id;
+    const list = (await res.json()) as { id: number; body?: string; user?: { type?: string } }[];
+    // Only a comment that a bot wrote: anyone can post a comment that starts with the marker,
+    // and the report must never land in (or be editable from) a person's comment.
+    existing = list.find((c) => c.user?.type === "Bot" && c.body?.startsWith(MARKER))?.id;
     if (list.length < 100) break;
   }
   const res = existing === undefined

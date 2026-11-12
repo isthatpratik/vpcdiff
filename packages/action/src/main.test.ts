@@ -59,10 +59,17 @@ describe("vpcdiff action", () => {
   });
 
   it("updates its existing comment instead of adding another", async () => {
-    const list = JSON.stringify([{ id: 1, body: "hello" }, { id: 42, body: `${MARKER}\nold` }]);
+    const list = JSON.stringify([{ id: 1, body: "hello", user: { type: "User" } }, { id: 42, body: `${MARKER}\nold`, user: { type: "Bot" } }]);
     const { e, calls } = env({ INPUT_PLAN: "/plan.json", ...prVars }, { "/plan.json": plan("sg-5432-opened"), ...pr }, [new Response(list), new Response("{}")]);
     await run(e);
     expect(calls[1]).toMatchObject({ method: "PATCH", url: "https://api.test/repos/octo/repo/issues/comments/42" });
+  });
+
+  it("never writes into a person's comment that copies the marker", async () => {
+    const list = JSON.stringify([{ id: 7, body: `${MARKER}\nfake report: no changes`, user: { type: "User" } }]);
+    const { e, calls } = env({ INPUT_PLAN: "/plan.json", ...prVars }, { "/plan.json": plan("sg-5432-opened"), ...pr }, [new Response(list), new Response("{}")]);
+    await run(e);
+    expect(calls[1]).toMatchObject({ method: "POST", url: "https://api.test/repos/octo/repo/issues/7/comments" });
   });
 
   it("warns instead of failing when the token cannot write comments", async () => {

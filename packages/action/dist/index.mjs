@@ -3562,6 +3562,18 @@ function withoutControls(value) {
   return value;
 }
 
+// ../engine/src/explain.ts
+function mdCode(value) {
+  const text = value.replace(/[\r\n]+/g, " ");
+  const longest = Math.max(0, ...(text.match(/`+/g) ?? []).map((r) => r.length));
+  const fence = "`".repeat(longest + 1);
+  const pad = text.startsWith("`") || text.endsWith("`") ? " " : "";
+  return `${fence}${pad}${text}${pad}${fence}`;
+}
+function mdText(value) {
+  return value.replace(/[\r\n]+/g, " ").replace(/[\\`*_{}[\]()<>#+!|~]/g, (c) => `\\${c}`).replace(/@/g, "@\u200B");
+}
+
 // ../cli/src/render.ts
 var ORDER = ["added", "removed", "changed", "unknown", "unchanged"];
 var ICON = { added: "\u{1F534}", removed: "\u{1F7E2}", changed: "\u{1F7E0}", unknown: "\u26AA", unchanged: "\xB7" };
@@ -3586,16 +3598,17 @@ function outcomeLine(o) {
     }
   }
 }
-var md = (text) => text.replace(/[|\\`*_<>]/g, (c) => `\\${c}`);
+var md = (text) => mdText(text);
+var code = (text) => mdCode(text).replaceAll("|", "\\|");
 function renderMarkdown(result, opts) {
   const lines = ["### vpcdiff: reachability", "", summaryLine(result), ""];
   const paths = visiblePaths(result, opts);
   if (!paths.length) lines.push("No reachability changes.", "");
   else {
     lines.push("| | Path | Port | Before | After |", "|---|---|---|---|---|");
-    for (const p of paths) lines.push(`| ${ICON[p.change]} ${p.change}${p.outageRisk ? " \u26A0\uFE0F" : ""} | ${p.from === "internet" ? p.family === "ipv6" ? "internet (IPv6)" : "internet" : `\`${p.from}\``} \u2192 \`${p.to}\` | ${p.protocol}/${p.ports} | ${md(outcomeLine(p.before))} | ${md(outcomeLine(p.after))} |`);
+    for (const p of paths) lines.push(`| ${ICON[p.change]} ${p.change}${p.outageRisk ? " \u26A0\uFE0F" : ""} | ${p.from === "internet" ? p.family === "ipv6" ? "internet (IPv6)" : "internet" : code(p.from)} \u2192 ${code(p.to)} | ${p.protocol}/${p.ports} | ${md(outcomeLine(p.before))} | ${md(outcomeLine(p.after))} |`);
     lines.push("");
-    for (const p of paths.filter((x) => x.outageRisk)) lines.push(`> \u26A0\uFE0F ${p.from === "internet" ? "" : `\`${p.from}\` \u2192 `}\`${p.to}\` ${p.protocol}/${p.ports}: ${md(riskLine(p))}`, "");
+    for (const p of paths.filter((x) => x.outageRisk)) lines.push(`> \u26A0\uFE0F ${p.from === "internet" ? "" : `${code(p.from)} \u2192 `}${code(p.to)} ${p.protocol}/${p.ports}: ${md(riskLine(p))}`, "");
     for (const p of paths) {
       const explain = p.after.verdict === "absent" ? p.before : p.after;
       if (!explain.hops.length) continue;
@@ -3606,7 +3619,7 @@ function renderMarkdown(result, opts) {
   }
   if (result.notes.length) {
     lines.push("<details><summary>Notes</summary>", "");
-    for (const n of result.notes) lines.push(`- \`${n.resource}\`: ${md(n.message)}`);
+    for (const n of result.notes) lines.push(`- ${code(n.resource)}: ${md(n.message)}`);
     lines.push("", "</details>", "");
   }
   return `${lines.join("\n")}
@@ -3658,7 +3671,7 @@ ${body}`;
     const res2 = await env.fetch(`${api}/repos/${repo}/issues/${number}/comments?per_page=100&page=${page}`, { headers });
     if (!res2.ok) throw new Error(`listing comments failed: HTTP ${res2.status}`);
     const list = await res2.json();
-    existing = list.find((c) => c.body?.startsWith(MARKER))?.id;
+    existing = list.find((c) => c.user?.type === "Bot" && c.body?.startsWith(MARKER))?.id;
     if (list.length < 100) break;
   }
   const res = existing === void 0 ? await env.fetch(`${api}/repos/${repo}/issues/${number}/comments`, { method: "POST", headers, body: JSON.stringify({ body: text }) }) : await env.fetch(`${api}/repos/${repo}/issues/comments/${existing}`, { method: "PATCH", headers, body: JSON.stringify({ body: text }) });

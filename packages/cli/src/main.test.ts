@@ -12,6 +12,22 @@ function cli(args: string[], stdin = "") {
 }
 
 describe("vpcdiff CLI", () => {
+  it("escapes Markdown, links, and mentions that a for_each key carries", async () => {
+    const { readFileSync } = await import("node:fs");
+    const evil = readFileSync(fixture("sg-5432-opened"), "utf8").replaceAll("aws_instance.db", 'aws_instance.db[\\"x` [Approve](https://evil.example) ![t](https://evil.example/p.png) @someone |\\"]');
+    const out = cli(["--format", "markdown", "-"], evil).out;
+    // In the table, the name stays inside one code span that the backtick cannot close,
+    // where GitHub shows links, images, and mentions as plain text.
+    const row = out.split("\n").find((l) => l.startsWith("| 🔴")) ?? "";
+    expect(row).toMatch(/``aws_instance\.db\[.*\[Approve\]\(https:\/\/evil\.example\).*@someone \\\|.*``/);
+    // The table keeps its five columns: the pipe in the name is escaped.
+    expect(row.split(/(?<!\\)\|/).length).toBe(7);
+    // Outside code (the hop details), Markdown is escaped and the mention is broken.
+    const rest = out.split("\n").filter((l) => !l.startsWith("| 🔴")).join("\n");
+    expect(rest).not.toMatch(/(?<![\\`])\[Approve\]\(/);
+    expect(rest).not.toContain("@someone");
+  });
+
   it("never prints a terminal escape sequence from the plan", async () => {
     const { readFileSync } = await import("node:fs");
     const evil = readFileSync(fixture("sg-5432-opened"), "utf8").replaceAll("aws_instance.db", "aws_instance.db\\u001b]8;;https://evil.example\\u0007x\\u001b[2J");
