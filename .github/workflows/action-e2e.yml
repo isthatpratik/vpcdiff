@@ -14,5 +14,5 @@ jobs:
           persist-credentials: false
       - uses: ./
         with:
-          plan: fixtures/sg-5432-opened/plan.json
+          plan: e2e/evil.json
           fail-on: never
