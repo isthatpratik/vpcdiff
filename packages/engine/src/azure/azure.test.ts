@@ -105,6 +105,14 @@ describe("Azure VMs from the internet", () => {
     expect(azure([...base(), extra]).map((p) => p.ports)).toEqual(["22", "80"]);
   });
 
+  it("reads rule resources when the provider computes the NSG's inline rules", () => {
+    const r = base({ nsgRules: [] }).map((x) => (x.type === "azurerm_network_security_group" ? { ...x, after: { ...x.after, security_rule: null }, unknown: { security_rule: true } } : x));
+    const extra = res("azurerm_network_security_rule", "ssh", { ...rule("ssh", 100), id: "r2", network_security_group_name: "subnet", resource_group_name: "rg" });
+    expect(one([...r, extra]).after.verdict).toBe("allowed");
+    const configured = r.map((x) => (x.type === "azurerm_network_security_group" ? { ...x, config: { security_rule: ["var.rules"] } } : x));
+    expect(azure([...configured, extra]).every((p) => p.after.verdict === "unknown")).toBe(true);
+  });
+
   it("returns unknown for more than one network interface", () => {
     const r = base().map((x) => (x.type === "azurerm_linux_virtual_machine" ? { ...x, after: { ...x.after, network_interface_ids: [`${ID}/networkInterfaces/web`, `${ID}/networkInterfaces/other`] } } : x));
     expect(azure(r).every((p) => p.after.verdict === "unknown")).toBe(true);

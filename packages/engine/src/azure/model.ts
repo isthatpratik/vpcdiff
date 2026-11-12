@@ -191,9 +191,11 @@ export class AzureModel {
 
   /** The NSG's inbound rules for a VM in `subnet` (rules 4 to 6), with the default rules. */
   private rules(nsg: Resource, subnet: IntervalSet): Known<AzRule[]> {
-    if (hasUnknown(nsg, ["security_rule"])) return unknown(`${nsg.address}: security_rule is unknown until apply`);
+    // Without inline blocks, the provider computes security_rule from the separate rule
+    // resources, which are read below.
+    if (hasUnknown(nsg, ["security_rule"]) && nsg.configured.has("security_rule")) return unknown(`${nsg.address}: security_rule is unknown until apply`);
     const raw: { values: Record<string, unknown>; label: string }[] = [];
-    for (const b of Array.isArray(nsg.values.security_rule) ? nsg.values.security_rule : []) if (isObj(b)) raw.push({ values: b, label: `${nsg.address} rule ${String(b.name)}` });
+    for (const b of !isUnknown(nsg, ["security_rule"]) && Array.isArray(nsg.values.security_rule) ? nsg.values.security_rule : []) if (isObj(b)) raw.push({ values: b, label: `${nsg.address} rule ${String(b.name)}` });
     for (const r of this.ofType("azurerm_network_security_rule")) {
       const owner = this.byName(r, "network_security_group_name", "azurerm_network_security_group");
       if (!owner.ok) return unknown(owner.reason);
@@ -274,8 +276,8 @@ export class AzureModel {
     if (tables.length > 1) return unknown(`${s.address} has ${tables.length} route table associations`);
     const table = tables[0];
     if (!table) return known(system);
-    if (hasUnknown(table, ["route"])) return unknown(`${table.address}: route is unknown until apply`);
-    const user: { v: Record<string, unknown>; label: string }[] = (Array.isArray(table.values.route) ? table.values.route : []).filter(isObj).map((v) => ({ v, label: `${table.address} route ${String(v.name)}` }));
+    if (hasUnknown(table, ["route"]) && table.configured.has("route")) return unknown(`${table.address}: route is unknown until apply`);
+    const user: { v: Record<string, unknown>; label: string }[] = (!isUnknown(table, ["route"]) && Array.isArray(table.values.route) ? table.values.route : []).filter(isObj).map((v) => ({ v, label: `${table.address} route ${String(v.name)}` }));
     for (const r of this.ofType("azurerm_route")) {
       const owner = this.byName(r, "route_table_name", "azurerm_route_table");
       if (!owner.ok) return unknown(owner.reason);
