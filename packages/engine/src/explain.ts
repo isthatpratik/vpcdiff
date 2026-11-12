@@ -53,10 +53,10 @@ export function portLabel(path: Pick<Path, "protocol" | "ports">): string {
  * path only (not a host firewall or whether a service listens), and IPv4 only, so the
  * words say what the network allows, not who can log in.
  */
-export function whoText(sources: string[], family?: "ipv6"): string {
+export function whoText(sources: string[], family?: "ipv6", provider?: "gcp" | "azure"): string {
   if (!sources.length) return "nobody";
   if (sources.length === 1 && sources[0] === "internet") return family === "ipv6" ? "any public IPv6 address" : "any public IPv4 address";
-  const except = family === "ipv6" ? undefined : exceptOf(sources);
+  const except = family === "ipv6" ? undefined : exceptOf(sources, provider);
   return except ? `any public IPv4 address except ${except.join(", ")}` : sources.join(", ");
 }
 
@@ -211,7 +211,7 @@ function baseVerdict(path: Path): Verdict {
     return {
       tone: "danger",
       title: path.after.sources.includes("internet") ? "Opened to the internet" : "Opened to some addresses",
-      body: `After this plan, the network lets ${whoText(path.after.sources, path.family)} reach ${path.to} on ${port}.`,
+      body: `After this plan, the network lets ${whoText(path.after.sources, path.family, path.provider)} reach ${path.to} on ${port}.`,
       ...(cause ? { cause } : {}),
       action:
         path.after.sources.includes("internet")
@@ -235,7 +235,7 @@ function baseVerdict(path: Path): Verdict {
     return {
       tone: "warning",
       title: "Reachable from different sources",
-      body: `${path.to} stays reachable on ${port}. Before: ${whoText(path.before.sources, path.family)}. After: ${whoText(path.after.sources, path.family)}.`,
+      body: `${path.to} stays reachable on ${port}. Before: ${whoText(path.before.sources, path.family, path.provider)}. After: ${whoText(path.after.sources, path.family, path.provider)}.`,
       ...(cause ? { cause } : {}),
       action: "Check that the new source ranges are the ones you mean to allow.",
     };
@@ -266,7 +266,7 @@ function baseVerdict(path: Path): Verdict {
     return { tone: "neutral", title: "New, and not reachable", body: `This plan creates ${path.to}, and ${from} cannot reach it on ${port}${at ? `: it is blocked at the ${at}` : ""}.`, ...(cause ? { cause } : {}) };
   }
   if (path.after.verdict === "allowed") {
-    return { tone: "neutral", title: "No change", body: `${path.to} is reachable on ${port} from ${whoText(path.after.sources, path.family)}, before and after this plan.` };
+    return { tone: "neutral", title: "No change", body: `${path.to} is reachable on ${port} from ${whoText(path.after.sources, path.family, path.provider)}, before and after this plan.` };
   }
   const at = stoppedAt(path, "after");
   return { tone: "neutral", title: "Stays blocked", body: `${from === "the internet" ? "The internet" : from} cannot reach ${path.to} on ${port}, before or after this plan${at ? `: it is blocked at the ${at}` : ""}.` };

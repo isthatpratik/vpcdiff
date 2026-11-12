@@ -3539,7 +3539,8 @@ function pathsOf(spec) {
 }
 
 // ../engine/src/sources.ts
-function exceptOf(sources) {
+var AZURE_NOT_INTERNET = ["168.63.129.16/32", "157.59.0.0/16", "104.147.0.0/16", "104.146.0.0/17"].reduce((acc, c) => union(acc, cidrToSet(c) ?? []), []);
+function exceptOf(sources, provider) {
   if (sources.length <= 6) return void 0;
   let allowed = [];
   for (const c of sources) {
@@ -3547,11 +3548,11 @@ function exceptOf(sources) {
     if (!set) return void 0;
     allowed = union(allowed, set);
   }
-  const missing = setToCidrs(subtract(PUBLIC_IPV4, allowed));
+  const missing = setToCidrs(subtract(subtract(PUBLIC_IPV4, allowed), provider === "azure" ? AZURE_NOT_INTERNET : []));
   return missing.length && missing.length <= 6 && missing.length < sources.length ? missing : void 0;
 }
-function sourcesText(sources, family) {
-  const except = family === "ipv6" ? void 0 : exceptOf(sources);
+function sourcesText(sources, family, provider) {
+  const except = family === "ipv6" ? void 0 : exceptOf(sources, provider);
   return except ? `internet except ${except.join(", ")}` : sources.join(", ");
 }
 var CONTROL = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g;
@@ -3586,10 +3587,10 @@ function summaryLine(result) {
   return `${s.added} added, ${s.removed} removed, ${s.changed} changed, ${s.unknown} unknown, ${s.unchanged} unchanged${risk ? `; ${risk} with outage risk` : ""}`;
 }
 var riskLine = (p) => `outage risk: the plan replaces ${(p.outageRisk ?? []).join(", ")} by deleting before creating; traffic on this path can drop during apply (consider create_before_destroy)`;
-function outcomeLine(o) {
+function outcomeLine(o, provider) {
   switch (o.verdict) {
     case "allowed":
-      return `allowed from ${sourcesText(o.sources)}${o.reason ? ` (also undecided: ${o.reason})` : ""}`;
+      return `allowed from ${sourcesText(o.sources, void 0, provider)}${o.reason ? ` (also undecided: ${o.reason})` : ""}`;
     case "absent":
       return "resource does not exist";
     default: {
@@ -3606,7 +3607,7 @@ function renderMarkdown(result, opts) {
   if (!paths.length) lines.push("No reachability changes.", "");
   else {
     lines.push("| | Path | Port | Before | After |", "|---|---|---|---|---|");
-    for (const p of paths) lines.push(`| ${ICON[p.change]} ${p.change}${p.outageRisk ? " \u26A0\uFE0F" : ""} | ${p.from === "internet" ? p.family === "ipv6" ? "internet (IPv6)" : "internet" : code(p.from)} \u2192 ${code(p.to)} | ${p.protocol}/${p.ports} | ${md(outcomeLine(p.before))} | ${md(outcomeLine(p.after))} |`);
+    for (const p of paths) lines.push(`| ${ICON[p.change]} ${p.change}${p.outageRisk ? " \u26A0\uFE0F" : ""} | ${p.from === "internet" ? p.family === "ipv6" ? "internet (IPv6)" : "internet" : code(p.from)} \u2192 ${code(p.to)} | ${p.protocol}/${p.ports} | ${md(outcomeLine(p.before, p.provider))} | ${md(outcomeLine(p.after, p.provider))} |`);
     lines.push("");
     for (const p of paths.filter((x) => x.outageRisk)) lines.push(`> \u26A0\uFE0F ${p.from === "internet" ? "" : `${code(p.from)} \u2192 `}${code(p.to)} ${p.protocol}/${p.ports}: ${md(riskLine(p))}`, "");
     for (const p of paths) {

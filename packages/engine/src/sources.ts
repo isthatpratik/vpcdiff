@@ -6,7 +6,12 @@ import { cidrToSet, setToCidrs, subtract, union, type IntervalSet } from "./inte
  * The public IPv4 addresses that a list of allowed CIDRs leaves out, when that list is
  * shorter: "internet except 198.51.100.0/24" reads better than 68 CIDRs.
  */
-export function exceptOf(sources: string[]): string[] | undefined {
+// Addresses that are never internet sources for an Azure path: the platform address and the
+// public ranges that every subnet's system routes drop (docs/semantics/azure.md). They are
+// left out of "except", because no rule of the user's leaves them out.
+const AZURE_NOT_INTERNET: IntervalSet = ["168.63.129.16/32", "157.59.0.0/16", "104.147.0.0/16", "104.146.0.0/17"].reduce<IntervalSet>((acc, c) => union(acc, cidrToSet(c) ?? []), []);
+
+export function exceptOf(sources: string[], provider?: "gcp" | "azure"): string[] | undefined {
   if (sources.length <= 6) return undefined;
   let allowed: IntervalSet = [];
   for (const c of sources) {
@@ -14,13 +19,13 @@ export function exceptOf(sources: string[]): string[] | undefined {
     if (!set) return undefined;
     allowed = union(allowed, set);
   }
-  const missing = setToCidrs(subtract(PUBLIC_IPV4, allowed));
+  const missing = setToCidrs(subtract(subtract(PUBLIC_IPV4, allowed), provider === "azure" ? AZURE_NOT_INTERNET : []));
   return missing.length && missing.length <= 6 && missing.length < sources.length ? missing : undefined;
 }
 
 /** Allowed sources in short form: "internet", "internet except ...", or the CIDRs. */
-export function sourcesText(sources: string[], family?: "ipv6"): string {
-  const except = family === "ipv6" ? undefined : exceptOf(sources);
+export function sourcesText(sources: string[], family?: "ipv6", provider?: "gcp" | "azure"): string {
+  const except = family === "ipv6" ? undefined : exceptOf(sources, provider);
   return except ? `internet except ${except.join(", ")}` : sources.join(", ");
 }
 

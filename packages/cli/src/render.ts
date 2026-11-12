@@ -24,10 +24,10 @@ export function summaryLine(result: Result): string {
 
 const riskLine = (p: Path) => `outage risk: the plan replaces ${(p.outageRisk ?? []).join(", ")} by deleting before creating; traffic on this path can drop during apply (consider create_before_destroy)`;
 
-function outcomeLine(o: Outcome): string {
+function outcomeLine(o: Outcome, provider?: Path["provider"]): string {
   switch (o.verdict) {
     case "allowed":
-      return `allowed from ${sourcesText(o.sources)}${o.reason ? ` (also undecided: ${o.reason})` : ""}`;
+      return `allowed from ${sourcesText(o.sources, undefined, provider)}${o.reason ? ` (also undecided: ${o.reason})` : ""}`;
     case "absent":
       return "resource does not exist";
     default: {
@@ -48,7 +48,7 @@ export function renderText(result: Result, opts: RenderOptions): string {
   if (!paths.length) lines.push("", "No reachability changes.");
   for (const p of paths) {
     lines.push("", `${LABEL[p.change].padEnd(9)} ${p.from}${p.family === "ipv6" ? " (IPv6)" : ""} -> ${p.to}  ${p.protocol}/${p.ports}`);
-    lines.push(`  before: ${outcomeLine(p.before)}`, `  after:  ${outcomeLine(p.after)}`);
+    lines.push(`  before: ${outcomeLine(p.before, p.provider)}`, `  after:  ${outcomeLine(p.after, p.provider)}`);
     if (p.outageRisk) lines.push(`  ${riskLine(p)}`);
     const explain = p.after.verdict === "absent" ? p.before : p.after;
     for (const h of explain.hops) lines.push(`    ${hopLine(h)}`);
@@ -72,7 +72,7 @@ export function renderMarkdown(result: Result, opts: RenderOptions): string {
   if (!paths.length) lines.push("No reachability changes.", "");
   else {
     lines.push("| | Path | Port | Before | After |", "|---|---|---|---|---|");
-    for (const p of paths) lines.push(`| ${ICON[p.change]} ${p.change}${p.outageRisk ? " ⚠️" : ""} | ${p.from === "internet" ? (p.family === "ipv6" ? "internet (IPv6)" : "internet") : code(p.from)} → ${code(p.to)} | ${p.protocol}/${p.ports} | ${md(outcomeLine(p.before))} | ${md(outcomeLine(p.after))} |`);
+    for (const p of paths) lines.push(`| ${ICON[p.change]} ${p.change}${p.outageRisk ? " ⚠️" : ""} | ${p.from === "internet" ? (p.family === "ipv6" ? "internet (IPv6)" : "internet") : code(p.from)} → ${code(p.to)} | ${p.protocol}/${p.ports} | ${md(outcomeLine(p.before, p.provider))} | ${md(outcomeLine(p.after, p.provider))} |`);
     lines.push("");
     for (const p of paths.filter((x) => x.outageRisk)) lines.push(`> ⚠️ ${p.from === "internet" ? "" : `${code(p.from)} → `}${code(p.to)} ${p.protocol}/${p.ports}: ${md(riskLine(p))}`, "");
     for (const p of paths) {

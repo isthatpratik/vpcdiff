@@ -267,7 +267,7 @@ function Start({ error, onFile, onExample }: { error?: string | undefined; onFil
               <span className="block text-litt-fg-subtle">See what it opens.</span>
             </h1>
             <p className="max-w-[46ch] text-base leading-relaxed text-litt-fg-muted">
-              vpcdiff compares what the internet, and resources inside the VPC, can reach before and after a Terraform plan, and names the rule that decides each hop.
+              vpcdiff compares what the internet can reach on AWS, Google Cloud, and Azure, and what resources inside an AWS VPC can reach, before and after a Terraform plan, and names the rule that decides each hop.
             </p>
             <p className="flex items-center gap-2 text-litt-small text-litt-fg-subtle">
               <LockIcon aria-hidden="true" className="size-4" />
@@ -561,7 +561,7 @@ function Workspace({ name, result, sha256: hash, initialPath }: { name: string; 
                 <label className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-[6px] border border-litt-line-strong px-2.5 focus-within:border-litt-fg-subtle focus-within:outline-2 focus-within:outline-offset-1 focus-within:outline-litt-fg sm:w-56 sm:flex-none">
                   <SearchIcon aria-hidden="true" className="size-4 shrink-0 text-litt-fg-subtle" />
                   <span className="sr-only">Filter paths by resource, port, or CIDR</span>
-                  <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Filter by resource, port, CIDR" className="h-full min-w-0 flex-1 bg-transparent text-litt-small text-litt-fg outline-none placeholder:text-litt-fg-subtle" />
+                  <input name="filter" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Filter by resource, port, CIDR" className="h-full min-w-0 flex-1 bg-transparent text-litt-small text-litt-fg outline-none placeholder:text-litt-fg-subtle" />
                 </label>
               )}
             </div>
@@ -689,7 +689,7 @@ function PathCard({ path, open, onToggle }: { path: Path; open: boolean; onToggl
             <span className="flex min-w-0 flex-wrap items-center gap-x-2 pl-6 font-litt-mono text-litt-caption text-litt-fg-muted sm:pl-0">
               <span>{portLabel(path)}</span>
               {path.family === "ipv6" && <span className="rounded-[4px] border border-litt-line px-1.5 font-sans text-litt-fg-muted">IPv6</span>}
-              {inside ? <span className="font-sans text-litt-fg-subtle">inside the VPC</span> : src.length > 0 && <span className="text-litt-fg-subtle">from {src.includes("internet") ? (path.family === "ipv6" ? "::/0" : "0.0.0.0/0") : sourcesText(src, path.family)}</span>}
+              {inside ? <span className="font-sans text-litt-fg-subtle">inside the VPC</span> : src.length > 0 && <span className="text-litt-fg-subtle">from {src.includes("internet") ? (path.family === "ipv6" ? "::/0" : "0.0.0.0/0") : sourcesText(src, path.family, path.provider)}</span>}
             </span>
           </span>
           <span className="hidden shrink-0 text-litt-caption text-litt-fg-subtle md:inline">{changeWords(path)}</span>
