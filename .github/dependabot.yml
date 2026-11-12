@@ -1,6 +1,10 @@
 # Keeps the pinned GitHub Actions (full commit SHAs) and the npm dependencies current, so
 # a fix for a known issue arrives as a pull request. Each update is reviewed like any other
 # change: CI must pass, and the committed Action bundle must still match its sources.
+#
+# The repository is one pnpm workspace with one lockfile, so one directory covers it.
+# Major versions are not proposed automatically: a new major (TypeScript, @types/node,
+# lucide-react, which is pinned on purpose) is a deliberate change with its own pull request.
 version: 2
 updates:
   - package-ecosystem: github-actions
@@ -13,10 +17,13 @@ updates:
     commit-message:
       prefix: "chore(deps)"
   - package-ecosystem: npm
-    directories: ["/", "/packages/*", "/apps/*"]
+    directory: /
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
     groups:
       dev-dependencies:
         dependency-type: development
