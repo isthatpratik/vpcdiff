@@ -52,6 +52,14 @@ describe("Google Cloud VMs from the internet", () => {
     expect(gcp([network(), fw("ssh", { disabled: true }), vm()])).toHaveLength(0);
   });
 
+  it("uses the API defaults for direction, priority, and disabled when the provider computes them", () => {
+    const rule = fw("ssh", { direction: null, disabled: null, priority: 1000 });
+    const p = one([network(), { ...rule, unknown: { direction: true, disabled: true } }, vm()]);
+    expect(p.after.verdict).toBe("allowed");
+    const set = { ...rule, unknown: { direction: true }, config: { direction: ["var.direction"] } };
+    expect(new Set(gcp([network(), set, vm()]).map((x) => x.after.verdict))).toEqual(new Set(["unknown"]));
+  });
+
   it("gives partial sources for a narrow range", () => {
     const p = one([network(), fw("ssh", { source_ranges: ["203.0.113.0/24"] }), vm()]);
     expect(p.after.verdict).toBe("allowed");

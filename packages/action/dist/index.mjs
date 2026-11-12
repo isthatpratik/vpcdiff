@@ -909,13 +909,71 @@ function internalCuts(ep) {
   return cuts;
 }
 
+// ../engine/src/gcp/evaluate.ts
+var DOC4 = {
+  "public-ip": "https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/compute_instance",
+  firewall: "https://docs.cloud.google.com/firewall/docs/firewalls",
+  route: "https://docs.cloud.google.com/vpc/docs/routes"
+};
+var absent4 = { verdict: "absent", sources: [], hops: [], reason: "the resource does not exist on this side of the plan" };
+var protoMatches4 = (rule, p) => rule === "all" || rule === p;
+function evaluateGcp(vm, p, ports) {
+  if (!vm) return absent4;
+  const hops = [];
+  const add = (hop, resource, decision, rule) => hops.push({ hop, resource, decision, rule, doc: DOC4[hop] });
+  const stop = (verdict, reason) => ({ verdict, sources: [], hops, reason });
+  const unknownAt = (hop, resource, reason) => {
+    add(hop, resource, "unknown", reason);
+    return stop("unknown", reason);
+  };
+  const portText = `${p}/${formatPorts([ports])}`;
+  if (!vm.externalIp.ok) return unknownAt("public-ip", vm.address, vm.externalIp.reason);
+  if (!vm.externalIp.value) {
+    add("public-ip", vm.address, "deny", `${vm.address} has no external IP address (no access_config)`);
+    return stop("blocked", `${vm.address} has no external IP address`);
+  }
+  add("public-ip", vm.address, "allow", vm.externalIp.value);
+  const where = vm.network.ok ? vm.network.value : vm.address;
+  if (!vm.firewall.ok) return unknownAt("firewall", where, vm.firewall.reason);
+  let remaining = PUBLIC_IPV4;
+  let allowed = EMPTY;
+  const texts = [];
+  for (const rule of vm.firewall.value) {
+    if (!protoMatches4(rule.protocol, p) || !contains(rule.ports, [ports])) continue;
+    const m = intersect(remaining, rule.sources);
+    if (isEmpty(m)) continue;
+    if (rule.allow) allowed = union(allowed, m);
+    texts.push(rule.text);
+    remaining = subtract(remaining, m);
+  }
+  if (!isEmpty(remaining)) texts.push("implied rule: deny all ingress");
+  if (isEmpty(allowed)) {
+    add("firewall", where, "deny", texts.join("; "));
+    return stop("blocked", `no firewall rule of ${where} allows ${portText} from the internet to ${vm.address}`);
+  }
+  add("firewall", where, equals(allowed, PUBLIC_IPV4) ? "allow" : "partial", texts.join("; "));
+  if (!vm.route.ok) return unknownAt("route", where, vm.route.reason);
+  add("route", vm.route.value.resource, "allow", vm.route.value.text);
+  return { verdict: "allowed", sources: equals(allowed, PUBLIC_IPV4) ? ["internet"] : setToCidrs(allowed), hops, reason: "" };
+}
+function gcpExposed(vm, p) {
+  if (!vm) return EMPTY;
+  if (!vm.firewall.ok) return ALL_PORTS;
+  let out = EMPTY;
+  for (const rule of vm.firewall.value) if (rule.allow && protoMatches4(rule.protocol, p) && !isEmpty(intersect(rule.sources, PUBLIC_IPV4))) out = union(out, rule.ports);
+  return out;
+}
+function gcpCuts(vm) {
+  return vm?.firewall.ok ? vm.firewall.value.map((r) => r.ports) : [];
+}
+
 // ../engine/src/plan.ts
 var cmp = (a, b) => a < b ? -1 : a > b ? 1 : 0;
 var PlanError = class extends Error {
 };
 var isObj = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
 var stripKeys = (address) => address.replace(/\[[^\]]*\]/g, "");
-var RESOURCE_REF = /^aws_\w+\.[\w-]+(?:\[[^\]]+\])?(?:\.|$)/;
+var RESOURCE_REF = /^(?:aws|google|azurerm)_\w+\.[\w-]+(?:\[[^\]]+\])?(?:\.|$)/;
 function configRefs(plan) {
   const out = /* @__PURE__ */ new Map();
   const walkModule = (mod, prefix) => {
@@ -928,7 +986,7 @@ function configRefs(plan) {
         const found = /* @__PURE__ */ new Set();
         const full = /* @__PURE__ */ new Set();
         collect(expr, (ref) => {
-          const m = /^(aws_\w+\.[\w-]+(?:\[[^\]]+\])?)$/.exec(ref);
+          const m = /^((?:aws|google|azurerm)_\w+\.[\w-]+(?:\[[^\]]+\])?)$/.exec(ref);
           if (m) found.add(prefix + m[1]);
           if (RESOURCE_REF.test(ref)) full.add(prefix + ref);
           else info.otherRefs.add(attr);
@@ -974,9 +1032,9 @@ function parsePlan(input2) {
       [before, rc.change.before, false],
       [after, rc.change.after, rc.change.after_unknown ?? false]
     ];
-    for (const [snap, values, unknown2] of sides) {
+    for (const [snap, values, unknown3] of sides) {
       if (!isObj(values)) continue;
-      snap.resources.set(address, { address, type, values, unknown: unknown2, refs: info.refs, fullRefs: info.fullRefs, configured: info.configured, otherRefs: info.otherRefs, actions });
+      snap.resources.set(address, { address, type, values, unknown: unknown3, refs: info.refs, fullRefs: info.fullRefs, configured: info.configured, otherRefs: info.otherRefs, actions });
       if (typeof values.id === "string") snap.byId.set(values.id, address);
       const list = snap.instancesOf.get(base) ?? [];
       list.push(address);
@@ -1013,25 +1071,25 @@ function resolveRefs(snap, r, attr, targetType) {
   if (!isUnknown(r, [attr])) {
     if (value === null || value === void 0) return [];
     const items = Array.isArray(value) ? value : [value];
-    const known2 = [];
+    const known3 = [];
     let unknownCount = 0;
     items.forEach((v, i) => {
       if (typeof v === "string" && !isUnknown(r, Array.isArray(value) ? [attr, i] : [attr])) {
         const address = snap.byId.get(v);
-        known2.push(address ? { kind: "resource", address } : { kind: "external", id: v });
+        known3.push(address ? { kind: "resource", address } : { kind: "external", id: v });
       } else unknownCount++;
     });
-    if (!unknownCount) return known2.toSorted((a, b) => cmp(refOrder(a), refOrder(b)));
+    if (!unknownCount) return known3.toSorted((a, b) => cmp(refOrder(a), refOrder(b)));
     if (r.otherRefs.has(attr)) return fail(`${r.address}: ${attr} uses values that are unknown until apply`);
-    const knownAddresses = new Set(known2.flatMap((k) => k.kind === "resource" ? [stripKeys(k.address)] : []));
+    const knownAddresses = new Set(known3.flatMap((k) => k.kind === "resource" ? [stripKeys(k.address)] : []));
     const rest = fromConfig(snap, r, attr, targetType).filter((x) => !(x.kind === "resource" && knownAddresses.has(stripKeys(x.address))));
     if (rest.length !== unknownCount || rest.some((x) => x.kind !== "resource")) return fail(`${r.address}: ${attr} has elements that are unknown until apply and cannot be matched to resources`);
-    return [...known2, ...rest].toSorted((a, b) => cmp(refOrder(a), refOrder(b)));
+    return [...known3, ...rest].toSorted((a, b) => cmp(refOrder(a), refOrder(b)));
   }
   if (r.otherRefs.has(attr)) return fail(`${r.address}: ${attr} uses values that are unknown until apply`);
   return fromConfig(snap, r, attr, targetType).toSorted((a, b) => cmp(refOrder(a), refOrder(b)));
 }
-var ADDRESS = /^(.*?)(aws_\w+\.[\w-]+(?:\[[^\]]+\])?(?:\.\w+)?)$/;
+var ADDRESS = /^(.*?)((?:aws|google|azurerm)_\w+\.[\w-]+(?:\[[^\]]+\])?(?:\.\w+)?)$/;
 function localize(from, ref) {
   const prefix = ADDRESS.exec(from)?.[1] ?? "";
   return prefix + (ADDRESS.exec(ref)?.[2] ?? ref);
@@ -2617,6 +2675,178 @@ var ModelBuilder = class {
   }
 };
 
+// ../engine/src/gcp/model.ts
+var known2 = (value) => ({ ok: true, value });
+var unknown2 = (reason) => ({ ok: false, reason });
+var UNMODELED_POLICIES = ["google_compute_network_firewall_policy_association", "google_compute_region_network_firewall_policy_association", "google_compute_firewall_policy_association"];
+var UNMODELED_ROUTES2 = ["google_network_connectivity_policy_based_route"];
+var strList = (v) => Array.isArray(v) ? v.filter((x) => typeof x === "string") : [];
+var lastSegment = (v) => v.split("/").at(-1) ?? v;
+function portsOf(protocol, ports) {
+  const list = strList(ports);
+  if (protocol === "all" || !list.length) return ALL_PORTS;
+  const ranges = [];
+  for (const p of list) {
+    const m = /^(\d+)(?:-(\d+))?$/.exec(p.trim());
+    if (!m) return void 0;
+    ranges.push([Number(m[1]), Number(m[2] ?? m[1])]);
+  }
+  return fromRanges(ranges);
+}
+var GcpModel = class {
+  constructor(snap) {
+    this.snap = snap;
+  }
+  snap;
+  ofType(type) {
+    return [...this.snap.resources.values()].filter((r) => r.type === type).toSorted((a, b) => cmp(a.address, b.address));
+  }
+  /** The google_compute_network a value names (name, ID, or self link), or one configuration reference. */
+  networkOf(r, attr, value, unknownValue) {
+    if (!unknownValue && typeof value === "string" && value) {
+      const name = lastSegment(value);
+      const found = this.ofType("google_compute_network").filter((n) => !isUnknown(n, ["name"]) && n.values.name === name);
+      if (found.length === 1) return known2(found[0].address);
+      return unknown2(`${r.address}: network ${value} is not in this plan; its firewall rules (for the default network, rules that allow incoming connections) are not known`);
+    }
+    if (r.otherRefs.has(attr)) return unknown2(`${r.address}: its network uses values that are unknown until apply`);
+    const refs = fromConfig(this.snap, r, attr, "google_compute_network");
+    if (refs.length === 1 && refs[0]?.kind === "resource") return known2(refs[0].address);
+    const subs = fromConfig(this.snap, r, attr, "google_compute_subnetwork");
+    const sub = subs.length === 1 && subs[0]?.kind === "resource" ? this.snap.resources.get(subs[0].address) : void 0;
+    if (sub) return this.networkOf(sub, "network", sub.values.network, isUnknown(sub, ["network"]));
+    return unknown2(`${r.address}: its network is unknown until apply and cannot be matched to one google_compute_network`);
+  }
+  vms() {
+    return this.ofType("google_compute_instance").map((r) => this.vm(r));
+  }
+  vm(r) {
+    const fail = (reason) => ({ address: r.address, type: r.type, network: unknown2(reason), externalIp: unknown2(reason), firewall: unknown2(reason), route: unknown2(reason) });
+    if (isUnknown(r, ["network_interface"])) return fail(`${r.address}: network_interface is unknown until apply`);
+    const nics = Array.isArray(r.values.network_interface) ? r.values.network_interface : [];
+    if (nics.length !== 1) return fail(`${r.address} has ${nics.length} network interfaces; only VMs with one are modeled`);
+    const nic = nics[0];
+    if (!isObj(nic)) return fail(`${r.address}: network_interface cannot be read`);
+    const netUnknown = isUnknown(r, ["network_interface", 0, "network"]);
+    const net = netUnknown || typeof nic.network === "string" && nic.network ? this.networkOf(r, "network_interface", nic.network, netUnknown) : this.networkOf(r, "network_interface", nic.subnetwork, isUnknown(r, ["network_interface", 0, "subnetwork"]));
+    let externalIp;
+    if (isUnknown(r, ["network_interface", 0, "access_config"])) externalIp = unknown2(`${r.address}: access_config is unknown until apply`);
+    else {
+      const configs = Array.isArray(nic.access_config) ? nic.access_config : [];
+      const ip = configs.length && isObj(configs[0]) && typeof configs[0].nat_ip === "string" && configs[0].nat_ip ? configs[0].nat_ip : void 0;
+      externalIp = known2(configs.length ? ip ? `${r.address} has the external IP address ${ip}` : `${r.address} has an external IP address (access_config)` : void 0);
+    }
+    if (!net.ok) return { address: r.address, type: r.type, network: net, externalIp, firewall: unknown2(net.reason), route: unknown2(net.reason) };
+    return { address: r.address, type: r.type, network: net, externalIp, firewall: this.firewall(r, net.value), route: this.route(r, net.value) };
+  }
+  /** Whether `target_tags` / `target_service_accounts` select the VM (rule 5). */
+  targets(rule, vm) {
+    for (const attr of ["target_tags", "target_service_accounts"]) if (isUnknown(rule, [attr])) return unknown2(`${rule.address}: ${attr} is unknown until apply`);
+    const tags = strList(rule.values.target_tags);
+    const accounts = strList(rule.values.target_service_accounts);
+    if (!tags.length && !accounts.length) return known2(true);
+    if (tags.length) {
+      if (isUnknown(vm, ["tags"])) return unknown2(`${vm.address}: tags are unknown until apply, and ${rule.address} applies to tags ${tags.join(", ")}`);
+      return known2(strList(vm.values.tags).some((t) => tags.includes(t)));
+    }
+    if (isUnknown(vm, ["service_account"])) return unknown2(`${vm.address}: service_account is unknown until apply, and ${rule.address} applies to service accounts`);
+    const sa = Array.isArray(vm.values.service_account) ? vm.values.service_account : [];
+    const emails = [];
+    for (const [i, s] of sa.entries()) {
+      if (isUnknown(vm, ["service_account", i, "email"])) return unknown2(`${vm.address}: its service account email is unknown until apply, and ${rule.address} applies to service accounts`);
+      if (isObj(s) && typeof s.email === "string") emails.push(s.email);
+    }
+    return known2(emails.some((e) => accounts.includes(e)));
+  }
+  /**
+   * The network's ingress rules that apply to the VM, in evaluation order: lower priority
+   * number first, deny before allow on a tie (rule 3).
+   */
+  firewall(vm, network) {
+    for (const type of UNMODELED_POLICIES) {
+      const p = this.ofType(type)[0];
+      if (p) return unknown2(`${p.address} (${type}) adds firewall policy rules, and ${type} is not modeled yet`);
+    }
+    const out = [];
+    for (const r of this.ofType("google_compute_firewall")) {
+      const net = this.networkOf(r, "network", r.values.network, isUnknown(r, ["network"]));
+      if (!net.ok) {
+        return unknown2(net.reason);
+      }
+      if (net.value !== network) continue;
+      for (const attr of ["allow", "deny", "source_ranges", "source_tags", "source_service_accounts"]) if (isUnknown(r, [attr])) return unknown2(`${r.address}: ${attr} is unknown until apply`);
+      const direction = valueOr(r, "direction", "INGRESS");
+      const disabled = valueOr(r, "disabled", false);
+      const prio = valueOr(r, "priority", 1e3);
+      for (const v of [direction, disabled, prio]) if (!v.ok) return unknown2(v.reason);
+      if (String(direction.ok && direction.value) !== "INGRESS" || disabled.ok && disabled.value === true) continue;
+      const target = this.targets(r, vm);
+      if (!target.ok) return target;
+      if (!target.value) continue;
+      const priority = prio.ok && typeof prio.value === "number" ? prio.value : 1e3;
+      const ranges = strList(r.values.source_ranges);
+      const anySource = !ranges.length && !strList(r.values.source_tags).length && !strList(r.values.source_service_accounts).length;
+      const sources = [];
+      for (const c of anySource ? ["0.0.0.0/0"] : ranges) {
+        if (c.includes(":")) continue;
+        const set = cidrToSet(c);
+        if (!set) return unknown2(`${r.address}: source range ${c} cannot be read`);
+        sources.push(...set);
+      }
+      for (const action of ["deny", "allow"]) {
+        for (const block of Array.isArray(r.values[action]) ? r.values[action] : []) {
+          if (!isObj(block)) continue;
+          const protocol = normalizeProtocol(block.protocol);
+          const ports = portsOf(protocol, block.ports);
+          if (!ports) return unknown2(`${r.address}: ports ${strList(block.ports).join(", ")} cannot be read`);
+          const portText = protocol === "all" ? "all traffic" : `${String(block.protocol)} ${strList(block.ports).join(", ") || "all ports"}`;
+          out.push({ resource: r.address, priority, allow: action === "allow", protocol, ports, sources: fromRanges(sources), text: `${r.address} priority ${priority}: ${action} ${portText} from ${anySource ? "0.0.0.0/0" : ranges.join(", ") || "tagged instances only"}` });
+        }
+      }
+    }
+    return known2(out.toSorted((a, b) => a.priority - b.priority || Number(a.allow) - Number(b.allow) || cmp(a.text, b.text)));
+  }
+  /** Whether the response can use the default internet gateway (rule 9). */
+  route(vm, network) {
+    for (const type of UNMODELED_ROUTES2) {
+      const p = this.ofType(type)[0];
+      if (p) return unknown2(`${p.address} (${type}) can change routing, and ${type} is not modeled yet`);
+    }
+    const n = this.snap.resources.get(network);
+    if (isUnknown(n, ["delete_default_routes_on_create"])) return unknown2(`${network}: delete_default_routes_on_create is unknown until apply`);
+    let viaGateway = n.values.delete_default_routes_on_create === true ? void 0 : `${network} system default route 0.0.0.0/0 -> default internet gateway`;
+    for (const r of this.ofType("google_compute_route")) {
+      const net = this.networkOf(r, "network", r.values.network, isUnknown(r, ["network"]));
+      if (!net.ok) return unknown2(net.reason);
+      if (net.value !== network) continue;
+      if (hasAnyUnknown(r, ["dest_range", "tags", "next_hop_gateway"])) return unknown2(`${r.address}: its destination, tags, or next hop are unknown until apply`);
+      const tags = strList(r.values.tags);
+      if (tags.length) {
+        if (isUnknown(vm, ["tags"])) return unknown2(`${vm.address}: tags are unknown until apply, and ${r.address} applies to tags ${tags.join(", ")}`);
+        if (!strList(vm.values.tags).some((t) => tags.includes(t))) continue;
+      }
+      const dest = typeof r.values.dest_range === "string" ? r.values.dest_range : "";
+      const gw = typeof r.values.next_hop_gateway === "string" ? r.values.next_hop_gateway : "";
+      const toGateway = gw !== "" && lastSegment(gw) === "default-internet-gateway";
+      const set = cidrToSet(dest);
+      if (!set) return unknown2(`${r.address}: destination ${dest} cannot be read`);
+      if (isPrivate(set)) continue;
+      if (toGateway && dest === "0.0.0.0/0") viaGateway ??= `${r.address} 0.0.0.0/0 -> default internet gateway`;
+      else if (!toGateway) return unknown2(`${r.address} sends ${dest} to another next hop, so responses to some internet clients may not use the default internet gateway; custom routes are not modeled yet`);
+    }
+    if (!viaGateway) return unknown2(`${network} has no default route to the default internet gateway (delete_default_routes_on_create = true); whether a response needs it is not documented`);
+    return known2({ ok: true, resource: network, text: viaGateway });
+  }
+};
+function valueOr(r, attr, dflt) {
+  if (isUnknown(r, [attr])) return r.configured.has(attr) ? unknown2(`${r.address}: ${attr} is unknown until apply`) : known2(dflt);
+  const v = r.values[attr];
+  return known2(v === null || v === void 0 ? dflt : v);
+}
+var hasAnyUnknown = (r, attrs) => attrs.some((a) => isUnknown(r, [a]));
+var PRIVATE = fromRanges(["10.0.0.0/8", "100.64.0.0/10", "172.16.0.0/12", "192.168.0.0/16"].flatMap((c) => cidrToSet(c) ?? []));
+var isPrivate = (set) => set.every(([lo, hi]) => PRIVATE.some(([plo, phi]) => lo >= plo && hi <= phi));
+
 // ../engine/src/types.ts
 var RESULT_FORMAT = "0.2";
 
@@ -2815,6 +3045,27 @@ function analyze(plan) {
       );
     }
   }
+  const vmsOf = (snap) => new Map(new GcpModel(snap).vms().map((v) => [v.address, v]));
+  const vmBefore = vmsOf(before);
+  const vmAfter = vmsOf(after);
+  for (const address of [.../* @__PURE__ */ new Set([...vmBefore.keys(), ...vmAfter.keys()])].toSorted(cmp)) {
+    const b = vmBefore.get(address);
+    const a = vmAfter.get(address);
+    paths.push(
+      ...pathsOf({
+        id: `internet->${address}`,
+        from: "internet",
+        provider: "gcp",
+        to: address,
+        toType: (a ?? b)?.type ?? "",
+        candidates: (p) => union(gcpExposed(b, p), gcpExposed(a, p)),
+        cuts: [...gcpCuts(b), ...gcpCuts(a)],
+        before: (p, seg) => evaluateGcp(b, p, seg),
+        after: (p, seg) => evaluateGcp(a, p, seg),
+        risk: () => []
+      })
+    );
+  }
   const summary = { added: 0, removed: 0, changed: 0, unchanged: 0, unknown: 0 };
   for (const path of paths) summary[path.change]++;
   const notes = [...notesFor(before, after), ...unresolvedNotes([...epBefore.values(), ...epAfter.values()].flat())];
@@ -2856,7 +3107,7 @@ function pathsOf(spec) {
       if (!run2) return;
       const ports = formatPorts([run2.ports]);
       const risk = run2.before.verdict === "allowed" && run2.after.verdict === "allowed" ? spec.risk() : [];
-      out.push({ id: `${spec.id}:${p}:${ports}`, from: spec.from, ...spec.fromType !== void 0 ? { fromType: spec.fromType } : {}, ...spec.family ? { family: spec.family } : {}, to: spec.to, toType: spec.toType, protocol: p, ports, change: changeOf(run2.before, run2.after), before: run2.before, after: run2.after, ...risk.length ? { outageRisk: risk } : {} });
+      out.push({ id: `${spec.id}:${p}:${ports}`, from: spec.from, ...spec.fromType !== void 0 ? { fromType: spec.fromType } : {}, ...spec.family ? { family: spec.family } : {}, ...spec.provider ? { provider: spec.provider } : {}, to: spec.to, toType: spec.toType, protocol: p, ports, change: changeOf(run2.before, run2.after), before: run2.before, after: run2.after, ...risk.length ? { outageRisk: risk } : {} });
       run2 = void 0;
     };
     for (const seg of segment(spec.candidates(p), spec.cuts)) {

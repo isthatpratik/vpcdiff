@@ -195,6 +195,19 @@ reported as `unknown` with a reason, never as allowed or blocked by guess.
 Paths evaluated: from the internet to each endpoint, for every TCP and UDP port that one
 of its security groups opens to a public address.
 
+### Google Cloud (first scope, [docs/semantics/gcp.md](docs/semantics/gcp.md))
+
+| Resource or behavior | Status |
+|---|---|
+| `google_compute_instance` (endpoint; external IP from `access_config`, network tags, service accounts) | supported for one network interface; more than one is unknown |
+| `google_compute_firewall` ingress rules (priority, allow and deny, deny wins a tie, implied deny, target tags and service accounts, `source_ranges`, disabled) | supported |
+| `google_compute_network` (system default route, `delete_default_routes_on_create`), `google_compute_subnetwork`, `google_compute_route` to the default internet gateway | supported; other custom routes and a deleted default route are unknown |
+| The `default` network or any network outside the plan | unknown (its pre-populated rules are not in the plan) |
+| Network and hierarchical firewall policies, policy-based routes | unknown when in the plan; organization and folder policies are never seen |
+| IPv6, load balancers, Cloud SQL, paths between VMs | not modeled yet |
+
+Google Cloud paths carry `"provider": "gcp"` in the JSON result ([ADR 0011](docs/adr/0011-multi-cloud.md)).
+
 ## Roadmap
 
 In order. Each item lands with a spec, unit tests, fixture tests with written proofs, a

@@ -149,12 +149,17 @@ export class GcpModel {
         return unknown(net.reason);
       }
       if (net.value !== network) continue;
-      for (const attr of ["direction", "disabled", "priority", "allow", "deny", "source_ranges"]) if (isUnknown(r, [attr])) return unknown(`${r.address}: ${attr} is unknown until apply`);
-      if (String(r.values.direction ?? "INGRESS") !== "INGRESS" || r.values.disabled === true) continue;
+      for (const attr of ["allow", "deny", "source_ranges", "source_tags", "source_service_accounts"]) if (isUnknown(r, [attr])) return unknown(`${r.address}: ${attr} is unknown until apply`);
+      // Unset, the provider leaves these to the API: direction INGRESS, enabled, priority 1000.
+      const direction = valueOr(r, "direction", "INGRESS");
+      const disabled = valueOr(r, "disabled", false);
+      const prio = valueOr(r, "priority", 1000);
+      for (const v of [direction, disabled, prio]) if (!v.ok) return unknown(v.reason);
+      if (String(direction.ok && direction.value) !== "INGRESS" || (disabled.ok && disabled.value === true)) continue;
       const target = this.targets(r, vm);
       if (!target.ok) return target;
       if (!target.value) continue;
-      const priority = typeof r.values.priority === "number" ? r.values.priority : 1000;
+      const priority = prio.ok && typeof prio.value === "number" ? prio.value : 1000;
       const ranges = strList(r.values.source_ranges);
       // An ingress rule without any source uses 0.0.0.0/0 (the API default).
       const anySource = !ranges.length && !strList(r.values.source_tags).length && !strList(r.values.source_service_accounts).length;
@@ -211,6 +216,13 @@ export class GcpModel {
     if (!viaGateway) return unknown(`${network} has no default route to the default internet gateway (delete_default_routes_on_create = true); whether a response needs it is not documented`);
     return known({ ok: true, resource: network, text: viaGateway });
   }
+}
+
+/** A value, or the API default when the configuration leaves it unset and the provider computes it. */
+function valueOr(r: Resource, attr: string, dflt: unknown): Known<unknown> {
+  if (isUnknown(r, [attr])) return r.configured.has(attr) ? unknown(`${r.address}: ${attr} is unknown until apply`) : known(dflt);
+  const v = r.values[attr];
+  return known(v === null || v === undefined ? dflt : v);
 }
 
 const hasAnyUnknown = (r: Resource, attrs: string[]) => attrs.some((a) => isUnknown(r, [a]));
