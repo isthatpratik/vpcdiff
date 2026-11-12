@@ -3,6 +3,8 @@
 // Markdown summary to paste into a pull request. Pure functions of the engine result.
 import type { Path, Result } from "./types.js";
 import { isInternet, lanesOf, type CellState, type ColumnKey } from "./lanes.js";
+import { exceptOf } from "./sources.js";
+export { sourcesText } from "./sources.js";
 
 /** Well-known ports, so "tcp/5432" can also say "PostgreSQL". */
 const SERVICES: Record<string, string> = {
@@ -54,8 +56,10 @@ export function portLabel(path: Pick<Path, "protocol" | "ports">): string {
 export function whoText(sources: string[], family?: "ipv6"): string {
   if (!sources.length) return "nobody";
   if (sources.length === 1 && sources[0] === "internet") return family === "ipv6" ? "any public IPv6 address" : "any public IPv4 address";
-  return sources.join(", ");
+  const except = family === "ipv6" ? undefined : exceptOf(sources);
+  return except ? `any public IPv4 address except ${except.join(", ")}` : sources.join(", ");
 }
+
 
 /** Where a path starts, in a sentence: "the internet" or the source resource. */
 export function fromText(path: Pick<Path, "from">): string {
@@ -358,7 +362,7 @@ export function pathMarkdown(path: Path): string {
 }
 
 /** What the engine checks, for the scope line in the viewer and the Markdown. */
-export const SCOPE = "paths from the internet (IPv4 and IPv6) and inside the VPC (IPv4)";
+export const SCOPE = "AWS paths from the internet (IPv4 and IPv6) and inside the VPC (IPv4); Google Cloud paths from the internet to VMs and Cloud SQL (IPv4)";
 
 /**
  * The whole plan as Markdown: the counts, the scope, every path that changes or carries a

@@ -1,3 +1,4 @@
+import { sourcesText } from "./sources.js";
 import type { Decision, HopKind, Outcome, Path } from "./types.js";
 
 export type ColumnKey = "source" | HopKind | "target";
@@ -88,7 +89,7 @@ function laneOf(outcome: Outcome, path: Path): Lane {
     return { outcome, cells: COLUMNS.map((c) => ({ state: "absent", resource: c.key === "target" ? path.to : "", rule: "Not in the plan on this side: the plan creates or destroys this resource." })) };
   }
   const cells = COLUMNS.map((col): Cell => {
-    if (col.key === "source") return { state: "allow", resource: path.from, rule: outcome.sources.join(", ") };
+    if (col.key === "source") return { state: "allow", resource: path.from, rule: sourcesText(outcome.sources, path.family) };
     if (col.key === "target") {
       return outcome.verdict === "allowed"
         ? { state: "allow", resource: path.to, rule: `Reachable on ${path.protocol}/${path.ports}` }

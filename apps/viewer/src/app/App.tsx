@@ -14,7 +14,7 @@ import { Loading, Skeleton } from "@/components/litt/states";
 import { Tooltip, TooltipProvider } from "@/components/litt/tooltip";
 import { analyzeInWorker } from "../engine.ts";
 import { EXAMPLES } from "../examples.ts";
-import { CHANGE_HELP, changeWords, HOP_HELP, hopHelp, pathMarkdown, planMarkdown, planVerdict, portLabel, SCOPE, serviceOf, severityOf, verdictOf, type Tone } from "@vpcdiff/engine/explain";
+import { CHANGE_HELP, changeWords, HOP_HELP, hopHelp, pathMarkdown, planMarkdown, planVerdict, portLabel, SCOPE, serviceOf, severityOf, verdictOf, type Tone, sourcesText } from "@vpcdiff/engine/explain";
 import { announce, Announcer, CopyButton } from "./copy.tsx";
 import { clearPlace, keptFile, placeExample, placeFile, placePath, readPlace } from "./place.ts";
 import { isInternet, lanesOf, rowsDiffer, type Cell, type CellState, type Column, type ColumnKey } from "@vpcdiff/engine/lanes";
@@ -689,7 +689,7 @@ function PathCard({ path, open, onToggle }: { path: Path; open: boolean; onToggl
             <span className="flex min-w-0 flex-wrap items-center gap-x-2 pl-6 font-litt-mono text-litt-caption text-litt-fg-muted sm:pl-0">
               <span>{portLabel(path)}</span>
               {path.family === "ipv6" && <span className="rounded-[4px] border border-litt-line px-1.5 font-sans text-litt-fg-muted">IPv6</span>}
-              {inside ? <span className="font-sans text-litt-fg-subtle">inside the VPC</span> : src.length > 0 && <span className="text-litt-fg-subtle">from {src.includes("internet") ? (path.family === "ipv6" ? "::/0" : "0.0.0.0/0") : src.join(", ")}</span>}
+              {inside ? <span className="font-sans text-litt-fg-subtle">inside the VPC</span> : src.length > 0 && <span className="text-litt-fg-subtle">from {src.includes("internet") ? (path.family === "ipv6" ? "::/0" : "0.0.0.0/0") : sourcesText(src, path.family)}</span>}
             </span>
           </span>
           <span className="hidden shrink-0 text-litt-caption text-litt-fg-subtle md:inline">{changeWords(path)}</span>

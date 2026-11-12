@@ -1,4 +1,5 @@
 import type { Change, Hop, Outcome, Path, Result } from "@vpcdiff/engine";
+import { sourcesText } from "@vpcdiff/engine/explain";
 
 const ORDER: Change[] = ["added", "removed", "changed", "unknown", "unchanged"];
 const LABEL: Record<Change, string> = { added: "ADDED", removed: "REMOVED", changed: "CHANGED", unknown: "UNKNOWN", unchanged: "UNCHANGED" };
@@ -26,7 +27,7 @@ const riskLine = (p: Path) => `outage risk: the plan replaces ${(p.outageRisk ??
 function outcomeLine(o: Outcome): string {
   switch (o.verdict) {
     case "allowed":
-      return `allowed from ${o.sources.join(", ")}${o.reason ? ` (also undecided: ${o.reason})` : ""}`;
+      return `allowed from ${sourcesText(o.sources)}${o.reason ? ` (also undecided: ${o.reason})` : ""}`;
     case "absent":
       return "resource does not exist";
     default: {

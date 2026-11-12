@@ -3165,6 +3165,23 @@ function pathsOf(spec) {
   return out;
 }
 
+// ../engine/src/sources.ts
+function exceptOf(sources) {
+  if (sources.length <= 6) return void 0;
+  let allowed = [];
+  for (const c of sources) {
+    const set = cidrToSet(c);
+    if (!set) return void 0;
+    allowed = union(allowed, set);
+  }
+  const missing = setToCidrs(subtract(PUBLIC_IPV4, allowed));
+  return missing.length && missing.length <= 6 && missing.length < sources.length ? missing : void 0;
+}
+function sourcesText(sources, family) {
+  const except = family === "ipv6" ? void 0 : exceptOf(sources);
+  return except ? `internet except ${except.join(", ")}` : sources.join(", ");
+}
+
 // ../cli/src/render.ts
 var ORDER = ["added", "removed", "changed", "unknown", "unchanged"];
 var ICON = { added: "\u{1F534}", removed: "\u{1F7E2}", changed: "\u{1F7E0}", unknown: "\u26AA", unchanged: "\xB7" };
@@ -3180,7 +3197,7 @@ var riskLine = (p) => `outage risk: the plan replaces ${(p.outageRisk ?? []).joi
 function outcomeLine(o) {
   switch (o.verdict) {
     case "allowed":
-      return `allowed from ${o.sources.join(", ")}${o.reason ? ` (also undecided: ${o.reason})` : ""}`;
+      return `allowed from ${sourcesText(o.sources)}${o.reason ? ` (also undecided: ${o.reason})` : ""}`;
     case "absent":
       return "resource does not exist";
     default: {
