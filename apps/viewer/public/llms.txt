@@ -11,7 +11,7 @@
 
 ## How to use it
 - Make the plan: `terraform plan -out=tfplan`, then `terraform show -json tfplan > plan.json`.
-- GitHub Action: `uses: isthatpratik/vpcdiff@v0.3.1` with `plan: plan.json` and `fail-on: added`. It comments on the pull request and fails the check when a path from the internet is added, gets wider, or was open and can no longer be decided.
+- GitHub Action: `uses: isthatpratik/vpcdiff@v0.3.2` with `plan: plan.json` and `fail-on: added`. It comments on the pull request and fails the check when a path from the internet is added, gets wider, or was open and can no longer be decided.
 - CLI: `node packages/cli/dist/vpcdiff.mjs plan.json`. With no arguments in a terminal, it finds a plan in the folder (or converts `tfplan`, or runs `terraform plan` after you confirm) and walks you through the result. Formats: text, json, markdown. Exit codes: 0 no failing paths, 1 failing paths, 2 usage or input error.
 - Web viewer: [vpcdiff viewer](https://isthatpratik.github.io/vpcdiff/app/) (the plan is analyzed in the browser tab; a Content Security Policy blocks every network request). It starts with one verdict for the plan, then each path with the deciding rule, what to do, and a "Copy for PR" summary.
 

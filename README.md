@@ -45,7 +45,7 @@ plan anywhere.
   <img alt="The vpcdiff viewer on a plan that opens PostgreSQL to the internet: the plan verdict, the path, the security group rule that decided it, what to do, and the hops before and after" src="docs/assets/viewer.png" width="100%">
 </p>
 
-> **Status:** [v0.3.1](https://github.com/isthatpratik/vpcdiff/releases/tag/v0.3.1) checks
+> **Status:** [v0.3.2](https://github.com/isthatpratik/vpcdiff/releases/tag/v0.3.2) checks
 > AWS paths from the internet (IPv4 and IPv6) and paths inside the VPC, including across VPC
 > peering and transit gateways, for instances, databases, Aurora, ECS services, and load
 > balancers; and paths from the internet to Google Cloud VMs and Cloud SQL, and to Azure VMs
@@ -56,7 +56,7 @@ plan anywhere.
 
 ```yaml
 - run: terraform show -json tfplan > plan.json
-- uses: isthatpratik/vpcdiff@v0.3.1
+- uses: isthatpratik/vpcdiff@v0.3.2
   with:
     plan: plan.json
     # fail-on: added   # added | changed | unknown | never

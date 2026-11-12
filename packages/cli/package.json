@@ -1,6 +1,6 @@
 {
   "name": "vpcdiff",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "See what a Terraform or OpenTofu plan opens to the internet before you apply, on AWS, Google Cloud, and Azure.",
   "keywords": [
     "terraform",

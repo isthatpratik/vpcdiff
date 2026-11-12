@@ -20,7 +20,7 @@ jobs:
           terraform -chdir=infra init -input=false
           terraform -chdir=infra plan -input=false -out=tfplan
           terraform -chdir=infra show -json tfplan > "$RUNNER_TEMP/plan.json"
-      - uses: isthatpratik/vpcdiff@v0.3.1
+      - uses: isthatpratik/vpcdiff@v0.3.2
         with:
           plan: ${{ runner.temp }}/plan.json
           # fail-on: added     # added | changed | unknown | never

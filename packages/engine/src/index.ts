@@ -39,7 +39,7 @@ export const isStackOverflow = (e: unknown): boolean => e instanceof RangeError 
 export * from "./types.js";
 
 /** Version of the engine package. */
-export const ENGINE_VERSION = "0.3.1";
+export const ENGINE_VERSION = "0.3.2";
 
 const PROTOCOLS: Protocol[] = ["tcp", "udp"];
 const arr = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
