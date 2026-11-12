@@ -44,6 +44,18 @@ describe("the run environment", () => {
   });
 });
 
+describe("the Azure stand-in", () => {
+  it("listens on 127.0.0.1 only and uses made-up IDs", () => {
+    const standIn = readFileSync(join(root, "..", "scripts", "azure-standin.ts"), "utf8");
+    expect(standIn).toMatch(/listen\(0, "127\.0\.0\.1"/);
+    const generator = readFileSync(join(root, "..", "scripts", "make-fixture-plan.ts"), "utf8");
+    expect(generator).toMatch(/metadata_host\s+= "127\.0\.0\.1:/);
+    // Every GUID in the generator and the stand-in is made up: zeros, version and variant
+    // digits, and one letter at the end.
+    for (const text of [standIn, generator]) for (const g of text.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi) ?? []) expect(g).toMatch(/^0{8}-0{4}-[04]0{3}-[08]0{3}-0{11}[0a-f]$/);
+  });
+});
+
 describe("the fixtures", () => {
   it("name no profile, role, key, or token in their configuration", () => {
     for (const f of fixtureFiles.filter((x) => x.endsWith(".tf"))) {

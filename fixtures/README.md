@@ -27,4 +27,11 @@ gh workflow run fixture-plan.yml --ref <branch> -f fixture=<name>
 gh run download <run-id> -n plan-<name> -D fixtures/<name>
 ```
 
+Azure: the `azurerm` provider logs in even for a plan. For a configuration that uses it,
+the generator starts `scripts/azure-standin.ts`, a local HTTPS server on `127.0.0.1` with
+a certificate made for the run. It answers the metadata and token requests with made-up
+values and every other request with 404, and the provider gets `metadata_host` pointing at
+it, so nothing reaches Microsoft and no real login is used ([ADR 0011](../docs/adr/0011-multi-cloud.md)).
+This runs on Linux only, so make Azure plans with the Fixture plan workflow.
+
 See [CONTRIBUTING.md](../CONTRIBUTING.md#fixtures) and [ADR 0004](../docs/adr/0004-reachability-analyzer-as-oracle.md).
