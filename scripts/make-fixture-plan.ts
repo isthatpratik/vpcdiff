@@ -139,7 +139,11 @@ function lockPath(configDir: string): string {
 
 function plan(configDir: string, state?: Obj): { plan: Obj; dir: string } {
   const dir = mkdtempSync(join(tmpdir(), "vpcdiff-fixture-"));
-  for (const f of readdirSync(configDir)) if (f.endsWith(".tf")) cpSync(join(configDir, f), join(dir, f));
+  for (const f of readdirSync(configDir, { withFileTypes: true })) {
+    if (f.isFile() && f.name.endsWith(".tf")) cpSync(join(configDir, f.name), join(dir, f.name));
+    // Local modules (`source = "./modules/web"`) live in subfolders.
+    else if (f.isDirectory() && !f.name.startsWith(".")) cpSync(join(configDir, f.name), join(dir, f.name), { recursive: true });
+  }
   writeFileSync(join(dir, "fixture_override.tf"), overrideFor(configDir));
   if (state) writeFileSync(join(dir, "terraform.tfstate"), JSON.stringify(state, null, 2));
   const lock = lockPath(configDir);
