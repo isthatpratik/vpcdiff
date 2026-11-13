@@ -234,3 +234,43 @@ describe("review fixes", () => {
     expect(r?.otherRefs.has("subnet_id")).toBe(true);
   });
 });
+
+// A list output indexed with a literal (`module.net.subnets[0]`) names one of several instances, and the
+// plan does not give the module's order. The engine tries each instance and decides only when all agree.
+/** `n` subnets `aws_subnet.a[i]` in module `net`; subnets in `closed` use a route table without an internet route. */
+function listPlan(n: number, closed: number[] = []): Obj {
+  const subnets: Res[] = Array.from({ length: n }, (_, i) => ({ type: "aws_subnet", name: `a[${i}]`, before: null, module: ["net", ""], after: { id: `subnet-${i + 1}`, vpc_id: "vpc-1", cidr_block: `10.0.${i + 1}.0/24`, map_public_ip_on_launch: false } }));
+  const assocs: Res[] = Array.from({ length: n }, (_, i) => ({ type: "aws_route_table_association", name: `a[${i}]`, before: null, module: ["net", ""], after: { id: `rtbassoc-${i + 1}`, subnet_id: `subnet-${i + 1}`, route_table_id: closed.includes(i) ? "rtb-closed" : "rtb-1" } }));
+  const closedTable: Res = { type: "aws_route_table", name: "closed", before: null, after: { id: "rtb-closed", vpc_id: "vpc-1", route: [] } };
+  const base = network({ subnet: null, assoc: null }).map((r): Res => (r.type === "aws_instance" ? { ...r, before: null, after: { ...r.after, subnet_id: null }, unknown: { subnet_id: true } } : { ...r, before: null }));
+  const p = plan([...base, ...subnets, ...assocs, closedTable]) as Obj;
+  const root = p.configuration.root_module as Obj;
+  const instance = root.resources.find((r: Obj) => r.address === "aws_instance.app") as Obj;
+  instance.expressions = { subnet_id: { references: ["module.net.subnets[0]", "module.net.subnets", "module.net"] } };
+  root.module_calls.net.module.outputs = { subnets: { expression: { references: ["aws_subnet.a"] } } };
+  return p;
+}
+
+describe("one of several instances", () => {
+  it("decides when every instance gives the same result, and says so in a note", () => {
+    const result = analyze(listPlan(2));
+    const path = only(result.paths);
+    expect(path.after.verdict).toBe("allowed");
+    const note = result.notes.find((n) => n.resource === "aws_instance.app");
+    expect(note?.message).toMatch(/subnet_id could be any of 2 resources/);
+    expect(note?.message).toMatch(/aws_subnet\.a\[0\], module\.net\.aws_subnet\.a\[1\]|module\.net\.aws_subnet\.a\[0\], module\.net\.aws_subnet\.a\[1\]/);
+  });
+
+  it("returns unknown when the instances give different results", () => {
+    const reason = undecided(listPlan(2, [1]));
+    expect(reason).toMatch(/subnet_id refers to module\.net\.aws_subnet\.a, which has 2 instances/);
+  });
+
+  it("returns unknown when there are too many instances to try", () => {
+    undecided(listPlan(9));
+  });
+
+  it("gives the same bytes on every run", () => {
+    expect(JSON.stringify(analyze(listPlan(3)))).toBe(JSON.stringify(analyze(listPlan(3))));
+  });
+});

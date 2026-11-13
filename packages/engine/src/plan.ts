@@ -32,6 +32,19 @@ export interface Snapshot {
   byId: Map<string, string>;
   /** Instance addresses grouped by resource address without instance keys. */
   instancesOf: Map<string, string[]>;
+  /**
+   * Single-resource attributes that the configuration ties to one of several instances, in
+   * unknown order (`module.net.subnets[0]` over `aws_subnet.a[*]`). Filled while the model is
+   * built; key is `<resource address>\u0000<attribute>`.
+   */
+  ambiguous: Map<string, Ambiguity>;
+}
+
+export interface Ambiguity {
+  resource: string;
+  attr: string;
+  /** Instance addresses the attribute may point at, sorted. */
+  candidates: string[];
 }
 
 export class PlanError extends Error {}
@@ -164,14 +177,18 @@ function collect(v: unknown, add: (ref: string) => void): void {
   }
 }
 
-export function parsePlan(input: unknown): { before: Snapshot; after: Snapshot } {
+/**
+ * `pins` fixes an ambiguous attribute to one instance (key `<resource address>\u0000<attribute>`
+ * to an instance address). The engine tries each candidate this way.
+ */
+export function parsePlan(input: unknown, pins: ReadonlyMap<string, string> = new Map()): { before: Snapshot; after: Snapshot } {
   if (!isObj(input) || typeof input.format_version !== "string" || !input.format_version.startsWith("1.")) {
     throw new PlanError("Not a Terraform plan: expected `terraform show -json` output with format_version 1.x.");
   }
   if (!Array.isArray(input.resource_changes)) throw new PlanError("Plan has no resource_changes.");
   const refs = configRefs(input);
-  const before: Snapshot = { side: "before", resources: new Map(), byId: new Map(), instancesOf: new Map() };
-  const after: Snapshot = { side: "after", resources: new Map(), byId: new Map(), instancesOf: new Map() };
+  const before: Snapshot = { side: "before", resources: new Map(), byId: new Map(), instancesOf: new Map(), ambiguous: new Map() };
+  const after: Snapshot = { side: "after", resources: new Map(), byId: new Map(), instancesOf: new Map(), ambiguous: new Map() };
 
   const changes = input.resource_changes.filter(isObj).toSorted((a, b) => cmp(String(a.address), String(b.address)));
   for (const rc of changes) {
@@ -188,7 +205,12 @@ export function parsePlan(input: unknown): { before: Snapshot; after: Snapshot }
     ];
     for (const [snap, values, unknown] of sides) {
       if (!isObj(values)) continue;
-      snap.resources.set(address, { address, type, values, unknown, refs: info.refs, fullRefs: info.fullRefs, configured: info.configured, otherRefs: info.otherRefs, actions });
+      let pinned = info.refs;
+      for (const [key, instance] of pins) {
+        const [target, attr] = key.split("\u0000") as [string, string];
+        if (target === address) pinned = { ...pinned, [attr]: [instance] };
+      }
+      snap.resources.set(address, { address, type, values, unknown, refs: pinned, fullRefs: info.fullRefs, configured: info.configured, otherRefs: info.otherRefs, actions });
       if (typeof values.id === "string") snap.byId.set(values.id, address);
       const list = snap.instancesOf.get(base) ?? [];
       list.push(address);
@@ -226,7 +248,7 @@ export function hasUnknown(r: Resource, path: (string | number)[]): boolean {
 export type Ref =
   | { kind: "resource"; address: string }
   | { kind: "external"; id: string }
-  | { kind: "unknown"; reason: string };
+  | { kind: "unknown"; reason: string; /** Instances the reference may point at, when it names several instances of one resource. */ candidates?: string[] };
 
 const refOrder = (r: Ref): string => (r.kind === "resource" ? `0${r.address}` : r.kind === "external" ? `1${r.id}` : `2${r.reason}`);
 
@@ -305,7 +327,7 @@ export function fromConfig(snap: Snapshot, r: Resource, attr: string, targetType
     if (snap.resources.has(t)) return { kind: "resource", address: t };
     const instances = [...snap.resources.keys()].filter((a) => a.startsWith(t) && stripKeys(a.slice(t.length)) === "");
     if (instances.length === 1) return { kind: "resource", address: instances[0] as string };
-    return { kind: "unknown", reason: `${r.address}: ${attr} refers to ${t}, which has ${instances.length} instances on the ${snap.side} side` };
+    return { kind: "unknown", reason: `${r.address}: ${attr} refers to ${t}, which has ${instances.length} instances on the ${snap.side} side`, ...(instances.length > 1 ? { candidates: instances.toSorted(cmp) } : {}) };
   });
   // `aws_subnet.a[0]` and its parent `aws_subnet.a` can name the same instance.
   const seen = new Set<string>();
@@ -317,6 +339,13 @@ export function fromConfig(snap: Snapshot, r: Resource, attr: string, targetType
 
 export function resolveRef(snap: Snapshot, r: Resource, attr: string, targetType: string | string[]): Ref {
   const refs = resolveRefs(snap, r, attr, targetType);
+  if (refs.length === 1 && refs[0]?.kind === "resource") return refs[0];
+  // The attribute holds one value, so it is one of the named resources. Record them: the
+  // engine can try each one and decide when all agree.
+  const named = refs.flatMap((x) => (x.kind === "resource" ? [x.address] : x.kind === "unknown" && x.candidates ? x.candidates : []));
+  if (refs.length && named.length > 1 && refs.every((x) => x.kind === "resource" || (x.kind === "unknown" && x.candidates))) {
+    snap.ambiguous.set(`${r.address}\u0000${attr}`, { resource: r.address, attr, candidates: [...new Set(named)].toSorted(cmp) });
+  }
   if (refs.length === 1) return refs[0] as Ref;
   if (!refs.length) return { kind: "unknown", reason: `${r.address}: ${attr} is not set` };
   return { kind: "unknown", reason: `${r.address}: ${attr} refers to ${refs.length} resources` };

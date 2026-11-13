@@ -7,7 +7,7 @@ import { azureCuts, azureExposed, evaluateAzure } from "./azure/evaluate.js";
 import { AzureModel, type AzVm } from "./azure/model.js";
 import { formatPorts, union, type IntervalSet, type Range } from "./intervals.js";
 import { ModelBuilder, type Endpoint } from "./model.js";
-import { cmp, parsePlan, PlanError, type Snapshot } from "./plan.js";
+import { cmp, parsePlan, PlanError, type Ambiguity, type Snapshot } from "./plan.js";
 import { RESULT_FORMAT, type Change, type Note, type Outcome, type Path, type Protocol, type Result } from "./types.js";
 
 export { PlanError } from "./plan.js";
@@ -214,14 +214,63 @@ export function analyze(plan: unknown, limits: { maxPaths?: number; maxSegments?
   }
 }
 
+/** Most combinations of instances to try for attributes that point at one of several instances. */
+const MAX_VARIANTS = 8;
+
+/** Paths without the explanation: what a decision needs to agree on. */
+const signature = (r: Result): string => JSON.stringify(r.paths.map((p) => [p.id, p.change, p.before.verdict, p.after.verdict]));
+
+/**
+ * Analyzes the plan. An attribute that the configuration ties to one of several instances,
+ * in an order the plan does not give (`module.net.subnets[0]`), cannot be resolved. The
+ * engine then tries each instance. It decides only when every combination gives the same
+ * paths and verdicts, and then it says so in a note. Otherwise the result stays `unknown`.
+ */
 function analyzePlan(plan: unknown, budget: Budget): Result {
+  const base = run(plan, budget, new Map());
+  if (!base.ambiguous.size || base.result.summary.unknown === 0) return base.result;
+  const keys = [...base.ambiguous.keys()].toSorted(cmp);
+  const choices = keys.map((k) => (base.ambiguous.get(k) as Ambiguity).candidates);
+  const total = choices.reduce((n, c) => n * c.length, 1);
+  if (total > MAX_VARIANTS) return base.result;
+  const results: { result: Result; pins: Map<string, string> }[] = [];
+  const pick = (i: number, pins: Map<string, string>): boolean => {
+    if (i === keys.length) {
+      const v = run(plan, { ...budget, paths: 0, segments: 0, pairs: 0 }, pins);
+      // A pinned run that still has ambiguous attributes did not settle them.
+      if (v.ambiguous.size) return false;
+      results.push({ result: v.result, pins: new Map(pins) });
+      return true;
+    }
+    for (const c of choices[i] as string[]) {
+      pins.set(keys[i] as string, c);
+      if (!pick(i + 1, pins)) return false;
+    }
+    pins.delete(keys[i] as string);
+    return true;
+  };
+  if (!pick(0, new Map())) return base.result;
+  const first = results[0] as { result: Result; pins: Map<string, string> };
+  if (results.some((v) => signature(v.result) !== signature(first.result))) return base.result;
+  // Trying the instances must settle something; otherwise the base result says more.
+  if (first.result.summary.unknown >= base.result.summary.unknown) return base.result;
+  const notes = keys.map((k) => {
+    const a = base.ambiguous.get(k) as Ambiguity;
+    return { resource: a.resource, message: `${a.attr} could be any of ${a.candidates.length} resources (${a.candidates.join(", ")}) because the plan does not give the order; all ${a.candidates.length} give the same result, and the hops shown are for ${first.pins.get(k) as string}` };
+  });
+  const merged = new Map<string, string[]>();
+  for (const n of [...first.result.notes, ...notes]) merged.set(n.resource, [...new Set([...(merged.get(n.resource) ?? []), n.message])]);
+  return { ...first.result, notes: [...merged.entries()].map(([resource, messages]) => ({ resource, message: messages.toSorted(cmp).join("; ") })).toSorted((x, y) => cmp(x.resource, y.resource)) };
+}
+
+function run(plan: unknown, budget: Budget, pins: ReadonlyMap<string, string>): { result: Result; ambiguous: Map<string, Ambiguity> } {
   const pathsOf = (spec: PathSpec): Path[] => {
     const out = pathsWithin(spec, budget);
     budget.paths += out.length;
     if (budget.paths > budget.maxPaths) throw new PlanError(`The plan has more than ${budget.maxPaths.toLocaleString("en-US")} paths to report. Split the plan, or narrow the security group rules that connect so many resources.`);
     return out;
   };
-  const { before, after } = parsePlan(plan);
+  const { before, after } = parsePlan(plan, pins);
   const epBefore = endpointsOf(before);
   const epAfter = endpointsOf(after);
   const addresses = [...new Set([...epBefore.keys(), ...epAfter.keys()])].toSorted(cmp);
@@ -350,7 +399,7 @@ function analyzePlan(plan: unknown, budget: Budget): Result {
   const merged = new Map<string, string[]>();
   for (const n of notes) merged.set(n.resource, [...new Set([...(merged.get(n.resource) ?? []), n.message])]);
   const unique = [...merged.entries()].map(([resource, messages]) => ({ resource, message: messages.toSorted(cmp).join("; ") })).toSorted((x, y) => cmp(x.resource, y.resource));
-  return { format: RESULT_FORMAT, summary, paths, notes: unique };
+  return { result: { format: RESULT_FORMAT, summary, paths, notes: unique }, ambiguous: new Map([...before.ambiguous, ...after.ambiguous]) };
 }
 
 /** Ports any placement of `t` opens to a group of any placement of `a`. */

@@ -843,14 +843,14 @@ function evaluateInternal(a, t, p, ports) {
   if (!a || !t) return absent3;
   const hops = [];
   const doubts = [];
-  const run2 = (hop, s) => {
+  const run3 = (hop, s) => {
     if (s.doubt) doubts.push(s.doubt);
     hops.push({ hop, resource: s.resource, decision: s.decision, rule: s.rule, doc: s.doc ?? DOC3[hop] ?? SG_DOC });
     if (s.decision === "deny") return { verdict: "blocked", sources: [], hops, reason: s.reason ?? s.rule };
     if (s.decision === "unknown") return { verdict: "unknown", sources: [], hops, reason: s.reason ?? s.rule };
     return void 0;
   };
-  const fail = (hop, at2, reason) => run2(hop, { decision: "unknown", resource: at2, rule: reason, reason });
+  const fail = (hop, at2, reason) => run3(hop, { decision: "unknown", resource: at2, rule: reason, reason });
   if (!a.securityGroups.ok) return fail("source-security-group", a.address, a.securityGroups.reason);
   if (!t.securityGroups.ok) return fail("source-security-group", t.address, t.securityGroups.reason);
   if (!a.subnetCidr.ok) return fail("source-security-group", a.address, a.subnetCidr.reason);
@@ -862,29 +862,29 @@ function evaluateInternal(a, t, p, ports) {
   const crossVpc = a.vpc.ok && t.vpc.ok && a.vpc.value.address !== t.vpc.value.address;
   const viaTgw = crossVpc ? transitOf(a.routeTable, tCidr) : void 0;
   const egressRefs = viaTgw ? { use: false, why: "outbound rules cannot reference security groups across a transit gateway" } : USE_GROUPS;
-  const out = run2("source-security-group", sgStep(a.securityGroups.value, "egress", tKeys, tCidr, t.address, p, ports, egressRefs));
+  const out = run3("source-security-group", sgStep(a.securityGroups.value, "egress", tKeys, tCidr, t.address, p, ports, egressRefs));
   if (out) return out;
   if (!a.vpc.ok) return fail("source-route", a.address, a.vpc.reason);
   if (!t.vpc.ok) return fail("source-route", t.address, t.vpc.reason);
   const peered = a.vpc.value.address !== t.vpc.value.address;
   const cross = (from, to, cidr, own, other) => transitOf(from.routeTable, cidr) ? { ...transitStep(from.routeTable, from.subnet.ok ? from.subnet.value : from.address, cidr, to.address, own, other, from.az, from.transit), doc: TGW_DOC } : peeringStep(from.routeTable, from.address, cidr, to.address, own, other);
-  const r1 = run2("source-route", peered ? cross(a, t, tCidr, a.vpc.value, t.vpc.value) : routeStep(a.routeTable, a.address, tCidr, t.address));
+  const r1 = run3("source-route", peered ? cross(a, t, tCidr, a.vpc.value, t.vpc.value) : routeStep(a.routeTable, a.address, tCidr, t.address));
   if (r1) return r1;
   const same = a.subnet.ok && t.subnet.ok && a.subnet.value === t.subnet.value;
   const at = (ep) => ep.subnet.ok ? ep.subnet.value : ep.address;
   const skip = (ep) => ({ decision: "allow", resource: at(ep), rule: SAME_SUBNET });
-  const n3 = run2("source-nacl-outbound", same ? skip(a) : naclStep(a.nacl, at(a), "egress", tCidr, t.address, p, ports, false));
+  const n3 = run3("source-nacl-outbound", same ? skip(a) : naclStep(a.nacl, at(a), "egress", tCidr, t.address, p, ports, false));
   if (n3) return n3;
-  const n4 = run2("target-nacl-inbound", same ? skip(t) : naclStep(t.nacl, at(t), "ingress", aCidr, a.address, p, ports, false));
+  const n4 = run3("target-nacl-inbound", same ? skip(t) : naclStep(t.nacl, at(t), "ingress", aCidr, a.address, p, ports, false));
   if (n4) return n4;
   const ingressRefs = viaTgw ? transitGroupRefs(a.transit, viaTgw, a.vpc.value, t.vpc.value) : USE_GROUPS;
-  const sg = run2("security-group", sgStep(t.securityGroups.value, "ingress", aKeys, aCidr, a.address, p, ports, ingressRefs));
+  const sg = run3("security-group", sgStep(t.securityGroups.value, "ingress", aKeys, aCidr, a.address, p, ports, ingressRefs));
   if (sg) return sg;
-  const n6 = run2("target-nacl-outbound", same ? skip(t) : naclStep(t.nacl, at(t), "egress", aCidr, a.address, p, ports, true));
+  const n6 = run3("target-nacl-outbound", same ? skip(t) : naclStep(t.nacl, at(t), "egress", aCidr, a.address, p, ports, true));
   if (n6) return n6;
-  const n7 = run2("source-nacl-inbound", same ? skip(a) : naclStep(a.nacl, at(a), "ingress", tCidr, t.address, p, ports, true));
+  const n7 = run3("source-nacl-inbound", same ? skip(a) : naclStep(a.nacl, at(a), "ingress", tCidr, t.address, p, ports, true));
   if (n7) return n7;
-  const r8 = run2("target-route", peered ? cross(t, a, aCidr, t.vpc.value, a.vpc.value) : routeStep(t.routeTable, t.address, aCidr, a.address));
+  const r8 = run3("target-route", peered ? cross(t, a, aCidr, t.vpc.value, a.vpc.value) : routeStep(t.routeTable, t.address, aCidr, a.address));
   if (r8) return r8;
   return { verdict: "allowed", sources: [a.address], hops, reason: doubts.join("; ") };
 }
@@ -1056,14 +1056,14 @@ function collect(v, add) {
     }
   }
 }
-function parsePlan(input2) {
+function parsePlan(input2, pins = /* @__PURE__ */ new Map()) {
   if (!isObj(input2) || typeof input2.format_version !== "string" || !input2.format_version.startsWith("1.")) {
     throw new PlanError("Not a Terraform plan: expected `terraform show -json` output with format_version 1.x.");
   }
   if (!Array.isArray(input2.resource_changes)) throw new PlanError("Plan has no resource_changes.");
   const refs = configRefs(input2);
-  const before = { side: "before", resources: /* @__PURE__ */ new Map(), byId: /* @__PURE__ */ new Map(), instancesOf: /* @__PURE__ */ new Map() };
-  const after = { side: "after", resources: /* @__PURE__ */ new Map(), byId: /* @__PURE__ */ new Map(), instancesOf: /* @__PURE__ */ new Map() };
+  const before = { side: "before", resources: /* @__PURE__ */ new Map(), byId: /* @__PURE__ */ new Map(), instancesOf: /* @__PURE__ */ new Map(), ambiguous: /* @__PURE__ */ new Map() };
+  const after = { side: "after", resources: /* @__PURE__ */ new Map(), byId: /* @__PURE__ */ new Map(), instancesOf: /* @__PURE__ */ new Map(), ambiguous: /* @__PURE__ */ new Map() };
   const changes = input2.resource_changes.filter(isObj).toSorted((a, b) => cmp(String(a.address), String(b.address)));
   for (const rc of changes) {
     if (rc.mode !== "managed" || !isObj(rc.change)) continue;
@@ -1078,7 +1078,12 @@ function parsePlan(input2) {
     ];
     for (const [snap, values, unknown4] of sides) {
       if (!isObj(values)) continue;
-      snap.resources.set(address, { address, type, values, unknown: unknown4, refs: info.refs, fullRefs: info.fullRefs, configured: info.configured, otherRefs: info.otherRefs, actions });
+      let pinned = info.refs;
+      for (const [key, instance] of pins) {
+        const [target, attr] = key.split("\0");
+        if (target === address) pinned = { ...pinned, [attr]: [instance] };
+      }
+      snap.resources.set(address, { address, type, values, unknown: unknown4, refs: pinned, fullRefs: info.fullRefs, configured: info.configured, otherRefs: info.otherRefs, actions });
       if (typeof values.id === "string") snap.byId.set(values.id, address);
       const list = snap.instancesOf.get(base) ?? [];
       list.push(address);
@@ -1160,7 +1165,7 @@ function fromConfig(snap, r, attr, targetType) {
     if (snap.resources.has(t)) return { kind: "resource", address: t };
     const instances = [...snap.resources.keys()].filter((a) => a.startsWith(t) && stripKeys(a.slice(t.length)) === "");
     if (instances.length === 1) return { kind: "resource", address: instances[0] };
-    return { kind: "unknown", reason: `${r.address}: ${attr} refers to ${t}, which has ${instances.length} instances on the ${snap.side} side` };
+    return { kind: "unknown", reason: `${r.address}: ${attr} refers to ${t}, which has ${instances.length} instances on the ${snap.side} side`, ...instances.length > 1 ? { candidates: instances.toSorted(cmp) } : {} };
   });
   const seen = /* @__PURE__ */ new Set();
   return refs.filter((x) => {
@@ -1170,6 +1175,11 @@ function fromConfig(snap, r, attr, targetType) {
 }
 function resolveRef(snap, r, attr, targetType) {
   const refs = resolveRefs(snap, r, attr, targetType);
+  if (refs.length === 1 && refs[0]?.kind === "resource") return refs[0];
+  const named = refs.flatMap((x) => x.kind === "resource" ? [x.address] : x.kind === "unknown" && x.candidates ? x.candidates : []);
+  if (refs.length && named.length > 1 && refs.every((x) => x.kind === "resource" || x.kind === "unknown" && x.candidates)) {
+    snap.ambiguous.set(`${r.address}\0${attr}`, { resource: r.address, attr, candidates: [...new Set(named)].toSorted(cmp) });
+  }
   if (refs.length === 1) return refs[0];
   if (!refs.length) return { kind: "unknown", reason: `${r.address}: ${attr} is not set` };
   return { kind: "unknown", reason: `${r.address}: ${attr} refers to ${refs.length} resources` };
@@ -3439,14 +3449,50 @@ function analyze(plan, limits = {}) {
     throw e;
   }
 }
+var MAX_VARIANTS = 8;
+var signature = (r) => JSON.stringify(r.paths.map((p) => [p.id, p.change, p.before.verdict, p.after.verdict]));
 function analyzePlan(plan, budget) {
+  const base = run(plan, budget, /* @__PURE__ */ new Map());
+  if (!base.ambiguous.size || base.result.summary.unknown === 0) return base.result;
+  const keys = [...base.ambiguous.keys()].toSorted(cmp);
+  const choices = keys.map((k) => base.ambiguous.get(k).candidates);
+  const total = choices.reduce((n, c) => n * c.length, 1);
+  if (total > MAX_VARIANTS) return base.result;
+  const results = [];
+  const pick = (i, pins) => {
+    if (i === keys.length) {
+      const v = run(plan, { ...budget, paths: 0, segments: 0, pairs: 0 }, pins);
+      if (v.ambiguous.size) return false;
+      results.push({ result: v.result, pins: new Map(pins) });
+      return true;
+    }
+    for (const c of choices[i]) {
+      pins.set(keys[i], c);
+      if (!pick(i + 1, pins)) return false;
+    }
+    pins.delete(keys[i]);
+    return true;
+  };
+  if (!pick(0, /* @__PURE__ */ new Map())) return base.result;
+  const first = results[0];
+  if (results.some((v) => signature(v.result) !== signature(first.result))) return base.result;
+  if (first.result.summary.unknown >= base.result.summary.unknown) return base.result;
+  const notes = keys.map((k) => {
+    const a = base.ambiguous.get(k);
+    return { resource: a.resource, message: `${a.attr} could be any of ${a.candidates.length} resources (${a.candidates.join(", ")}) because the plan does not give the order; all ${a.candidates.length} give the same result, and the hops shown are for ${first.pins.get(k)}` };
+  });
+  const merged = /* @__PURE__ */ new Map();
+  for (const n of [...first.result.notes, ...notes]) merged.set(n.resource, [.../* @__PURE__ */ new Set([...merged.get(n.resource) ?? [], n.message])]);
+  return { ...first.result, notes: [...merged.entries()].map(([resource, messages]) => ({ resource, message: messages.toSorted(cmp).join("; ") })).toSorted((x, y) => cmp(x.resource, y.resource)) };
+}
+function run(plan, budget, pins) {
   const pathsOf = (spec) => {
     const out = pathsWithin(spec, budget);
     budget.paths += out.length;
     if (budget.paths > budget.maxPaths) throw new PlanError(`The plan has more than ${budget.maxPaths.toLocaleString("en-US")} paths to report. Split the plan, or narrow the security group rules that connect so many resources.`);
     return out;
   };
-  const { before, after } = parsePlan(plan);
+  const { before, after } = parsePlan(plan, pins);
   const epBefore = endpointsOf(before);
   const epAfter = endpointsOf(after);
   const addresses = [.../* @__PURE__ */ new Set([...epBefore.keys(), ...epAfter.keys()])].toSorted(cmp);
@@ -3561,7 +3607,7 @@ function analyzePlan(plan, budget) {
   const merged = /* @__PURE__ */ new Map();
   for (const n of notes) merged.set(n.resource, [.../* @__PURE__ */ new Set([...merged.get(n.resource) ?? [], n.message])]);
   const unique = [...merged.entries()].map(([resource, messages]) => ({ resource, message: messages.toSorted(cmp).join("; ") })).toSorted((x, y) => cmp(x.resource, y.resource));
-  return { format: RESULT_FORMAT, summary, paths, notes: unique };
+  return { result: { format: RESULT_FORMAT, summary, paths, notes: unique }, ambiguous: new Map([...before.ambiguous, ...after.ambiguous]) };
 }
 function pairPorts(a, t, p) {
   let out = [];
@@ -3591,22 +3637,22 @@ function unresolvedNotes(list) {
 function pathsWithin(spec, budget) {
   const out = [];
   for (const p of PROTOCOLS) {
-    let run2;
+    let run3;
     const flush = () => {
-      if (!run2) return;
-      const ports = formatPorts([run2.ports]);
-      const risk = run2.before.verdict === "allowed" && run2.after.verdict === "allowed" ? spec.risk() : [];
-      out.push({ id: `${spec.id}:${p}:${ports}`, from: spec.from, ...spec.fromType !== void 0 ? { fromType: spec.fromType } : {}, ...spec.family ? { family: spec.family } : {}, ...spec.provider ? { provider: spec.provider } : {}, to: spec.to, toType: spec.toType, protocol: p, ports, change: changeOf(run2.before, run2.after), before: run2.before, after: run2.after, ...risk.length ? { outageRisk: risk } : {} });
-      run2 = void 0;
+      if (!run3) return;
+      const ports = formatPorts([run3.ports]);
+      const risk = run3.before.verdict === "allowed" && run3.after.verdict === "allowed" ? spec.risk() : [];
+      out.push({ id: `${spec.id}:${p}:${ports}`, from: spec.from, ...spec.fromType !== void 0 ? { fromType: spec.fromType } : {}, ...spec.family ? { family: spec.family } : {}, ...spec.provider ? { provider: spec.provider } : {}, to: spec.to, toType: spec.toType, protocol: p, ports, change: changeOf(run3.before, run3.after), before: run3.before, after: run3.after, ...risk.length ? { outageRisk: risk } : {} });
+      run3 = void 0;
     };
     for (const seg of segment(spec.candidates(p), spec.cuts)) {
       if (++budget.segments > budget.maxSegments) throw new PlanError(`The plan needs more than ${budget.maxSegments.toLocaleString("en-US")} port checks. A security group or network ACL has far more rules than AWS allows; reduce them.`);
       const ob = spec.before(p, seg);
       const oa = spec.after(p, seg);
-      if (run2 && run2.ports[1] + 1 === seg[0] && JSON.stringify([run2.before, run2.after]) === JSON.stringify([ob, oa])) run2.ports = [run2.ports[0], seg[1]];
+      if (run3 && run3.ports[1] + 1 === seg[0] && JSON.stringify([run3.before, run3.after]) === JSON.stringify([ob, oa])) run3.ports = [run3.ports[0], seg[1]];
       else {
         flush();
-        run2 = { ports: seg, before: ob, after: oa };
+        run3 = { ports: seg, before: ob, after: oa };
       }
     }
     flush();
@@ -3792,7 +3838,7 @@ ${body}`;
   if (!res.ok) throw new Error(`writing the comment failed: HTTP ${res.status}`);
   env.log(`vpcdiff: ${existing === void 0 ? "created" : "updated"} the pull request comment.`);
 }
-async function run(env) {
+async function run2(env) {
   const planPath = input(env, "plan");
   const failOn = input(env, "fail-on", "added");
   if (!planPath) {
@@ -3833,7 +3879,7 @@ async function run(env) {
 }
 
 // src/index.ts
-process.exitCode = await run({
+process.exitCode = await run2({
   vars: process.env,
   readFile: (p) => readFileSync(p, "utf8"),
   appendFile: (p, t) => appendFileSync(p, t),

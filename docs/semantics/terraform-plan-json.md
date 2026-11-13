@@ -40,9 +40,14 @@ Source for every field below: <https://developer.hashicorp.com/terraform/interna
     reference writes (`module.net[0].aws_subnet.a`).
   - Terraform lists the bare module (`module.net`) beside every output reference. The
     engine ignores it when a more specific reference exists.
-  - It decides only when the references lead to exactly one resource instance. A list
-    output indexed with `[0]` over a resource with several instances stays `unknown`,
-    because the plan does not say in which order the module lists them.
+  - It decides at once when the references lead to exactly one resource instance.
+  - A list output indexed with `[0]` over a resource with several instances
+    (`module.vpc.public_subnets[0]`) names one of them, but the plan does not say in
+    which order the module lists them. The engine then tries each instance as the
+    answer (at most 8 combinations). It decides only when every combination gives the
+    same paths and verdicts. The result then has a note on the resource: "could be any
+    of N resources ... all N give the same result, and the hops shown are for X". When
+    the combinations differ, or there are more than 8, the path stays `unknown`.
   - `local.*`, `data.*`, `each.*`, `count.*`, a variable that the call does not set, and
     a reference to a module or output that does not exist stay as they are, so the
     attribute is `unknown` with a reason. The plan does not contain locals at all, so a

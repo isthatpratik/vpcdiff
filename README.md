@@ -172,7 +172,7 @@ reported as `unknown` with a reason, never as allowed or blocked by guess.
 | Resource | Status |
 |---|---|
 | `aws_vpc` (primary IPv4 CIDR), `aws_subnet` | supported |
-| Resources inside modules, and links through module outputs and inputs (`module.net.subnet_id`, `var.vpc_id`) | supported when the links lead to one resource; a link through a module `local`, `data`, or a list with several instances is unknown ([details](docs/semantics/terraform-plan-json.md)) |
+| Resources inside modules, and links through module outputs and inputs (`module.net.subnet_id`, `var.vpc_id`) | supported when the links lead to one resource, or to one of several instances that all give the same result; a link through a module `local` or `data`, or instances that give different results, is unknown ([details](docs/semantics/terraform-plan-json.md)) |
 | `aws_internet_gateway`, `aws_internet_gateway_attachment` | supported |
 | `aws_route_table` (inline routes), `aws_route`, `aws_route_table_association` | supported |
 | Main route table: `aws_default_route_table`, `aws_main_route_table_association`, unmanaged default | supported |
