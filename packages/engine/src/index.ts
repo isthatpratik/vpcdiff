@@ -217,8 +217,12 @@ export function analyze(plan: unknown, limits: { maxPaths?: number; maxSegments?
 /** Most combinations of instances to try for attributes that point at one of several instances. */
 const MAX_VARIANTS = 8;
 
-/** Paths without the explanation: what a decision needs to agree on. */
-const signature = (r: Result): string => JSON.stringify(r.paths.map((p) => [p.id, p.change, p.before.verdict, p.after.verdict]));
+/**
+ * Everything a decision says about a path except the explanation: ports, protocol, sources,
+ * verdicts, and outage risk. Hops and reasons name the instance that was tried, so they differ.
+ */
+const signature = (r: Result): string =>
+  JSON.stringify(r.paths.map(({ before, after, ...path }) => ({ ...path, before: { verdict: before.verdict, sources: before.sources }, after: { verdict: after.verdict, sources: after.sources } })));
 
 /**
  * Analyzes the plan. An attribute that the configuration ties to one of several instances,
@@ -236,11 +240,17 @@ function analyzePlan(plan: unknown, budget: Budget): Result {
   const results: { result: Result; pins: Map<string, string> }[] = [];
   const pick = (i: number, pins: Map<string, string>): boolean => {
     if (i === keys.length) {
-      const v = run(plan, { ...budget, paths: 0, segments: 0, pairs: 0 }, pins);
-      // A pinned run that still has ambiguous attributes did not settle them.
-      if (v.ambiguous.size) return false;
-      results.push({ result: v.result, pins: new Map(pins) });
-      return true;
+      try {
+        const v = run(plan, { ...budget, paths: 0, segments: 0, pairs: 0 }, pins);
+        // A pinned run that still has ambiguous attributes did not settle them.
+        if (v.ambiguous.size) return false;
+        results.push({ result: v.result, pins: new Map(pins) });
+        return true;
+      } catch (e) {
+        // A pinned run can resolve more paths than the base run, and hit a limit. The base result is still valid.
+        if (e instanceof PlanError || isStackOverflow(e)) return false;
+        throw e;
+      }
     }
     for (const c of choices[i] as string[]) {
       pins.set(keys[i] as string, c);

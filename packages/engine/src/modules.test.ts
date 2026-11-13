@@ -5,7 +5,7 @@
 import { describe, expect, it } from "vitest";
 import { analyze } from "./index.js";
 import { localize, parsePlan } from "./plan.js";
-import { network, only, plan, type Res } from "./testkit.js";
+import { naclRule, network, only, plan, type Res } from "./testkit.js";
 
 type Obj = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 
@@ -264,6 +264,18 @@ describe("one of several instances", () => {
   it("returns unknown when the instances give different results", () => {
     const reason = undecided(listPlan(2, [1]));
     expect(reason).toMatch(/subnet_id refers to module\.net\.aws_subnet\.a, which has 2 instances/);
+  });
+
+  it("returns unknown when the instances give the same verdict for different sources", () => {
+    // Subnet 1's NACL lets in the whole internet, subnet 2's only 8.0.0.0/8: both "allowed", for different clients.
+    const p = listPlan(2);
+    const acl = (name: string, subnet: string, cidr: string): Res => ({ type: "aws_network_acl", name, before: null, after: { id: `acl-${name}`, subnet_ids: [subnet], ingress: [naclRule(100, "allow", "-1", 0, 0, cidr)], egress: [naclRule(100, "allow", "-1", 0, 0)] } });
+    const withAcls = plan([...(p.resource_changes as Obj[]).map((c) => ({ type: c.type, name: c.name, before: c.change.before, after: c.change.after, unknown: c.change.after_unknown, ...(c.address.startsWith("module.net.") ? { module: ["net", ""] as [string, string] } : {}) })), acl("one", "subnet-1", "0.0.0.0/0"), acl("two", "subnet-2", "8.0.0.0/8")]) as Obj;
+    const root = withAcls.configuration.root_module as Obj;
+    const instance = root.resources.find((r: Obj) => r.address === "aws_instance.app") as Obj;
+    instance.expressions = { subnet_id: { references: ["module.net.subnets[0]", "module.net.subnets", "module.net"] } };
+    root.module_calls.net.module.outputs = { subnets: { expression: { references: ["aws_subnet.a"] } } };
+    undecided(withAcls);
   });
 
   it("returns unknown when there are too many instances to try", () => {
