@@ -38,16 +38,12 @@ module "web_sg" {
   }
 }
 
-module "web" {
-  source  = "terraform-aws-modules/ec2-instance/aws"
-  version = "6.4.1"
-
-  name                        = "web"
+# The ec2-instance module always reads an SSM parameter for the AMI, so it cannot be
+# planned without AWS access. A plain instance references the modules' outputs instead.
+resource "aws_instance" "web" {
   ami                         = "ami-00000000000000000"
-  ami_ssm_parameter           = null
   instance_type               = "t3.micro"
   subnet_id                   = module.vpc.public_subnets[0]
   vpc_security_group_ids      = [module.web_sg.id]
   associate_public_ip_address = true
-  create_security_group       = false
 }
