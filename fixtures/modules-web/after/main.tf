@@ -44,6 +44,7 @@ module "web" {
 
   name                        = "web"
   ami                         = "ami-00000000000000000"
+  ami_ssm_parameter           = null
   instance_type               = "t3.micro"
   subnet_id                   = module.vpc.public_subnets[0]
   vpc_security_group_ids      = [module.web_sg.id]
