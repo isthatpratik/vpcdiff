@@ -93,8 +93,8 @@ Inputs: `plan` (required), `fail-on` (default `added`), `comment` (default `true
 ## CLI
 
 ```sh
-node packages/cli/dist/vpcdiff.mjs plan.json
-node packages/cli/dist/vpcdiff.mjs            # guided mode, in a terminal
+npx vpcdiff plan.json
+npx vpcdiff            # guided mode, in a terminal
 ```
 
 - With no arguments in a terminal, the CLI lists plan JSON files and binary plans (`tfplan`, `*.tfplan`) in the folder, converts a binary plan with `terraform show -json`, or runs `terraform plan` after you confirm (it uses your cloud credentials; nothing is applied). Then it shows the report and offers next steps: every path, one path in full, or a Markdown summary for the pull request.

@@ -6,7 +6,7 @@ import { CheckIcon, CopyIcon } from "@/components/litt/icons";
 import { WINDOW, WindowBar } from "./Plate.tsx";
 import { EASE, useInViewOnce } from "./rails.tsx";
 
-const RUN = ["git clone https://github.com/isthatpratik/vpcdiff", "cd vpcdiff && pnpm install && pnpm build", "node packages/cli/dist/vpcdiff.mjs"];
+const RUN = ["npx vpcdiff"];
 
 /** Steps of the replay, with how long each holds (ms). */
 const HOLD = [700, 0, 1300, 700, 1500, 900, 900, 700, 3600, 0];

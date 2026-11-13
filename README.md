@@ -71,10 +71,12 @@ Listed on the [GitHub Marketplace](https://github.com/marketplace/actions/vpcdif
 ## Quick start (CLI)
 
 ```sh
-pnpm install && pnpm build
 cd infra
-node ../packages/cli/dist/vpcdiff.mjs
+npx vpcdiff
 ```
+
+It needs Node.js 24 or later. To build it from source instead, run
+`pnpm install && pnpm build`, then `node packages/cli/dist/vpcdiff.mjs`.
 
 With no arguments, in a terminal, `vpcdiff` asks which plan to read. It finds plan JSON
 and binary plans (`tfplan`, `*.tfplan`) in the folder, converts a binary plan with
@@ -91,7 +93,7 @@ To pass a plan yourself:
 ```sh
 terraform -chdir=infra plan -out=tfplan
 terraform -chdir=infra show -json tfplan > plan.json
-node packages/cli/dist/vpcdiff.mjs plan.json
+npx vpcdiff plan.json
 ```
 
 In a terminal, the report leads with the verdict. Example for
