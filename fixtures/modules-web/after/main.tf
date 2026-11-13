@@ -32,10 +32,10 @@ module "web_sg" {
   name   = "web"
   vpc_id = module.vpc.vpc_id
 
-  ingress_with_cidr_blocks = [
-    { from_port = 443, to_port = 443, protocol = "tcp", cidr_ipv4 = "0.0.0.0/0" },
-    { from_port = 22, to_port = 22, protocol = "tcp", cidr_ipv4 = "10.0.0.0/16" },
-  ]
+  ingress_rules = {
+    https = { from_port = 443, to_port = 443, ip_protocol = "tcp", cidr_ipv4 = "0.0.0.0/0" }
+    ssh   = { from_port = 22, to_port = 22, ip_protocol = "tcp", cidr_ipv4 = "10.0.0.0/16" }
+  }
 }
 
 module "web" {
