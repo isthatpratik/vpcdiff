@@ -29,6 +29,26 @@ Source for every field below: <https://developer.hashicorp.com/terraform/interna
 - **References that resolve at apply time.** In a create-only plan, IDs such as
   `vpc_id` are unknown. The engine links resources through the `configuration`
   section's `references` instead of through ID values.
+- **Module outputs and inputs** (issue #140). A reference such as `module.net.subnet_id`
+  points at a module output, and `var.vpc_id` inside a module points at a module input.
+  The plan hides the value, but `configuration` keeps the expression's references: the
+  output's references inside the module (`configuration...module_calls.net.module.outputs`)
+  and the input's references in the call (`module_calls.web.expressions`). The engine
+  follows them, through any number of levels, until it reaches resources, and then links
+  as before. Rules:
+  - A resource reference keeps its module path, with the instance key that the
+    reference writes (`module.net[0].aws_subnet.a`).
+  - Terraform lists the bare module (`module.net`) beside every output reference. The
+    engine ignores it when a more specific reference exists.
+  - It decides only when the references lead to exactly one resource instance. A list
+    output indexed with `[0]` over a resource with several instances stays `unknown`,
+    because the plan does not say in which order the module lists them.
+  - `local.*`, `data.*`, `each.*`, `count.*`, a variable that the call does not set, and
+    a reference to a module or output that does not exist stay as they are, so the
+    attribute is `unknown` with a reason. The plan does not contain locals at all, so a
+    module that links resources through a local (for example `local.vpc_id` in
+    `terraform-aws-modules/vpc`) is `unknown` when the linked resources are created in
+    the same plan. When they already exist, their IDs are known and no reference is needed.
 - **References in nested blocks are merged.** Terraform 1.13 lists the references of
   a whole block under the block name. For example, an `aws_route_table` with two
   `route` blocks has one `route.references` list for both. With one route this is

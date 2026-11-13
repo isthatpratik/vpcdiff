@@ -1,0 +1,80 @@
+{
+  "format": "0.2",
+  "summary": {
+    "added": 0,
+    "removed": 0,
+    "changed": 0,
+    "unchanged": 0,
+    "unknown": 2
+  },
+  "paths": [
+    {
+      "id": "internet->aws_instance.web:tcp:0-65535",
+      "from": "internet",
+      "to": "aws_instance.web",
+      "toType": "aws_instance",
+      "protocol": "tcp",
+      "ports": "0-65535",
+      "change": "unknown",
+      "before": {
+        "verdict": "absent",
+        "sources": [],
+        "hops": [],
+        "reason": "the resource does not exist on this side of the plan"
+      },
+      "after": {
+        "verdict": "unknown",
+        "sources": [],
+        "hops": [
+          {
+            "hop": "public-ip",
+            "resource": "aws_instance.web",
+            "decision": "unknown",
+            "rule": "module.vpc.aws_subnet.public[0]: vpc_id uses values that are unknown until apply",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/VPC_Internet_Gateway.html"
+          }
+        ],
+        "reason": "module.vpc.aws_subnet.public[0]: vpc_id uses values that are unknown until apply"
+      }
+    },
+    {
+      "id": "internet->aws_instance.web:udp:0-65535",
+      "from": "internet",
+      "to": "aws_instance.web",
+      "toType": "aws_instance",
+      "protocol": "udp",
+      "ports": "0-65535",
+      "change": "unknown",
+      "before": {
+        "verdict": "absent",
+        "sources": [],
+        "hops": [],
+        "reason": "the resource does not exist on this side of the plan"
+      },
+      "after": {
+        "verdict": "unknown",
+        "sources": [],
+        "hops": [
+          {
+            "hop": "public-ip",
+            "resource": "aws_instance.web",
+            "decision": "unknown",
+            "rule": "module.vpc.aws_subnet.public[0]: vpc_id uses values that are unknown until apply",
+            "doc": "https://docs.aws.amazon.com/vpc/latest/userguide/VPC_Internet_Gateway.html"
+          }
+        ],
+        "reason": "module.vpc.aws_subnet.public[0]: vpc_id uses values that are unknown until apply"
+      }
+    }
+  ],
+  "notes": [
+    {
+      "resource": "aws_instance.web",
+      "message": "its security groups are unknown (module.vpc.aws_subnet.public[0]: vpc_id uses values that are unknown until apply); paths inside the VPC to aws_instance.web from security groups that cannot be resolved are not checked"
+    },
+    {
+      "resource": "module.web_sg.aws_vpc_security_group_rules_exclusive.this[0]",
+      "message": "aws_vpc_security_group_rules_exclusive is not modeled yet; paths it can change are reported as unknown or not reported"
+    }
+  ]
+}

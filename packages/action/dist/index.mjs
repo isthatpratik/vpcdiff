@@ -975,11 +975,45 @@ var PlanError = class extends Error {
 };
 var isObj = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
 var stripKeys = (address) => address.replace(/\[[^\]]*\]/g, "");
-var RESOURCE_REF = /^(?:aws|google|azurerm)_\w+\.[\w-]+(?:\[[^\]]+\])?(?:\.|$)/;
+var MODULE_PATH = "(?:module\\.[\\w-]+(?:\\[[^\\]]+\\])?\\.)*";
+var RESOURCE_REF = new RegExp(`^${MODULE_PATH}(?:aws|google|azurerm)_\\w+\\.[\\w-]+(?:\\[[^\\]]+\\])?(?:\\.|$)`);
+var RESOURCE_BASE = new RegExp(`^(${MODULE_PATH}(?:aws|google|azurerm)_\\w+\\.[\\w-]+(?:\\[[^\\]]+\\])?)$`);
+var MODULE_OUTPUT = /^(module\.[\w-]+(?:\[[^\]]+\])?)\.([\w-]+)(?![\w-])/;
+var BARE_MODULE = /^module\.[\w-]+(?:\[[^\]]+\])?$/;
+var VARIABLE = /^var\.([\w-]+)(?![\w-])/;
+var MAX_MODULE_DEPTH = 16;
+function follow(frame, refs, depth = 0) {
+  const out = [];
+  for (const ref of refs) {
+    if (BARE_MODULE.test(ref) && refs.some((o) => o.startsWith(`${ref}.`) || !ref.includes("[") && o.startsWith(`${ref}[`))) continue;
+    const output = MODULE_OUTPUT.exec(ref);
+    if (output && depth < MAX_MODULE_DEPTH) {
+      const call = (isObj(frame.mod.module_calls) ? frame.mod.module_calls : {})[output[1].replace(/^module\.|\[.*$/g, "")];
+      const child = isObj(call) && isObj(call.module) ? call.module : void 0;
+      const expr = child && isObj(child.outputs) ? child.outputs[output[2]] : void 0;
+      const inner = isObj(expr) && isObj(expr.expression) && Array.isArray(expr.expression.references) ? expr.expression.references.filter((x) => typeof x === "string") : void 0;
+      if (child && isObj(call) && inner) {
+        const inputs = isObj(call.expressions) ? call.expressions : {};
+        out.push(...follow({ mod: child, prefix: `${frame.prefix}${output[1]}.`, parent: { frame, inputs } }, inner, depth + 1));
+        continue;
+      }
+    }
+    const variable = VARIABLE.exec(ref);
+    const input2 = variable && frame.parent ? frame.parent.inputs[variable[1]] : void 0;
+    if (variable && isObj(input2) && depth < MAX_MODULE_DEPTH) {
+      const found = [];
+      collect(input2, (r) => found.push(r));
+      out.push(...follow(frame.parent?.frame, found, depth + 1));
+      continue;
+    }
+    out.push(/^(?:aws|google|azurerm)_/.test(ref) ? frame.prefix + ref : ref);
+  }
+  return out;
+}
 function configRefs(plan) {
   const out = /* @__PURE__ */ new Map();
-  const walkModule = (mod, prefix) => {
-    if (!isObj(mod)) return;
+  const walkModule = (frame, prefix) => {
+    const mod = frame.mod;
     for (const r of Array.isArray(mod.resources) ? mod.resources : []) {
       if (!isObj(r) || r.mode !== "managed") continue;
       const info = { refs: {}, fullRefs: {}, configured: /* @__PURE__ */ new Set(), otherRefs: /* @__PURE__ */ new Set() };
@@ -987,22 +1021,25 @@ function configRefs(plan) {
         info.configured.add(attr);
         const found = /* @__PURE__ */ new Set();
         const full = /* @__PURE__ */ new Set();
-        collect(expr, (ref) => {
-          const m = /^((?:aws|google|azurerm)_\w+\.[\w-]+(?:\[[^\]]+\])?)$/.exec(ref);
-          if (m) found.add(prefix + m[1]);
-          if (RESOURCE_REF.test(ref)) full.add(prefix + ref);
+        const all = [];
+        collect(expr, (ref) => all.push(ref));
+        for (const ref of follow(frame, all)) {
+          const m = RESOURCE_BASE.exec(ref);
+          if (m) found.add(m[1]);
+          if (RESOURCE_REF.test(ref)) full.add(ref);
           else info.otherRefs.add(attr);
-        });
+        }
         if (found.size) info.refs[attr] = [...found].sort(cmp);
         if (full.size) info.fullRefs[attr] = [...full].sort(cmp);
       }
       out.set(prefix + String(r.address), info);
     }
     for (const [name, call] of Object.entries(isObj(mod.module_calls) ? mod.module_calls : {})) {
-      if (isObj(call)) walkModule(call.module, `${prefix}module.${name}.`);
+      if (isObj(call) && isObj(call.module)) walkModule({ mod: call.module, prefix: `${frame.prefix}module.${name}.`, parent: { frame, inputs: isObj(call.expressions) ? call.expressions : {} } }, `${prefix}module.${name}.`);
     }
   };
-  walkModule(isObj(plan.configuration) ? plan.configuration.root_module : void 0, "");
+  const root = isObj(plan.configuration) ? plan.configuration.root_module : void 0;
+  if (isObj(root)) walkModule({ mod: root, prefix: "" }, "");
   return out;
 }
 function collect(v, add) {
@@ -1093,8 +1130,15 @@ function resolveRefs(snap, r, attr, targetType) {
 }
 var ADDRESS = /^((?:module\.[\w-]+(?:\[[^\]]+\])?\.)*)((?:aws|google|azurerm)_\w+\.[\w-]+(?:\[[^\]]+\])?(?:\.\w+)?)$/;
 function localize(from, ref) {
-  const prefix = ADDRESS.exec(from)?.[1] ?? "";
-  return prefix + (ADDRESS.exec(ref)?.[2] ?? ref);
+  const own = ADDRESS.exec(from)?.[1] ?? "";
+  const m = ADDRESS.exec(ref);
+  if (!m) return own + ref;
+  const segments = (path) => path.match(/module\.[\w-]+(?:\[[^\]]+\])?\./g) ?? [];
+  const a = segments(own);
+  const b = segments(m[1]);
+  let common = 0;
+  while (common < a.length && common < b.length && stripKeys(a[common]) === stripKeys(b[common])) common++;
+  return a.slice(0, common).join("") + b.slice(common).join("") + m[2];
 }
 function instanceOf(snap, t) {
   if (snap.resources.has(t)) return t;
@@ -1105,12 +1149,17 @@ function fromConfig(snap, r, attr, targetType) {
   const types = Array.isArray(targetType) ? targetType : [targetType];
   const targets = (r.refs[attr] ?? []).filter((a) => types.includes(stripKeys(a).split(".").at(-2) ?? ""));
   if (!targets.length) return [{ kind: "unknown", reason: `${r.address}: ${attr} is unknown until apply and has no resource reference` }];
-  return targets.map((ref) => {
+  const refs = targets.map((ref) => {
     const t = localize(r.address, ref);
     if (snap.resources.has(t)) return { kind: "resource", address: t };
     const instances = [...snap.resources.keys()].filter((a) => a.startsWith(t) && stripKeys(a.slice(t.length)) === "");
     if (instances.length === 1) return { kind: "resource", address: instances[0] };
     return { kind: "unknown", reason: `${r.address}: ${attr} refers to ${t}, which has ${instances.length} instances on the ${snap.side} side` };
+  });
+  const seen = /* @__PURE__ */ new Set();
+  return refs.filter((x) => {
+    const key = JSON.stringify(x);
+    return seen.has(key) ? false : (seen.add(key), true);
   });
 }
 function resolveRef(snap, r, attr, targetType) {

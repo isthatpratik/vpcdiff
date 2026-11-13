@@ -48,13 +48,72 @@ interface ConfigInfo {
 }
 
 // Resource types of the clouds the engine reads: aws_, google_, azurerm_ (ADR 0011).
-const RESOURCE_REF = /^(?:aws|google|azurerm)_\w+\.[\w-]+(?:\[[^\]]+\])?(?:\.|$)/;
+// A reference may start with module segments (`module.net[0].aws_subnet.a`) after a module output or input was followed.
+const MODULE_PATH = "(?:module\\.[\\w-]+(?:\\[[^\\]]+\\])?\\.)*";
+const RESOURCE_REF = new RegExp(`^${MODULE_PATH}(?:aws|google|azurerm)_\\w+\\.[\\w-]+(?:\\[[^\\]]+\\])?(?:\\.|$)`);
+const RESOURCE_BASE = new RegExp(`^(${MODULE_PATH}(?:aws|google|azurerm)_\\w+\\.[\\w-]+(?:\\[[^\\]]+\\])?)$`);
+// `module.net.subnet_id` and `module.net[0].subnet_id[1]`: the call, its key, and the output name.
+const MODULE_OUTPUT = /^(module\.[\w-]+(?:\[[^\]]+\])?)\.([\w-]+)(?![\w-])/;
+const BARE_MODULE = /^module\.[\w-]+(?:\[[^\]]+\])?$/;
+const VARIABLE = /^var\.([\w-]+)(?![\w-])/;
+const MAX_MODULE_DEPTH = 16;
+
+/** A module of the configuration, with the way the root module reaches it. */
+interface Frame {
+  mod: Obj;
+  /** Module path from the root, with the instance keys as written (`module.net[0].`). Empty for the root. */
+  prefix: string;
+  /** The calling module and the call's `expressions` (its inputs). Absent for the root. */
+  parent?: { frame: Frame; inputs: Obj };
+}
+
+/**
+ * Follows module outputs and module inputs to the resources they come from (issue #140).
+ * The plan hides the value of a module output or input until apply, but the configuration
+ * keeps the references of its expression. `module.net.subnet_id` becomes the references
+ * of that output inside `net`. `var.vpc_id` inside a module becomes the references of
+ * the matching input in the call. The result has absolute references from the root module:
+ * a resource reference carries its module path (`module.net[0].aws_subnet.a`). Anything
+ * else (`local.y`, `data.z`, a variable that the call does not set) stays as it is, so the
+ * caller treats the attribute as undecided; locals are not in the plan at all.
+ * A reference that cannot be followed stays as it is.
+ * Terraform also lists the bare module (`module.net`) beside every output reference. That
+ * entry is dropped when a more specific reference exists.
+ */
+function follow(frame: Frame, refs: string[], depth = 0): string[] {
+  const out: string[] = [];
+  for (const ref of refs) {
+    if (BARE_MODULE.test(ref) && refs.some((o) => o.startsWith(`${ref}.`) || (!ref.includes("[") && o.startsWith(`${ref}[`)))) continue;
+    const output = MODULE_OUTPUT.exec(ref);
+    if (output && depth < MAX_MODULE_DEPTH) {
+      const call = (isObj(frame.mod.module_calls) ? frame.mod.module_calls : {})[(output[1] as string).replace(/^module\.|\[.*$/g, "")];
+      const child = isObj(call) && isObj(call.module) ? call.module : undefined;
+      const expr = child && isObj(child.outputs) ? child.outputs[output[2] as string] : undefined;
+      const inner = isObj(expr) && isObj(expr.expression) && Array.isArray(expr.expression.references) ? expr.expression.references.filter((x): x is string => typeof x === "string") : undefined;
+      if (child && isObj(call) && inner) {
+        const inputs = isObj(call.expressions) ? call.expressions : {};
+        out.push(...follow({ mod: child, prefix: `${frame.prefix}${output[1] as string}.`, parent: { frame, inputs } }, inner, depth + 1));
+        continue;
+      }
+    }
+    const variable = VARIABLE.exec(ref);
+    const input = variable && frame.parent ? frame.parent.inputs[variable[1] as string] : undefined;
+    if (variable && isObj(input) && depth < MAX_MODULE_DEPTH) {
+      const found: string[] = [];
+      collect(input, (r) => found.push(r));
+      out.push(...follow(frame.parent?.frame as Frame, found, depth + 1));
+      continue;
+    }
+    out.push(/^(?:aws|google|azurerm)_/.test(ref) ? frame.prefix + ref : ref);
+  }
+  return out;
+}
 
 /** Collects resource references per top-level attribute from the configuration section. */
 function configRefs(plan: Obj): Map<string, ConfigInfo> {
   const out = new Map<string, ConfigInfo>();
-  const walkModule = (mod: unknown, prefix: string) => {
-    if (!isObj(mod)) return;
+  const walkModule = (frame: Frame, prefix: string) => {
+    const mod = frame.mod;
     for (const r of Array.isArray(mod.resources) ? mod.resources : []) {
       if (!isObj(r) || r.mode !== "managed") continue;
       const info: ConfigInfo = { refs: {}, fullRefs: {}, configured: new Set(), otherRefs: new Set() };
@@ -62,22 +121,25 @@ function configRefs(plan: Obj): Map<string, ConfigInfo> {
         info.configured.add(attr);
         const found = new Set<string>();
         const full = new Set<string>();
-        collect(expr, (ref) => {
-          const m = /^((?:aws|google|azurerm)_\w+\.[\w-]+(?:\[[^\]]+\])?)$/.exec(ref);
-          if (m) found.add(prefix + (m[1] as string));
-          if (RESOURCE_REF.test(ref)) full.add(prefix + ref);
+        const all: string[] = [];
+        collect(expr, (ref) => all.push(ref));
+        for (const ref of follow(frame, all)) {
+          const m = RESOURCE_BASE.exec(ref);
+          if (m) found.add(m[1] as string);
+          if (RESOURCE_REF.test(ref)) full.add(ref);
           else info.otherRefs.add(attr);
-        });
+        }
         if (found.size) info.refs[attr] = [...found].sort(cmp);
         if (full.size) info.fullRefs[attr] = [...full].sort(cmp);
       }
       out.set(prefix + String(r.address), info);
     }
     for (const [name, call] of Object.entries(isObj(mod.module_calls) ? mod.module_calls : {})) {
-      if (isObj(call)) walkModule(call.module, `${prefix}module.${name}.`);
+      if (isObj(call) && isObj(call.module)) walkModule({ mod: call.module, prefix: `${frame.prefix}module.${name}.`, parent: { frame, inputs: isObj(call.expressions) ? call.expressions : {} } }, `${prefix}module.${name}.`);
     }
   };
-  walkModule(isObj(plan.configuration) ? plan.configuration.root_module : undefined, "");
+  const root = isObj(plan.configuration) ? plan.configuration.root_module : undefined;
+  if (isObj(root)) walkModule({ mod: root, prefix: "" }, "");
   return out;
 }
 
@@ -194,13 +256,22 @@ export function resolveRefs(snap: Snapshot, r: Resource, attr: string, targetTyp
 const ADDRESS = /^((?:module\.[\w-]+(?:\[[^\]]+\])?\.)*)((?:aws|google|azurerm)_\w+\.[\w-]+(?:\[[^\]]+\])?(?:\.\w+)?)$/;
 
 /**
- * Configuration references have the module path without instance keys. A reference
- * always points into the module instance of the resource that makes it, so this puts
- * the referring resource's module prefix (with keys) in front of the resource part.
+ * Configuration references carry the module path without instance keys. A reference
+ * always points into the module instance of the resource that makes it, into a module
+ * below it, or into a module above it (a followed module output or input). This puts the
+ * referring resource's module instances (with keys) in front of the shared part of the
+ * path. Keys that the reference itself carries (`module.net[0].`) stay.
  */
 export function localize(from: string, ref: string): string {
-  const prefix = ADDRESS.exec(from)?.[1] ?? "";
-  return prefix + (ADDRESS.exec(ref)?.[2] ?? ref);
+  const own = ADDRESS.exec(from)?.[1] ?? "";
+  const m = ADDRESS.exec(ref);
+  if (!m) return own + ref;
+  const segments = (path: string) => path.match(/module\.[\w-]+(?:\[[^\]]+\])?\./g) ?? [];
+  const a = segments(own);
+  const b = segments(m[1] as string);
+  let common = 0;
+  while (common < a.length && common < b.length && stripKeys(a[common] as string) === stripKeys(b[common] as string)) common++;
+  return a.slice(0, common).join("") + b.slice(common).join("") + (m[2] as string);
 }
 
 /** The instance address a localized reference points at, if exactly one exists. */
@@ -215,12 +286,18 @@ export function fromConfig(snap: Snapshot, r: Resource, attr: string, targetType
   const types = Array.isArray(targetType) ? targetType : [targetType];
   const targets = (r.refs[attr] ?? []).filter((a) => types.includes(stripKeys(a).split(".").at(-2) ?? ""));
   if (!targets.length) return [{ kind: "unknown", reason: `${r.address}: ${attr} is unknown until apply and has no resource reference` }];
-  return targets.map((ref): Ref => {
+  const refs = targets.map((ref): Ref => {
     const t = localize(r.address, ref);
     if (snap.resources.has(t)) return { kind: "resource", address: t };
     const instances = [...snap.resources.keys()].filter((a) => a.startsWith(t) && stripKeys(a.slice(t.length)) === "");
     if (instances.length === 1) return { kind: "resource", address: instances[0] as string };
     return { kind: "unknown", reason: `${r.address}: ${attr} refers to ${t}, which has ${instances.length} instances on the ${snap.side} side` };
+  });
+  // `aws_subnet.a[0]` and its parent `aws_subnet.a` can name the same instance.
+  const seen = new Set<string>();
+  return refs.filter((x) => {
+    const key = JSON.stringify(x);
+    return seen.has(key) ? false : (seen.add(key), true);
   });
 }
 
