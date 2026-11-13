@@ -57,6 +57,8 @@ const MODULE_OUTPUT = /^(module\.[\w-]+(?:\[[^\]]+\])?)\.([\w-]+)(?![\w-])/;
 const BARE_MODULE = /^module\.[\w-]+(?:\[[^\]]+\])?$/;
 const VARIABLE = /^var\.([\w-]+)(?![\w-])/;
 const MAX_MODULE_DEPTH = 16;
+/** Most references one expression may follow, so a hostile plan cannot make the work grow without bound. */
+const MAX_FOLLOW_STEPS = 10_000;
 
 /** A module of the configuration, with the way the root module reaches it. */
 interface Frame {
@@ -80,34 +82,43 @@ interface Frame {
  * Terraform also lists the bare module (`module.net`) beside every output reference. That
  * entry is dropped when a more specific reference exists.
  */
-function follow(frame: Frame, refs: string[], depth = 0): string[] {
+function follow(frame: Frame, refs: string[], budget = { steps: MAX_FOLLOW_STEPS }, chain = new Set<string>(), depth = 0): string[] {
   const out: string[] = [];
-  for (const ref of refs) {
-    if (BARE_MODULE.test(ref) && refs.some((o) => o.startsWith(`${ref}.`) || (!ref.includes("[") && o.startsWith(`${ref}[`)))) continue;
+  const unique = [...new Set(refs)];
+  for (const ref of unique) {
+    if (BARE_MODULE.test(ref) && unique.some((o) => o.startsWith(`${ref}.`) || (!ref.includes("[") && o.startsWith(`${ref}[`)))) continue;
+    // Followed references that lead nowhere (a constant, a loop, a spent budget) stay as they are: the attribute is undecided.
+    const keep = () => out.push(/^(?:aws|google|azurerm)_/.test(ref) ? frame.prefix + ref : ref);
+    const here = `${frame.prefix}|${ref}`;
     const output = MODULE_OUTPUT.exec(ref);
-    if (output && depth < MAX_MODULE_DEPTH) {
-      const call = (isObj(frame.mod.module_calls) ? frame.mod.module_calls : {})[(output[1] as string).replace(/^module\.|\[.*$/g, "")];
-      const child = isObj(call) && isObj(call.module) ? call.module : undefined;
-      const expr = child && isObj(child.outputs) ? child.outputs[output[2] as string] : undefined;
-      const inner = isObj(expr) && isObj(expr.expression) && Array.isArray(expr.expression.references) ? expr.expression.references.filter((x): x is string => typeof x === "string") : undefined;
-      if (child && isObj(call) && inner) {
-        const inputs = isObj(call.expressions) ? call.expressions : {};
-        out.push(...follow({ mod: child, prefix: `${frame.prefix}${output[1] as string}.`, parent: { frame, inputs } }, inner, depth + 1));
-        continue;
-      }
-    }
     const variable = VARIABLE.exec(ref);
+    const call = output ? (isObj(frame.mod.module_calls) ? frame.mod.module_calls : {})[(output[1] as string).replace(/^module\.|\[.*$/g, "")] : undefined;
+    const child = isObj(call) && isObj(call.module) ? call.module : undefined;
+    const expr = output && child && isObj(child.outputs) ? child.outputs[output[2] as string] : undefined;
+    const inner = isObj(expr) && isObj(expr.expression) && Array.isArray(expr.expression.references) ? expr.expression.references.filter((x): x is string => typeof x === "string") : undefined;
     const input = variable && frame.parent ? frame.parent.inputs[variable[1] as string] : undefined;
-    if (variable && isObj(input) && depth < MAX_MODULE_DEPTH) {
-      const found: string[] = [];
-      collect(input, (r) => found.push(r));
-      out.push(...follow(frame.parent?.frame as Frame, found, depth + 1));
+    const target: { frame: Frame; refs: string[] } | undefined =
+      child && isObj(call) && inner ? { frame: { mod: child, prefix: `${frame.prefix}${(output as RegExpExecArray)[1] as string}.`, parent: { frame, inputs: isObj(call.expressions) ? call.expressions : {} } }, refs: inner }
+      : variable && frame.parent && isObj(input) ? { frame: frame.parent.frame, refs: gather(input) }
+      : undefined;
+    if (!target || depth >= MAX_MODULE_DEPTH || budget.steps-- <= 0 || chain.has(here)) {
+      keep();
       continue;
     }
-    out.push(/^(?:aws|google|azurerm)_/.test(ref) ? frame.prefix + ref : ref);
+    chain.add(here);
+    const followed = follow(target.frame, target.refs, budget, chain, depth + 1);
+    chain.delete(here);
+    if (followed.length) out.push(...followed);
+    else keep();
   }
   return out;
 }
+
+const gather = (expr: unknown): string[] => {
+  const found: string[] = [];
+  collect(expr, (r) => found.push(r));
+  return found;
+};
 
 /** Collects resource references per top-level attribute from the configuration section. */
 function configRefs(plan: Obj): Map<string, ConfigInfo> {
@@ -270,7 +281,10 @@ export function localize(from: string, ref: string): string {
   const a = segments(own);
   const b = segments(m[1] as string);
   let common = 0;
-  while (common < a.length && common < b.length && stripKeys(a[common] as string) === stripKeys(b[common] as string)) common++;
+  // A segment is shared when the names match and the reference either has no key (it adopts the key of the
+  // referring resource) or writes the same key. `module.a[0]` is not `module.a[1]`.
+  const shared = (x: string, y: string) => stripKeys(x) === stripKeys(y) && (x === y || y === stripKeys(y));
+  while (common < a.length && common < b.length && shared(a[common] as string, b[common] as string)) common++;
   return a.slice(0, common).join("") + b.slice(common).join("") + (m[2] as string);
 }
 

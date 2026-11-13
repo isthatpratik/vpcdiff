@@ -982,34 +982,39 @@ var MODULE_OUTPUT = /^(module\.[\w-]+(?:\[[^\]]+\])?)\.([\w-]+)(?![\w-])/;
 var BARE_MODULE = /^module\.[\w-]+(?:\[[^\]]+\])?$/;
 var VARIABLE = /^var\.([\w-]+)(?![\w-])/;
 var MAX_MODULE_DEPTH = 16;
-function follow(frame, refs, depth = 0) {
+var MAX_FOLLOW_STEPS = 1e4;
+function follow(frame, refs, budget = { steps: MAX_FOLLOW_STEPS }, chain = /* @__PURE__ */ new Set(), depth = 0) {
   const out = [];
-  for (const ref of refs) {
-    if (BARE_MODULE.test(ref) && refs.some((o) => o.startsWith(`${ref}.`) || !ref.includes("[") && o.startsWith(`${ref}[`))) continue;
+  const unique = [...new Set(refs)];
+  for (const ref of unique) {
+    if (BARE_MODULE.test(ref) && unique.some((o) => o.startsWith(`${ref}.`) || !ref.includes("[") && o.startsWith(`${ref}[`))) continue;
+    const keep = () => out.push(/^(?:aws|google|azurerm)_/.test(ref) ? frame.prefix + ref : ref);
+    const here = `${frame.prefix}|${ref}`;
     const output = MODULE_OUTPUT.exec(ref);
-    if (output && depth < MAX_MODULE_DEPTH) {
-      const call = (isObj(frame.mod.module_calls) ? frame.mod.module_calls : {})[output[1].replace(/^module\.|\[.*$/g, "")];
-      const child = isObj(call) && isObj(call.module) ? call.module : void 0;
-      const expr = child && isObj(child.outputs) ? child.outputs[output[2]] : void 0;
-      const inner = isObj(expr) && isObj(expr.expression) && Array.isArray(expr.expression.references) ? expr.expression.references.filter((x) => typeof x === "string") : void 0;
-      if (child && isObj(call) && inner) {
-        const inputs = isObj(call.expressions) ? call.expressions : {};
-        out.push(...follow({ mod: child, prefix: `${frame.prefix}${output[1]}.`, parent: { frame, inputs } }, inner, depth + 1));
-        continue;
-      }
-    }
     const variable = VARIABLE.exec(ref);
+    const call = output ? (isObj(frame.mod.module_calls) ? frame.mod.module_calls : {})[output[1].replace(/^module\.|\[.*$/g, "")] : void 0;
+    const child = isObj(call) && isObj(call.module) ? call.module : void 0;
+    const expr = output && child && isObj(child.outputs) ? child.outputs[output[2]] : void 0;
+    const inner = isObj(expr) && isObj(expr.expression) && Array.isArray(expr.expression.references) ? expr.expression.references.filter((x) => typeof x === "string") : void 0;
     const input2 = variable && frame.parent ? frame.parent.inputs[variable[1]] : void 0;
-    if (variable && isObj(input2) && depth < MAX_MODULE_DEPTH) {
-      const found = [];
-      collect(input2, (r) => found.push(r));
-      out.push(...follow(frame.parent?.frame, found, depth + 1));
+    const target = child && isObj(call) && inner ? { frame: { mod: child, prefix: `${frame.prefix}${output[1]}.`, parent: { frame, inputs: isObj(call.expressions) ? call.expressions : {} } }, refs: inner } : variable && frame.parent && isObj(input2) ? { frame: frame.parent.frame, refs: gather(input2) } : void 0;
+    if (!target || depth >= MAX_MODULE_DEPTH || budget.steps-- <= 0 || chain.has(here)) {
+      keep();
       continue;
     }
-    out.push(/^(?:aws|google|azurerm)_/.test(ref) ? frame.prefix + ref : ref);
+    chain.add(here);
+    const followed = follow(target.frame, target.refs, budget, chain, depth + 1);
+    chain.delete(here);
+    if (followed.length) out.push(...followed);
+    else keep();
   }
   return out;
 }
+var gather = (expr) => {
+  const found = [];
+  collect(expr, (r) => found.push(r));
+  return found;
+};
 function configRefs(plan) {
   const out = /* @__PURE__ */ new Map();
   const walkModule = (frame, prefix) => {
@@ -1137,7 +1142,8 @@ function localize(from, ref) {
   const a = segments(own);
   const b = segments(m[1]);
   let common = 0;
-  while (common < a.length && common < b.length && stripKeys(a[common]) === stripKeys(b[common])) common++;
+  const shared = (x, y) => stripKeys(x) === stripKeys(y) && (x === y || y === stripKeys(y));
+  while (common < a.length && common < b.length && shared(a[common], b[common])) common++;
   return a.slice(0, common).join("") + b.slice(common).join("") + m[2];
 }
 function instanceOf(snap, t) {

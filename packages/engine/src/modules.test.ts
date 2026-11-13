@@ -4,6 +4,7 @@
 // It decides only when that leads to exactly one resource. Anything else is `unknown`.
 import { describe, expect, it } from "vitest";
 import { analyze } from "./index.js";
+import { localize, parsePlan } from "./plan.js";
 import { network, only, plan, type Res } from "./testkit.js";
 
 type Obj = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -192,5 +193,44 @@ describe("module inputs in references", () => {
 
   it("returns unknown when the call passes a data source", () => {
     undecided(varPlan({ input: ["data.aws_subnet.x.id", "data.aws_subnet.x"] }));
+  });
+});
+
+describe("review fixes", () => {
+  it("keeps an explicit instance key of the reference (localize)", () => {
+    // Instance 1 of module a refers to a resource in instance 0 of module a.
+    expect(localize("module.a[1].aws_instance.r", "module.a[0].aws_s.s")).toBe("module.a[0].aws_s.s");
+    // A reference without a key adopts the key of the referring resource.
+    expect(localize("module.a[1].aws_instance.r", "module.a.aws_s.s")).toBe("module.a[1].aws_s.s");
+    // Same key on both sides stays.
+    expect(localize("module.a[1].aws_instance.r", "module.a[1].aws_s.s")).toBe("module.a[1].aws_s.s");
+    // Reference into a module above, and into a sibling.
+    expect(localize("module.a[1].module.b.aws_instance.r", "aws_s.s")).toBe("aws_s.s");
+    expect(localize("module.a[1].module.b.aws_instance.r", "module.a.aws_s.s")).toBe("module.a[1].aws_s.s");
+    expect(localize("module.a[1].aws_instance.r", "module.c[2].aws_s.s")).toBe("module.c[2].aws_s.s");
+    // A resource of the root module.
+    expect(localize("aws_instance.r", "aws_s.s")).toBe("aws_s.s");
+  });
+
+  it("finishes quickly on a plan whose references repeat and loop", () => {
+    const refs = Array.from({ length: 12 }, () => "module.a.o");
+    const p = varPlan({ input: ["aws_subnet.a.id", "aws_subnet.a"] });
+    const root = p.configuration.root_module as Obj;
+    root.module_calls.loop = { expressions: { x: { references: refs } }, module: { resources: [], outputs: { o: { expression: { references: Array.from({ length: 12 }, () => "var.x") } } } } };
+    root.module_calls.a = { expressions: { x: { references: refs } }, module: { resources: [], outputs: { o: { expression: { references: Array.from({ length: 12 }, () => "var.x") } } } } };
+    const app = root.module_calls.app as Obj;
+    const instance = app.module.resources.find((r: Obj) => r.address === "aws_instance.app") as Obj;
+    instance.expressions.subnet_id = { references: ["module.nothing.o"] };
+    app.module.module_calls = { a: root.module_calls.a };
+    instance.expressions.subnet_id = { references: refs };
+    // Before the step budget, this plan ended in a stack overflow (or ran for hours with more copies).
+    const reason = undecided(p);
+    expect(reason).toMatch(/subnet_id/);
+  });
+
+  it("marks a variable as undecided when the call passes a constant", () => {
+    // A literal has no references. Dropping `var.subnet_id` would make `cond ? var.subnet_id : aws_x.y.id` look like the resource alone.
+    const r = parsePlan(varPlan({ input: [] })).after.resources.get("module.app.aws_instance.app");
+    expect(r?.otherRefs.has("subnet_id")).toBe(true);
   });
 });
